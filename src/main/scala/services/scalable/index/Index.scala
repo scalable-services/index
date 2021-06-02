@@ -14,11 +14,11 @@ import scala.util.{Failure, Success}
  * such operations, you can use a custom filter to find the first block containing the element being searched. From that
  * you need to use prev(block) and next(block) to iterate!
  */
-class Index()(implicit val ec: ExecutionContext, val ctx: Context){
+class Index[K, V]()(implicit val ec: ExecutionContext, val ctx: Context[K,V]){
 
   val logger = LoggerFactory.getLogger(this.getClass)
 
-  def findPath(k: Bytes, start: Block, limit: Option[Block])(implicit ord: Ordering[Bytes]): Future[Option[Leaf]] = {
+  def findPath(k: K, start: Block[K,V], limit: Option[Block[K,V]])(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
 
     if(limit.isDefined && limit.get.unique_id.equals(start.unique_id)){
       logger.debug(s"reached limit!")
@@ -26,8 +26,8 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
     }
 
     start match {
-      case leaf: Leaf => Future.successful(Some(leaf))
-      case meta: Meta =>
+      case leaf: Leaf[K,V] => Future.successful(Some(leaf))
+      case meta: Meta[K,V] =>
 
         meta.setPointers()
 
@@ -39,7 +39,7 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
     }
   }
 
-  def findPath(k: Bytes, limit: Option[Block] = None)(implicit ord: Ordering[Bytes]): Future[Option[Leaf]] = {
+  def findPath(k: K, limit: Option[Block[K,V]] = None)(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
     if(ctx.root.isEmpty) {
       return Future.successful(None)
     }
@@ -52,9 +52,9 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
     }
   }
 
-  protected def fixRoot(p: Block): Boolean = {
+  protected def fixRoot(p: Block[K,V]): Boolean = {
     p match {
-      case p: Meta =>
+      case p: Meta[K,V] =>
 
         if(p.length == 1){
           val c = p.pointers(0)._2
@@ -69,14 +69,14 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
           true
         }
 
-      case p: Leaf =>
+      case p: Leaf[K,V] =>
         ctx.root = Some(p.unique_id)
         ctx.setParent(p.unique_id, 0, None)
         true
     }
   }
 
-  protected def recursiveCopy(block: Block)(implicit ord: Ordering[Bytes]): Future[Boolean] = {
+  protected def recursiveCopy(block: Block[K,V])(implicit ord: Ordering[K]): Future[Boolean] = {
 
     val opt = ctx.getParent(block.unique_id)
 
@@ -101,7 +101,7 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
     }
   }
 
-  protected def insertEmpty(data: Seq[Tuple], upsert: Boolean)(implicit ord: Ordering[Bytes]): Future[Int] = {
+  protected def insertEmpty(data: Seq[Tuple[K,V]], upsert: Boolean)(implicit ord: Ordering[K]): Future[Int] = {
     val leaf = ctx.createLeaf()
 
     leaf.insert(data, upsert) match {
@@ -110,7 +110,7 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
     }
   }
 
-  protected def insertParent(left: Meta, prev: Block)(implicit ord: Ordering[Bytes]): Future[Boolean] = {
+  protected def insertParent(left: Meta[K,V], prev: Block[K,V])(implicit ord: Ordering[K]): Future[Boolean] = {
     if(left.isFull()){
       val right = left.split()
 
@@ -129,7 +129,7 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
     }
   }
 
-  protected def handleParent(left: Block, right: Block)(implicit ord: Ordering[Bytes]): Future[Boolean] = {
+  protected def handleParent(left: Block[K,V], right: Block[K,V])(implicit ord: Ordering[K]): Future[Boolean] = {
 
     val opt = ctx.getParent(left.unique_id)
 
@@ -166,7 +166,7 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
     }
   }
 
-  protected def splitLeaf(left: Leaf, data: Seq[Tuple], upsert: Boolean)(implicit ord: Ordering[Bytes]): Future[Int] = {
+  protected def splitLeaf(left: Leaf[K,V], data: Seq[Tuple[K,V]], upsert: Boolean)(implicit ord: Ordering[K]): Future[Int] = {
     val right = left.split()
 
     val (k, _) = data(0)
@@ -192,7 +192,7 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
     handleParent(left, right).map{_ => ln.get}
   }
 
-  protected def insertLeaf(left: Leaf, data: Seq[Tuple], upsert: Boolean)(implicit ord: Ordering[Bytes]): Future[Int] = {
+  protected def insertLeaf(left: Leaf[K,V], data: Seq[Tuple[K,V]], upsert: Boolean)(implicit ord: Ordering[K]): Future[Int] = {
     if(left.isFull()){
 
       logger.debug(s"${Console.RED_B}LEAF FULL...${Console.RESET}")
@@ -209,7 +209,7 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
     }
   }
 
-  def insert(data: Seq[Tuple], upsert: Boolean = false)(implicit ord: Ordering[Bytes]): Future[Int] = {
+  def insert(data: Seq[Tuple[K,V]], upsert: Boolean = false)(implicit ord: Ordering[K]): Future[Int] = {
     val sorted = data.sortBy(_._1)
 
     if(sorted.exists{case (k, _) => sorted.count{case (k1, _) => ord.equiv(k, k1)} > 1}){
@@ -246,15 +246,15 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
     insert()
   }
 
-  protected def merge[S <: Block](left: S, lpos: Int, right: S, rpos: Int, parent: Meta)
-                                 (implicit ord: Ordering[Bytes]): Future[Boolean] = {
+  protected def merge[S <: Block[K,V]](left: S, lpos: Int, right: S, rpos: Int, parent: Meta[K,V])
+                                 (implicit ord: Ordering[K]): Future[Boolean] = {
 
     left.merge(right)
 
     parent.setPointer(left, lpos)
     parent.removeAt(rpos)
 
-    logger.debug(s"${Console.BLUE_B}merging ${if(left.isInstanceOf[Meta]) "meta" else "leaf"} blocks...${Console.RESET}\n")
+    logger.debug(s"${Console.BLUE_B}merging ${if(left.isInstanceOf[Meta[K,V]]) "meta" else "leaf"} blocks...${Console.RESET}\n")
 
     if(parent.hasMinimum()){
       return recursiveCopy(parent)
@@ -277,8 +277,8 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
     }
   }
 
-  protected def borrowRight[S <: Block](target: S, left: Option[S], right: Option[String], parent: Meta, pos: Int)
-                                       (implicit ord: Ordering[Bytes]): Future[Boolean] = {
+  protected def borrowRight[S <: Block[K,V]](target: S, left: Option[S], right: Option[String], parent: Meta[K,V], pos: Int)
+                                       (implicit ord: Ordering[K]): Future[Boolean] = {
     right match {
       case Some(id) => ctx.get(id).flatMap { r =>
         val right = r.copy()
@@ -290,7 +290,7 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
           parent.setPointer(target, pos)
           parent.setPointer(right, pos + 1)
 
-          logger.debug(s"${Console.RED_B}borrowing from right ${if(target.isInstanceOf[Meta]) "meta" else "leaf"}...${Console.RESET}\n")
+          logger.debug(s"${Console.RED_B}borrowing from right ${if(target.isInstanceOf[Meta[K,V]]) "meta" else "leaf"}...${Console.RESET}\n")
 
           recursiveCopy(parent)
 
@@ -303,8 +303,8 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
     }
   }
 
-  protected def borrowLeft[S <: Block](target: S, left: Option[String], right: Option[String], parent: Meta, pos: Int)
-                                      (implicit ord: Ordering[Bytes]): Future[Boolean] = {
+  protected def borrowLeft[S <: Block[K,V]](target: S, left: Option[String], right: Option[String], parent: Meta[K,V], pos: Int)
+                                      (implicit ord: Ordering[K]): Future[Boolean] = {
     left match {
       case Some(id) => ctx.get(id).flatMap { l =>
         val left = l.copy()
@@ -316,7 +316,7 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
           parent.setPointer(left, pos - 1)
           parent.setPointer(target, pos)
 
-          logger.debug(s"${Console.GREEN_B}borrowing from left ${if(target.isInstanceOf[Meta]) "meta" else "leaf"}...${Console.RESET}\n")
+          logger.debug(s"${Console.GREEN_B}borrowing from left ${if(target.isInstanceOf[Meta[K,V]]) "meta" else "leaf"}...${Console.RESET}\n")
 
           recursiveCopy(parent)
 
@@ -329,7 +329,7 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
     }
   }
 
-  protected def borrow[S <: Block](target: S, parent: Meta, pos: Int)(implicit ord: Ordering[Bytes]): Future[Boolean] = {
+  protected def borrow[S <: Block[K,V]](target: S, parent: Meta[K,V], pos: Int)(implicit ord: Ordering[K]): Future[Boolean] = {
 
     val left = parent.left(pos)
     val right = parent.right(pos)
@@ -348,7 +348,7 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
     borrowLeft(target, left, right, parent, pos)
   }
 
-  protected def removeFromLeaf(target: Leaf, keys: Seq[Bytes])(implicit ord: Ordering[Bytes]): Future[Int] = {
+  protected def removeFromLeaf(target: Leaf[K,V], keys: Seq[K])(implicit ord: Ordering[K]): Future[Int] = {
     val result = target.remove(keys)
 
     if(result.isFailure) return Future.failed(result.failed.get)
@@ -383,7 +383,7 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
     }
   }
 
-  def remove(keys: Seq[Bytes])(implicit ord: Ordering[Bytes]): Future[Int] = {
+  def remove(keys: Seq[K])(implicit ord: Ordering[K]): Future[Int] = {
     val sorted = keys.distinct.sorted
 
     val len = sorted.length
@@ -396,7 +396,7 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
       val k = list(0)
 
       findPath(k).flatMap {
-        case None => Future.failed(Errors.KEY_NOT_FOUND(k))
+        case None => Future.failed(Errors.KEY_NOT_FOUND[K](k))
         case Some(leaf) =>
 
           val idx = list.indexWhere {k => ord.gt(k, leaf.last)}
@@ -412,7 +412,7 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
     remove()
   }
 
-  protected def updateLeaf(left: Leaf, data: Seq[Tuple])(implicit ord: Ordering[Bytes]): Future[Int] = {
+  protected def updateLeaf(left: Leaf[K,V], data: Seq[Tuple[K,V]])(implicit ord: Ordering[K]): Future[Int] = {
     val result = left.update(data)
 
     if(result.isFailure) return Future.failed(result.failed.get)
@@ -420,8 +420,8 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
     recursiveCopy(left).map(_ => result.get)
   }
 
-  def update(data: Seq[Tuple])(implicit ord: Ordering[Bytes]): Future[Int] = {
-    
+  def update(data: Seq[Tuple[K,V]])(implicit ord: Ordering[K]): Future[Int] = {
+
     val sorted = data.sortBy(_._1)
 
     if(sorted.exists{case (k, _) => sorted.count{case (k1,_) => ord.equiv(k, k1)} > 1}){
@@ -454,15 +454,15 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
     update()
   }
 
-  def inOrder(start: Block): Future[Seq[Tuple]] = {
+  def inOrder(start: Block[K,V]): Future[Seq[Tuple[K,V]]] = {
     start match {
-      case leaf: Leaf => Future.successful(leaf.inOrder())
-      case meta: Meta =>
+      case leaf: Leaf[K,V] => Future.successful(leaf.inOrder())
+      case meta: Meta[K,V] =>
 
         val pointers = meta.pointers
         val len = pointers.length
 
-        var data = Seq.empty[(Int, Future[Seq[Tuple]])]
+        var data = Seq.empty[(Int, Future[Seq[Tuple[K,V]]])]
 
         for(i<-0 until len){
           val (_, c) = pointers(i)
@@ -480,9 +480,9 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
     }
   }
 
-  def inOrder(): Future[Seq[Tuple]] = {
+  def inOrder(): Future[Seq[Tuple[K,V]]] = {
     ctx.root match {
-      case None => Future.successful(Seq.empty[Tuple])
+      case None => Future.successful(Seq.empty[Tuple[K,V]])
       case Some(start) =>
 
         //ctx.setParent(start, 0, None)
@@ -491,12 +491,12 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
     }
   }
 
-  def getLeftMost(start: Option[Block]): Future[Option[Leaf]] = {
+  def getLeftMost(start: Option[Block[K,V]]): Future[Option[Leaf[K,V]]] = {
     start match {
       case None => Future.successful(None)
       case Some(b) => b match {
-        case b: Leaf => Future.successful(Some(b))
-        case b: Meta =>
+        case b: Leaf[K,V] => Future.successful(Some(b))
+        case b: Meta[K,V] =>
 
           b.setPointers()
 
@@ -508,7 +508,7 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
   /**
    * To be able to get next or prev we have to set parents from root to the node (partial path)
    */
-  def setPath(b: Block)(implicit ord: Ordering[Bytes]): Future[Boolean] = {
+  def setPath(b: Block[K,V])(implicit ord: Ordering[K]): Future[Boolean] = {
 
     //It makes sure leaf node it is part of current root tree...
     if(!ctx.isFromCurrentContext(b)){
@@ -522,7 +522,7 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
     }
   }
 
-  def first()(implicit ord: Ordering[Bytes]): Future[Option[Leaf]] = {
+  def first()(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
     if(ctx.root.isEmpty) return Future.successful(None)
 
     val root = ctx.root.get
@@ -537,12 +537,12 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
     ctx.get(root).flatMap(b => getLeftMost(Some(b)))
   }
 
-  def getRightMost(start: Option[Block]): Future[Option[Leaf]] = {
+  def getRightMost(start: Option[Block[K,V]]): Future[Option[Leaf[K,V]]] = {
     start match {
       case None => Future.successful(None)
       case Some(b) => b match {
-        case b: Leaf => Future.successful(Some(b))
-        case b: Meta =>
+        case b: Leaf[K,V] => Future.successful(Some(b))
+        case b: Meta[K,V] =>
 
           b.setPointers()
 
@@ -551,7 +551,7 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
     }
   }
 
-  def last()(implicit ord: Ordering[Bytes]): Future[Option[Leaf]] = {
+  def last()(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
     if(ctx.root.isEmpty) return Future.successful(None)
 
     val root = ctx.root.get
@@ -566,9 +566,9 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
     ctx.get(root).flatMap(b => getRightMost(Some(b)))
   }
 
-  def next(current: Option[String])(implicit ord: Ordering[Bytes]): Future[Option[Leaf]] = {
+  def next(current: Option[String])(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
 
-    def nxt(b: Block): Future[Option[Leaf]] = {
+    def nxt(b: Block[K,V]): Future[Option[Leaf[K,V]]] = {
 
       val opt = ctx.getParent(b.unique_id)
 
@@ -602,9 +602,9 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
     }
   }
 
-  def prev(current: Option[String])(implicit ord: Ordering[Bytes]): Future[Option[Leaf]] = {
+  def prev(current: Option[String])(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
 
-    def prv(b: Block): Future[Option[Leaf]] = {
+    def prv(b: Block[K,V]): Future[Option[Leaf[K,V]]] = {
 
       val opt = ctx.getParent(b.unique_id)
 
@@ -634,21 +634,21 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
     }
   }
 
-  def find(k: Bytes)(implicit ord: Ordering[Bytes]): Future[Option[Tuple]] = {
+  def find(k: K)(implicit ord: Ordering[K]): Future[Option[Tuple[K,V]]] = {
     findPath(k).flatMap {
       case None => Future.successful(None)
       case Some(leaf) => Future.successful(leaf.find(k))
     }
   }
 
-  def min()(implicit ord: Ordering[Bytes]): Future[Option[Tuple]] = {
+  def min()(implicit ord: Ordering[K]): Future[Option[Tuple[K,V]]] = {
     first().flatMap {
       case None => Future.successful(None)
       case Some(leaf) => Future.successful(leaf.min())
     }
   }
 
-  def max()(implicit ord: Ordering[Bytes]): Future[Option[Tuple]] = {
+  def max()(implicit ord: Ordering[K]): Future[Option[Tuple[K,V]]] = {
     last().flatMap {
       case None => Future.successful(None)
       case Some(leaf) => Future.successful(leaf.max())
@@ -662,29 +662,29 @@ class Index()(implicit val ec: ExecutionContext, val ctx: Context){
    * Prints any subtree from the provided root
    * Caution: prettyPrint is currently synchronous!
    */
-  def prettyPrint(root: Option[String] = ctx.root, timeout: Duration = Duration.Inf)(implicit kf: Bytes => String): (Int, Int) = {
+  def prettyPrint(root: Option[String] = ctx.root, timeout: Duration = Duration.Inf)(implicit kf: K => String, vf: V => String): (Int, Int) = {
 
-    val levels = scala.collection.mutable.Map[Int, scala.collection.mutable.ArrayBuffer[Block]]()
+    val levels = scala.collection.mutable.Map[Int, scala.collection.mutable.ArrayBuffer[Block[K,V]]]()
     var num_data_blocks = 0
 
-    def inOrder(start: Block, level: Int): Unit = {
+    def inOrder(start: Block[K,V], level: Int): Unit = {
 
       val opt = levels.get(level)
-      var l: scala.collection.mutable.ArrayBuffer[Block] = null
+      var l: scala.collection.mutable.ArrayBuffer[Block[K,V]] = null
 
       if(opt.isEmpty){
-        l = scala.collection.mutable.ArrayBuffer[Block]()
+        l = scala.collection.mutable.ArrayBuffer[Block[K,V]]()
         levels  += level -> l
       } else {
         l = opt.get
       }
 
       start match {
-        case data: Leaf =>
+        case data: Leaf[K,V] =>
           num_data_blocks += 1
           l += data
 
-        case meta: Meta =>
+        case meta: Meta[K,V] =>
 
           l += meta
 

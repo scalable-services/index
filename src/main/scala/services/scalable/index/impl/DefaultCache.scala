@@ -7,22 +7,22 @@ import services.scalable.index._
 import java.util.concurrent.Executor
 import scala.concurrent.ExecutionContext
 
-class DefaultCache(val MAX_BLOCK_CACHE_SIZE: Long = 100L * 1024L * 1024L,
+class DefaultCache[K, V](val MAX_BLOCK_CACHE_SIZE: Long = 100L * 1024L * 1024L,
                    val MAX_PARENT_ENTRIES: Int = 1000)
-                  (implicit val ec: ExecutionContext) extends Cache {
+                  (implicit val ec: ExecutionContext) extends Cache[K,V] {
 
   val logger = LoggerFactory.getLogger(this.getClass)
 
   val blocks = Caffeine.newBuilder()
-    .weigher[String, Block]((key: String, value: Block) => {
+    .weigher[String, Block[K,V]]((key: String, value: Block[K,V]) => {
       if(value == null || value.isEmpty) 0 else value.size
     })
     .executor(ec.asInstanceOf[Executor])
     .maximumWeight(MAX_BLOCK_CACHE_SIZE)
-    .removalListener((key: String, value: Block, cause: RemovalCause) => {
+    .removalListener((key: String, value: Block[K,V], cause: RemovalCause) => {
       logger.debug(s"REMOVING FROM BLOCKS CACHE ${key}... $cause\n")
     })
-    .build[String, Block]()
+    .build[String, Block[K,V]]()
 
     val parents = Caffeine.newBuilder()
     .maximumSize(MAX_PARENT_ENTRIES)
@@ -33,11 +33,11 @@ class DefaultCache(val MAX_BLOCK_CACHE_SIZE: Long = 100L * 1024L * 1024L,
     })
     .build[String, (Option[String], Int)]()
 
-  def put(block: Block): Unit = {
+  def put(block: Block[K,V]): Unit = {
     blocks.put(block.unique_id, block)
   }
 
-  def get(unique_id: String): Option[Block] = {
+  def get(unique_id: String): Option[Block[K,V]] = {
     val block = blocks.getIfPresent(unique_id)
     if(block == null) None else Some(block)
   }

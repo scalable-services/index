@@ -8,14 +8,15 @@ import services.scalable.index._
 import java.nio.ByteBuffer
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.{ExecutionContext, Future}
+import scala.jdk.FutureConverters._
 
 class CassandraStorage[K, V](val KEYSPACE: String,
-                             val NUM_LEAF_ENTRIES: Int,
-                             val NUM_META_ENTRIES: Int,
-                             val truncate: Boolean = true)(implicit val ec: ExecutionContext,
-                                                           val ord: Ordering[Bytes],
-                                                           val cache: Cache,
-                                                           val serializer: Serializer[Block]) extends Storage {
+                                       val NUM_LEAF_ENTRIES: Int,
+                                       val NUM_META_ENTRIES: Int,
+                                       val truncate: Boolean = true)(implicit val ec: ExecutionContext,
+                                                           val ord: Ordering[K],
+                                                           val cache: Cache[K,V],
+                                                           val serializer: Serializer[Block[K,V]]) extends Storage[K,V] {
 
   val logger = LoggerFactory.getLogger(this.getClass)
   val parents = TrieMap.empty[String, (Option[String], Int)]
@@ -37,8 +38,8 @@ class CassandraStorage[K, V](val KEYSPACE: String,
     logger.debug(s"TRUNCATED META: ${session.execute("TRUNCATE meta;").wasApplied()}\n")
   }
 
-  override def createIndex(indexId: String): Future[Context] = {
-    val ctx = new DefaultContext(indexId, None, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)(ec, this, cache, ord)
+  override def createIndex(indexId: String): Future[Context[K,V]] = {
+    val ctx = new DefaultContext[K,V](indexId, None, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)(ec, this, cache, ord)
 
     session.executeAsync(INSERT_META.bind().setString(0, ctx.indexId).setString(1, null)
       .setInt(2, ctx.NUM_LEAF_ENTRIES)
@@ -48,14 +49,14 @@ class CassandraStorage[K, V](val KEYSPACE: String,
     }
   }
 
-  override def loadOrCreate(indexId: String): Future[Context] = {
+  override def loadOrCreate(indexId: String): Future[Context[K,V]] = {
     load(indexId).recoverWith {
       case e: Errors.INDEX_NOT_FOUND => createIndex(indexId)
       case e => Future.failed(e)
     }
   }
 
-  override def load(indexId: String): Future[Context] = {
+  override def load(indexId: String): Future[Context[K,V]] = {
     session.executeAsync(SELECT_ROOT.bind().setString(0, indexId)).flatMap { rs =>
       val one = rs.one()
 
@@ -74,7 +75,7 @@ class CassandraStorage[K, V](val KEYSPACE: String,
     }
   }
 
-  override def get(unique_id: String)(implicit ctx: Context): Future[Block] = {
+  override def get(unique_id: String)(implicit ctx: Context[K,V]): Future[Block[K,V]] = {
     session.executeAsync(SELECT.bind().setString(0, unique_id)).map { rs =>
       val one = rs.one()
       val buf = one.getByteBuffer("bin")
@@ -82,14 +83,14 @@ class CassandraStorage[K, V](val KEYSPACE: String,
     }
   }
 
-  def updateMeta(ctx: Context): Future[Boolean] = {
+  def updateMeta(ctx: Context[K,V]): Future[Boolean] = {
     session.executeAsync(UPDATE_META.bind().setString(0, if(ctx.root.isDefined) ctx.root.get else null)
       .setString(1, ctx.indexId)).map(_.wasApplied())
   }
 
-  override def save(ctx: Context): Future[Boolean] = {
+  override def save(ctx: Context[K,V]): Future[Boolean] = {
 
-    val c = ctx.asInstanceOf[DefaultContext]
+    val c = ctx.asInstanceOf[DefaultContext[K,V]]
 
     val stm = BatchStatement.builder(DefaultBatchType.LOGGED)
 
@@ -103,18 +104,22 @@ class CassandraStorage[K, V](val KEYSPACE: String,
       val bin = serializer.serialize(b)
 
       b match {
-        case b: Leaf => logger.debug(s"root ${ctx.root} => "+ b.unique_id)
+        case b: Leaf[K,V] => logger.debug(s"root ${ctx.root} => "+ b.unique_id)
         case _ =>
       }
 
       stm.addStatement(INSERT.bind().setString(0, b.unique_id)
         .setByteBuffer(1, ByteBuffer.wrap(bin))
-        .setBoolean(2, b.isInstanceOf[Leaf])
+        .setBoolean(2, b.isInstanceOf[Leaf[K,V]])
         .setInt(3, bin.length)
       )
     }
 
     session.executeAsync(stm.build()).flatMap(ok => if(ok.wasApplied()) updateMeta(ctx) else Future.successful(false))
+  }
+
+  override def close(): Future[Unit] = {
+    session.closeAsync().map{_ => {}}
   }
 
 }

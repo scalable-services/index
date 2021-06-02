@@ -3,12 +3,13 @@ package services.scalable.index
 import org.apache.commons.lang3.RandomStringUtils
 import org.scalatest.flatspec.AnyFlatSpec
 import org.slf4j.LoggerFactory
-import services.scalable.index.impl.{DefaultCache, DefaultContext, MemoryStorage}
+import services.scalable.index.impl.{DefaultCache, DefaultContext, GrpcByteSerializer, MemoryStorage}
 
-//import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.ExecutionContext.Implicits.global
 import java.util.concurrent.ThreadLocalRandom
-import scala.concurrent.duration.Duration
+import scala.concurrent.duration.{Duration, DurationInt}
 import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.language.postfixOps
 
 class SerializeOpsSpec extends AnyFlatSpec {
 
@@ -26,12 +27,14 @@ class SerializeOpsSpec extends AnyFlatSpec {
 
     val indexId = "demo_db"
 
-    implicit val global = ExecutionContext.global
-    implicit val cache = new DefaultCache(100L * 1024L * 1024L, 10000)
+    import DefaultSerializers._
+    implicit val serializer = new GrpcByteSerializer[Bytes, Bytes]()
+
+    implicit val cache = new DefaultCache[Bytes, Bytes](100L * 1024L * 1024L, 10000)
     //implicit val storage = new CassandraStorage(TestConfig.KEYSPACE, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, truncate = true)
 
-    implicit val storage = new MemoryStorage(NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
-    implicit val ctx = new DefaultContext(indexId, None, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+    implicit val storage = new MemoryStorage[Bytes, Bytes](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+    implicit val ctx = new DefaultContext[Bytes, Bytes](indexId, None, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
 
     logger.debug(s"${Await.result(storage.loadOrCreate(indexId), Duration.Inf)}")
 
@@ -69,6 +72,8 @@ class SerializeOpsSpec extends AnyFlatSpec {
     logger.debug(s"${index.ctx.num_elements}")
 
     logger.debug(s"${Console.RED_B}USED MEMORY: ${mem/(1024*1024)} KBytes${Console.RESET}")
+
+    Await.ready(storage.close(), Duration.Inf)
   }
 
 }

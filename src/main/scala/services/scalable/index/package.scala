@@ -14,8 +14,8 @@ import scala.concurrent.{ExecutionContext, Future}
 package object index {
 
   type Bytes = Array[Byte]
-  type Tuple = Tuple2[Bytes, Bytes]
-  type Pointer = Tuple2[Bytes, String]
+  type Tuple[K, V] = Tuple2[K, V]
+  type Pointer[K] = Tuple2[K, String]
 
   implicit def toScalaFuture[T](cs: CompletionStage[T]) = toScala[T](cs)
 
@@ -30,8 +30,13 @@ package object index {
 
   val loader =
     DriverConfigLoader.programmaticBuilder()
-      .withDuration(DefaultDriverOption.REQUEST_TIMEOUT, Duration.ofSeconds(5))
+      .withDuration(DefaultDriverOption.REQUEST_TIMEOUT, java.time.Duration.ofSeconds(30))
       .withInt(DefaultDriverOption.CONNECTION_MAX_REQUESTS, 31768)
+      .withInt(DefaultDriverOption.SESSION_LEAK_THRESHOLD, 1000)
+      .withString(DefaultDriverOption.PROTOCOL_VERSION, "V4")
+      .withString(DefaultDriverOption.RECONNECTION_POLICY_CLASS, "ExponentialReconnectionPolicy")
+      .withDuration(DefaultDriverOption.RECONNECTION_BASE_DELAY, java.time.Duration.ofSeconds(1))
+      .withDuration(DefaultDriverOption.RECONNECTION_MAX_DELAY, java.time.Duration.ofSeconds(10))
       /*.startProfile("slow")
       .withDuration(DefaultDriverOption.REQUEST_TIMEOUT, Duration.ofSeconds(30))
       .endProfile()*/
@@ -55,8 +60,8 @@ package object index {
 
   object DefaultIdGenerators {
     implicit val idGenerator = new IdGenerator {
-      override def generateId(ctx: Context): String = UUID.randomUUID().toString
-      override def generatePartition(ctx: Context): String = UUID.randomUUID().toString
+      override def generateId[K,V](ctx: Context[K,V]): String = UUID.randomUUID().toString
+      override def generatePartition[K,V](ctx: Context[K,V]): String = UUID.randomUUID().toString
     }
   }
 
@@ -65,8 +70,6 @@ package object index {
       override def serialize(t: Bytes): Array[Byte] = t
       override def deserialize(b: Array[Byte]): Bytes = b
     }
-
-    implicit val grpcBytesSerializer = new GrpcByteSerializer()
   }
 
   trait IndexError
@@ -75,19 +78,19 @@ package object index {
     case object LEAF_BLOCK_FULL extends RuntimeException("Leaf is full!") with IndexError
     case object META_BLOCK_FULL extends RuntimeException("Meta is full!") with IndexError
 
-    case class LEAF_DUPLICATE_KEY(keys: Seq[Tuple], inserting: Seq[Tuple]) extends RuntimeException(s"Duplicate elements on leaf!")
+    case class LEAF_DUPLICATE_KEY[K,V](keys: Seq[Tuple[K,V]], inserting: Seq[Tuple[K,V]]) extends RuntimeException(s"Duplicate elements on leaf!")
       with IndexError
-    case class LEAF_KEY_NOT_FOUND(keys: Seq[Bytes]) extends RuntimeException(s"Missing key on leaf") with IndexError
+    case class LEAF_KEY_NOT_FOUND[K](keys: Seq[K]) extends RuntimeException(s"Missing key on leaf") with IndexError
 
-    case class META_DUPLICATE_KEY(keys: Seq[Pointer], inserting: Seq[Pointer]) extends RuntimeException(s"Duplicate elements on meta!")
+    case class META_DUPLICATE_KEY[K](keys: Seq[Pointer[K]], inserting: Seq[Pointer[K]]) extends RuntimeException(s"Duplicate elements on meta!")
       with IndexError
-    case class META_KEY_NOT_FOUND(keys: Seq[Bytes]) extends RuntimeException(s"Missing key on meta") with IndexError
+    case class META_KEY_NOT_FOUND[K](keys: Seq[K]) extends RuntimeException(s"Missing key on meta") with IndexError
 
     case class BLOCK_NOT_FOUD(id: String) extends RuntimeException(s"Block ${id} not found!") with IndexError
 
-    case class DUPLICATE_KEYS(keys: Seq[Tuple]) extends RuntimeException("Duplicate keys") with IndexError
+    case class DUPLICATE_KEYS[K,V](keys: Seq[Tuple[K,V]]) extends RuntimeException("Duplicate keys") with IndexError
 
-    case class KEY_NOT_FOUND(k: Bytes) extends RuntimeException(s"Key not found!") with IndexError
+    case class KEY_NOT_FOUND[K](k: K) extends RuntimeException(s"Key not found!") with IndexError
 
     case class BLOCK_NOT_SAME_CONTEXT(broot: Option[String], croot: Option[String])
       extends RuntimeException(s"Current block's root ${broot} is not equal to the current root context: ${croot}") with IndexError

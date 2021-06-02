@@ -1,20 +1,20 @@
 package services.scalable.index.impl
 
 import org.slf4j.LoggerFactory
-import services.scalable.index.{Block, Context, Leaf, Meta, _}
+import services.scalable.index._
 
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.{ExecutionContext, Future}
 
-class DefaultContext(override val indexId: String,
+class DefaultContext[K, V](override val indexId: String,
                      override var root: Option[String],
                      override val NUM_LEAF_ENTRIES: Int,
                      override val NUM_META_ENTRIES: Int)
                     (implicit val ec: ExecutionContext,
-                     val storage: Storage,
-                     val cache: Cache,
-                     val ord: Ordering[Bytes],
-                     val idGenerator: IdGenerator = DefaultIdGenerators.idGenerator) extends Context {
+                     val storage: Storage[K,V],
+                     val cache: Cache[K,V],
+                     val ord: Ordering[K],
+                     val idGenerator: IdGenerator = DefaultIdGenerators.idGenerator) extends Context[K,V] {
 
   val logger = LoggerFactory.getLogger(this.getClass)
 
@@ -26,7 +26,7 @@ class DefaultContext(override val indexId: String,
   val META_MAX = NUM_META_ENTRIES
   val META_MIN = META_MAX/2
 
-  val blocks = TrieMap.empty[String, Block]
+  val blocks = TrieMap.empty[String, Block[K,V]]
   val parents = TrieMap.empty[String, (Option[String], Int)]
 
   if(root.isDefined) setParent(root.get, 0, None)
@@ -40,7 +40,7 @@ class DefaultContext(override val indexId: String,
    *
    * To work the blocks being manipulated must be in memory before saving...
    */
-  override def get(unique_id: String): Future[Block] = blocks.get(unique_id) match {
+  override def get(unique_id: String): Future[Block[K,V]] = blocks.get(unique_id) match {
     case None => cache.get(unique_id) match {
       case None =>
 
@@ -55,20 +55,20 @@ class DefaultContext(override val indexId: String,
     case Some(block) => Future.successful(block)
   }
 
-  override def getLeaf(unique_id: String): Future[Leaf] = {
-    get(unique_id).map(_.asInstanceOf[Leaf])
+  override def getLeaf(unique_id: String): Future[Leaf[K,V]] = {
+    get(unique_id).map(_.asInstanceOf[Leaf[K,V]])
   }
 
-  override def getMeta(unique_id: String): Future[Meta] = {
-    get(unique_id).map(_.asInstanceOf[Meta])
+  override def getMeta(unique_id: String): Future[Meta[K,V]] = {
+    get(unique_id).map(_.asInstanceOf[Meta[K,V]])
   }
 
   override def isNew(unique_id: String): Boolean = {
     blocks.isDefinedAt(unique_id)
   }
 
-  override def createLeaf(): Leaf = {
-    val leaf = new Leaf(idGenerator.generateId(this), idGenerator.generatePartition(this), LEAF_MIN, LEAF_MAX)
+  override def createLeaf(): Leaf[K,V] = {
+    val leaf = new Leaf[K,V](idGenerator.generateId(this), idGenerator.generatePartition(this), LEAF_MIN, LEAF_MAX)
 
     blocks += leaf.unique_id -> leaf
     setParent(leaf.unique_id, 0, None)
@@ -76,8 +76,8 @@ class DefaultContext(override val indexId: String,
     leaf
   }
 
-  override def createMeta(): Meta = {
-    val meta = new Meta(idGenerator.generateId(this), idGenerator.generatePartition(this), META_MIN, META_MAX)
+  override def createMeta(): Meta[K,V] = {
+    val meta = new Meta[K,V](idGenerator.generateId(this), idGenerator.generatePartition(this), META_MIN, META_MAX)
 
     blocks += meta.unique_id -> meta
     setParent(meta.unique_id, 0, None)
@@ -108,7 +108,7 @@ class DefaultContext(override val indexId: String,
     }
   }
 
-  override def isFromCurrentContext(b: Block): Boolean = {
+  override def isFromCurrentContext(b: Block[K,V]): Boolean = {
     b.root.equals(root)
   }
 

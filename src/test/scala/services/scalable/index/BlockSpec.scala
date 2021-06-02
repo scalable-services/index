@@ -2,10 +2,13 @@ package services.scalable.index
 
 import org.apache.commons.lang3.RandomStringUtils
 import org.slf4j.LoggerFactory
-import services.scalable.index.impl.{CassandraStorage, DefaultCache, DefaultContext}
+import services.scalable.index.impl.{CassandraStorage, DefaultCache, DefaultContext, GrpcByteSerializer, MemoryStorage}
 
 import java.util.UUID
+import scala.concurrent.Await
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.duration.{Duration, DurationInt}
+import scala.language.postfixOps
 
 class BlockSpec extends Repeatable {
 
@@ -23,13 +26,14 @@ class BlockSpec extends Repeatable {
 
     val n = NUM_ENTRIES
 
-    var list1 = Seq.empty[Tuple2[Bytes, Bytes]]
-    var list2 = Seq.empty[Tuple2[Bytes, String]]
+    var list1 = Seq.empty[Tuple[Bytes, Bytes]]
+    var list2 = Seq.empty[Pointer[Bytes]]
 
     import DefaultComparators._
-    implicit val serializer = DefaultSerializers.grpcBytesSerializer
+    import DefaultSerializers._
+    implicit val serializer = new GrpcByteSerializer[Bytes, Bytes]()
 
-    implicit  val cache = new DefaultCache()
+    implicit  val cache = new DefaultCache[Bytes, Bytes]()
     val upsert = false
 
     for(i<-0 until n){
@@ -42,13 +46,13 @@ class BlockSpec extends Repeatable {
       }
     }
 
-    val leaf1 = new Leaf(UUID.randomUUID().toString, PARTITION, MIN, MAX)
+    val leaf1 = new Leaf[Bytes, Bytes](UUID.randomUUID().toString, PARTITION, MIN, MAX)
     leaf1.insert(list1, upsert)
 
     assert(isColEqual(list1.sortBy(_._1), leaf1.tuples))
 
     val buf = serializer.serialize(leaf1)
-    val leaf2 = serializer.deserialize(buf).asInstanceOf[Leaf]
+    val leaf2 = serializer.deserialize(buf).asInstanceOf[Leaf[Bytes, Bytes]]
 
     val l1 = leaf1.tuples
     val l2 = leaf2.tuples
@@ -60,8 +64,9 @@ class BlockSpec extends Repeatable {
 
     val indexId = "test_index"
 
-    implicit val storage = new CassandraStorage(TestConfig.KEYSPACE, NUM_ENTRIES, NUM_ENTRIES)
-    implicit val ctx = new DefaultContext(indexId, None, NUM_ENTRIES, NUM_ENTRIES)
+    implicit val storage = new MemoryStorage[Bytes, Bytes](NUM_ENTRIES, NUM_ENTRIES)
+    //implicit val storage = new CassandraStorage[Bytes, Bytes](TestConfig.KEYSPACE, NUM_ENTRIES, NUM_ENTRIES)
+    implicit val ctx = new DefaultContext[Bytes, Bytes](indexId, None, NUM_ENTRIES, NUM_ENTRIES)
 
     val meta1 = ctx.createMeta()
     meta1.insert(list2)
@@ -69,7 +74,7 @@ class BlockSpec extends Repeatable {
     assert(isColEqual(list2.sortBy(_._1), meta1.pointers))
 
     val buf2 = serializer.serialize(meta1)
-    val meta2 = serializer.deserialize(buf2).asInstanceOf[Meta]
+    val meta2 = serializer.deserialize(buf2).asInstanceOf[Meta[Bytes, Bytes]]
 
     val m1 = meta1.pointers.toSeq
     val m2 = meta2.pointers.toSeq
@@ -79,6 +84,7 @@ class BlockSpec extends Repeatable {
 
     assert(isColEqual(m1, m2))
 
+    Await.ready(storage.close(), 1 minute)
   }
 
 }

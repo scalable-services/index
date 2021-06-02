@@ -6,15 +6,16 @@ import org.slf4j.LoggerFactory
 import services.scalable.index.impl._
 
 import java.util.concurrent.ThreadLocalRandom
-import scala.concurrent.Await
+import scala.concurrent.{Await, Future}
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
+import scala.language.postfixOps
 
 class NextSpec extends AnyFlatSpec with Repeatable {
 
   val logger = LoggerFactory.getLogger(this.getClass)
 
-  override val times: Int = 1
+  override val times: Int = 100
 
   val rand = ThreadLocalRandom.current()
 
@@ -30,24 +31,28 @@ class NextSpec extends AnyFlatSpec with Repeatable {
 
     //implicit val storage = new MemoryStorage[K, V]()
 
-    val indexId = "test_index"
+    val indexId = "demo_index"
 
-    implicit val cache = new DefaultCache()
-    implicit val storage = new CassandraStorage(TestConfig.KEYSPACE, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, truncate = true)
+    import DefaultSerializers._
+    implicit val serializer = new GrpcByteSerializer[Bytes, Bytes]()
+
+    implicit val cache = new DefaultCache[Bytes, Bytes]()
+    implicit val storage = new CassandraStorage[Bytes, Bytes](TestConfig.KEYSPACE, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, truncate = true)
 
     implicit val ctx = Await.result(storage.createIndex(indexId), Duration.Inf)
 
-    var data = Seq.empty[Tuple]
+    val index = new Index[Bytes,Bytes]()
+
+    var data = Seq.empty[Tuple[Bytes, Bytes]]
     val iter = 20//rand.nextInt(1, 100)
 
-    //implicit val ctx = new DefaultContext(NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
-    //val index = new Index[S, K, V]()
+    var tasks = Seq.empty[() => Future[Boolean]]
 
-    def insert(index: Index): Unit = {
+    def insert(index: Index[Bytes,Bytes]): Future[Boolean] = {
 
       val n = rand.nextInt(1, 100)
 
-      var list = Seq.empty[Tuple]
+      var list = Seq.empty[Tuple[Bytes, Bytes]]
 
       for(i<-0 until n){
         val k = RandomStringUtils.randomAlphanumeric(5).getBytes("UTF-8")
@@ -59,67 +64,64 @@ class NextSpec extends AnyFlatSpec with Repeatable {
         }
       }
 
-      val m = Await.result(index.insert(list), Duration.Inf)
-
-      logger.debug(s"insertion result n: $m")
-
-      data = data ++ list.slice(0, m)
+      index.insert(list).map { n =>
+        data = data ++ list.slice(0, n)
+        logger.debug(s"insertion result n: $n")
+        true
+      }
     }
 
-    def remove(index: Index): Unit = {
-      if(data.isEmpty) return
+    def remove(index: Index[Bytes,Bytes]): Future[Boolean] = {
+      if(data.isEmpty) return Future.successful(true)
 
       val bound = if(data.length == 1) 1 else rand.nextInt(1, data.length)
-      val list = scala.util.Random.shuffle(data.slice(0, bound)).map(_._1).toSeq
+      val list = scala.util.Random.shuffle(data.slice(0, bound)).map(_._1)
 
-      val m = Await.result(index.remove(list), Duration.Inf)
+      index.remove(list).map { n =>
+        logger.debug(s"removal result m: $n")
+        data = data.filterNot{case (k, _) => list.exists{k1 => ord.equiv(k, k1)}}
 
-      logger.debug(s"removal result m: $m")
-      data = data.filterNot{case (k, _) => list.exists{k1 => ord.equiv(k, k1)}}
+        true
+      }
     }
 
-    def update(index: Index): Unit = {
-      if(data.isEmpty) return
+    def update(index: Index[Bytes,Bytes]): Future[Boolean] = {
+      if(data.isEmpty) return Future.successful(true)
 
       val bound = if(data.length == 1) 1 else rand.nextInt(1, data.length)
       val list = scala.util.Random.shuffle(data.slice(0, bound))
-        .map{case (k, _) => k -> RandomStringUtils.randomAlphabetic(5).getBytes("UTF-8")}.toSeq
+        .map{case (k, _) => k -> RandomStringUtils.randomAlphabetic(5).getBytes("UTF-8")}
 
-      val m = Await.result(index.update(list), Duration.Inf)
+      index.update(list).map { n =>
+        logger.debug(s"update result m: $n")
 
-      logger.debug(s"update result m: $m")
+        val notin = data.filterNot{case (k1, _) => list.exists{case (k, _) => ord.equiv(k, k1)}}
+        data = (notin ++ list).sortBy(_._1)
 
-      val notin = data.filterNot{case (k1, _) => list.exists{case (k, _) => ord.equiv(k, k1)}}
-      data = (notin ++ list).sortBy(_._1)
+        true
+      }
     }
-
-   // implicit val storage = new CassandraStorage(NUM_LEAF_ENTRIES, NUM_META_ENTRIES, "indexes")
 
     for(i<-0 until iter){
-
-      //implicit val ctx = new DefaultContext(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
-      val index = new Index()
-
-      rand.nextInt(1, 4) match {
-        case 1 => insert(index)
-        case 2 => update(index)
-        case 3 => remove(index)
-      }
-
-      Await.ready(ctx.save(), Duration.Inf)
+      tasks = tasks :+ (() => rand.nextInt(1, 4) match {
+        case 1 => insert(index).flatMap(_ => ctx.save())
+        case 2 => update(index).flatMap(_ => ctx.save())
+        case 3 => remove(index).flatMap(_ => ctx.save())
+      })
     }
 
-    val index = new Index()
+    Await.ready(serialiseFutures(tasks)(_.apply()), Duration.Inf)
 
     val tdata = data.sortBy(_._1)
 
     var list = Seq.empty[Tuple2[Bytes, Bytes]]
 
-    var cur: Option[Leaf] = Await.result(index.first(), Duration.Inf)
+    var cur: Option[Leaf[Bytes, Bytes]] = Await.result(index.first(), Duration.Inf)
 
     while(cur.isDefined){
       val block = cur.get
       list = list ++ block.inOrder()
+
       cur = Await.result(index.next(cur.map(_.unique_id)), Duration.Inf)
     }
 
@@ -134,18 +136,21 @@ class NextSpec extends AnyFlatSpec with Repeatable {
 
     val reverse = tdata.reverse
 
-    list = Seq.empty[Tuple2[Bytes, Bytes]]
+    list = Seq.empty[Tuple[Bytes, Bytes]]
+
     cur = Await.result(index.last(), Duration.Inf)
 
     while(cur.isDefined){
       val block = cur.get
       list = list ++ block.inOrder().reverse
-
       cur = Await.result(index.prev(cur.map(_.unique_id)), Duration.Inf)
     }
 
     assert(isColEqual(reverse, list))
 
+    //Await.ready(storage.close(), Duration.Inf)
+
+    Await.ready(storage.close(), Duration.Inf)
   }
 
 }

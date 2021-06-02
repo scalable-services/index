@@ -28,10 +28,13 @@ class ReadStorageSpec extends AnyFlatSpec with Repeatable {
 
     //implicit val storage = new MemoryStorage[K, V]()
 
-    val indexId = "test_index"
+    val indexId = "demo_index"
 
-    implicit val cache = new DefaultCache()
-    implicit val storage = new CassandraStorage( TestConfig.KEYSPACE, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, truncate = false)
+    import DefaultSerializers._
+    implicit val serializer = new GrpcByteSerializer[Bytes, Bytes]()
+
+    implicit val cache = new DefaultCache[Bytes, Bytes]()
+    implicit val storage = new CassandraStorage[Bytes, Bytes](TestConfig.KEYSPACE, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, truncate = false)
 
     implicit val ctx = Await.result(storage.load(indexId), Duration.Inf)
     val index = new Index()
@@ -40,7 +43,7 @@ class ReadStorageSpec extends AnyFlatSpec with Repeatable {
 
     logger.debug(s"root: ${ctx.root}")
 
-    var cur: Option[Leaf] = Await.result(index.first(), Duration.Inf)
+    var cur: Option[Leaf[Bytes, Bytes]] = Await.result(index.first(), Duration.Inf)
 
     /*var cur: Option[Leaf[S, K, V]] = Some(Await.result(ctx.getLeaf("d73ef724-2f59-46c7-90ca-62a1a1437b10"),
       Duration.Inf))*/
@@ -81,6 +84,8 @@ class ReadStorageSpec extends AnyFlatSpec with Repeatable {
       case Success(value) => logger.debug(s"The result: ${value}")
       case Failure(ex) => logger.error(ex.getMessage)
     }*/
+
+    Await.ready(storage.close(), Duration.Inf)
 
   }
 

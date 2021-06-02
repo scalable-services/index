@@ -1,6 +1,6 @@
 package services.scalable.index
 
-trait Block {
+trait Block[K,V] {
 
   val id: String
   val partition: String
@@ -15,24 +15,24 @@ trait Block {
   // Tells from what root pointer this block was originally created
   var root: Option[String] = None
 
-  def last: Bytes
-  def first: Bytes
+  def last: K
+  def first: K
   def length: Int
 
-  def borrowLeftTo(t: Block)(implicit ctx: Context): Block
-  def borrowRightTo(t: Block)(implicit ctx: Context): Block
-  def merge(r: Block)(implicit ctx: Context): Block
+  def borrowLeftTo(t: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V]
+  def borrowRightTo(t: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V]
+  def merge(r: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V]
 
   def minNeeded(): Int = MIN - length
-  def canBorrowTo(target: Block): Boolean = length - target.minNeeded() >= MIN
+  def canBorrowTo(target: Block[K,V]): Boolean = length - target.minNeeded() >= MIN
 
-  def copy()(implicit ctx: Context): Block
-  def split()(implicit ctx: Context): Block
+  def copy()(implicit ctx: Context[K,V]): Block[K,V]
+  def split()(implicit ctx: Context[K,V]): Block[K,V]
 
   def isFull(): Boolean
   def isEmpty(): Boolean
   def hasMinimum(): Boolean
 
-  def print()(implicit kf: Bytes => String, vf: Bytes => String): String
+  def print()(implicit kf: K => String, vf: V => String): String
 
 }
