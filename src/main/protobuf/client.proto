@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+import "protocol.proto";
+
+//#options
+option java_multiple_files = true;
+option java_package = "services.scalable.index.grpc";
+option java_outer_classname = "ClientServiceProto";
+
+package services.scalable.index;
+//#options
+
+//#services
+/*service CommanderClient {
+  rpc sendCommand (CommandRequest) returns (CommandResponse) {}
+  rpc read(ReadRequest) returns(ReadResponse) {}
+}*/
+//#services
