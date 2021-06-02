@@ -14,17 +14,14 @@ message Tuple {
 
 message LeafBlock {
   string id = 1;
-  repeated Tuple tuples = 2;
+  string partition = 2;
+  repeated Tuple tuples = 3;
+  int32 min = 4;
+  int32 max = 5;
 
   oneof optional_root {
-    string root = 3;
+    string root = 6;
   }
-
-  /*oneof optional_parent {
-    string parent = 3;
-  }
-
-  int32 pos = 4;*/
 }
 
 message Pointer {
@@ -34,15 +31,12 @@ message Pointer {
 
 message MetaBlock {
   string id = 1;
-  repeated Pointer pointers = 2;
+  string partition = 2;
+  repeated Pointer pointers = 3;
+  int32 min = 4;
+  int32 max = 5;
 
   oneof optional_root {
-    string root = 3;
+    string root = 6;
   }
-
-  /*oneof optional_parent {
-    string parent = 3;
-  }
-
-  int32 pos = 4;*/
 }

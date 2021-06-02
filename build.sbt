@@ -15,14 +15,11 @@ libraryDependencies ++= Seq(
   "com.google.guava" % "guava" % "27.1-jre",
   "org.apache.commons" % "commons-lang3" % "3.8.1",
 
-  /*"com.typesafe.akka" %% "akka-stream" % AkkaVersion,
-  "com.typesafe.akka" %% "akka-stream-testkit" % AkkaVersion % Test,*/
-
   "com.google.guava" % "guava" % "30.1-jre",
 
   "com.github.ben-manes.caffeine" % "caffeine" % "2.8.8",
 
-  "com.datastax.oss" % "java-driver-core" % "4.7.2",
+  "com.datastax.oss" % "java-driver-core" % "4.11.1",
 
   "org.scala-lang.modules" %% "scala-collection-compat" % "2.1.6"
 )
