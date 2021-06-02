@@ -21,11 +21,7 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
   "index data " must "be equal to test data" in {
 
-    type K = Array[Byte]
-    type V = Array[Byte]
-    type S = String
-
-    implicit def xf(k: K): String = new String(k)
+    implicit def xf(k: Bytes): String = new String(k)
 
     import DefaultComparators._
     import DefaultIdGenerators._
