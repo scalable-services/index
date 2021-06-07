@@ -109,33 +109,24 @@ class MainSpec extends AnyFlatSpec with Repeatable {
       Await.ready(ctx.save(), Duration.Inf)
 
       val before = data.sortBy(_._1)
-      versions += before -> Await.result(index.inOrder(), Duration.Inf)
+      versions += before -> Await.result(TestHelper.all(index.inOrder()), Duration.Inf)
     }
 
     val index = new Index[Bytes,Bytes]()
 
-    val tdata = data.sortBy(_._1).toSeq
-    val idata = Await.result(index.inOrder(), Duration.Inf)
+    val tdata = data.sortBy(_._1)
+    val idata = Await.result(TestHelper.all(index.inOrder()), Duration.Inf)
 
     logger.debug(s"tdata: ${tdata.map{case (k, v) => new String(k) -> new String(v)}}\n")
     logger.debug(s"idata: ${idata.map{case (k, v) => new String(k) -> new String(v)}}")
 
     //assert(idata.equals(tdata))
 
-    assert(isColEqual(idata, tdata), s"idata len: ${idata.length} tdata len: ${tdata.length}")
+    //assert(isColEqual(idata, tdata), s"idata len: ${idata.length} tdata len: ${tdata.length}")
+
+    assert(idata == tdata, s"idata len: ${idata.length} tdata len: ${tdata.length}")
 
     logger.debug(s"\n")
-
-    /*val levels = Await.result(index.getLevels(), Duration.Inf)
-
-    logger.debug("BEGIN BTREE:\n")
-    levels.keys.toSeq.sorted.foreach { case level =>
-      logger.debug(s"level[$level]: ${levels(level)}\n")
-    }
-    logger.debug("END BTREE\n")*/
-
-    /*index.prettyPrint()
-    assert(false, "it was me your dumbass :P")*/
 
     var list = Seq.empty[Tuple2[Bytes, Bytes]]
 
@@ -217,22 +208,22 @@ class MainSpec extends AnyFlatSpec with Repeatable {
       assert((tmax.isEmpty && imax.isEmpty) || tmax.map{case (k, _) => ord.equiv(k, imax.get._1)}.get)
     }
 
-    /*logger.debug("\nversions\n")
+    logger.debug("\nVERSION\n")
 
     for(j<-0 until iter){
-      val (d, i) = versions(j)
+      val (s, t) = versions(j)
 
       logger.debug("\n")
 
-      logger.debug(s"d: ${d.map{case (k, v) => new String(k) -> new String(v)}}")
-      logger.debug(s"i: ${i.map{case (k, v) => new String(k) -> new String(v)}}")
+      logger.debug(s"source: ${s.map{case (k, v) => new String(k) -> new String(v)}}")
+      logger.debug(s"index: ${t.map{case (k, v) => new String(k) -> new String(v)}}")
 
       logger.debug("\n")
 
-      assert(i.equals(d))
-    }*/
+      assert(s == t)
+    }
 
-    Await.ready(storage.close(), 1 minute)
+    Await.ready(storage.close(), Duration.Inf)
 
   }
 

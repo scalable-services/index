@@ -18,6 +18,8 @@ class Index[K, V]()(implicit val ec: ExecutionContext, val ctx: Context[K,V]){
 
   val logger = LoggerFactory.getLogger(this.getClass)
 
+  val $this = this
+
   def findPath(k: K, start: Block[K,V], limit: Option[Block[K,V]])(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
 
     if(limit.isDefined && limit.get.unique_id.equals(start.unique_id)){
@@ -454,7 +456,7 @@ class Index[K, V]()(implicit val ec: ExecutionContext, val ctx: Context[K,V]){
     update()
   }
 
-  def inOrder(start: Block[K,V]): Future[Seq[Tuple[K,V]]] = {
+  /*def inOrder(start: Block[K,V]): Future[Seq[Tuple[K,V]]] = {
     start match {
       case leaf: Leaf[K,V] => Future.successful(leaf.inOrder())
       case meta: Meta[K,V] =>
@@ -488,6 +490,80 @@ class Index[K, V]()(implicit val ec: ExecutionContext, val ctx: Context[K,V]){
         //ctx.setParent(start, 0, None)
 
         ctx.get(start).flatMap{b => inOrder(b)}
+    }
+  }*/
+
+  def inOrder()(implicit ord: Ordering[K]): AsyncIterator[Seq[Tuple[K, V]]] = new AsyncIterator[Seq[(K, V)]] {
+
+    var cur: Option[Leaf[K, V]] = None
+    var firstTime = false
+
+    override def hasNext(): Future[Boolean] = {
+      if(!firstTime) return Future.successful(ctx.root.isDefined)
+      Future.successful(cur.isDefined)
+    }
+
+    override def next(): Future[Seq[Tuple[K, V]]] = {
+      if(!firstTime){
+        firstTime = true
+
+        return first().map {
+          case None =>
+            cur = None
+            Seq.empty[Tuple[K, V]]
+
+          case Some(b) =>
+            cur = Some(b)
+            b.inOrder()
+        }
+      }
+
+      $this.next(cur.map(_.unique_id))(ord).map {
+        case None =>
+          cur = None
+          Seq.empty[Tuple[K, V]]
+
+        case Some(b) =>
+          cur = Some(b)
+          b.inOrder()
+      }
+    }
+  }
+
+  def reverse()(implicit ord: Ordering[K]): AsyncIterator[Seq[Tuple[K, V]]] = new AsyncIterator[Seq[(K, V)]] {
+
+    var cur: Option[Leaf[K, V]] = None
+    var firstTime = false
+
+    override def hasNext(): Future[Boolean] = {
+      if(!firstTime) return Future.successful(ctx.root.isDefined)
+      Future.successful(cur.isDefined)
+    }
+
+    override def next(): Future[Seq[Tuple[K, V]]] = {
+      if(!firstTime){
+        firstTime = true
+
+        return last().map {
+          case None =>
+            cur = None
+            Seq.empty[Tuple[K, V]]
+
+          case Some(b) =>
+            cur = Some(b)
+            b.inOrder().reverse
+        }
+      }
+
+      $this.prev(cur.map(_.unique_id))(ord).map {
+        case None =>
+          cur = None
+          Seq.empty[Tuple[K, V]]
+
+        case Some(b) =>
+          cur = Some(b)
+          b.inOrder().reverse
+      }
     }
   }
 

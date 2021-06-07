@@ -42,13 +42,18 @@ package object index {
       .endProfile()*/
       .build()
 
-  def isColEqual[K, V](source: Seq[Tuple2[K, V]], c1: Seq[Tuple2[K, V]])(implicit ordk: Ordering[K], ordv: Ordering[V]): Boolean = {
-    if(source.length != c1.length) return false
+  def isColEqual[K, V](source: Seq[Tuple[K, V]], c: Seq[Tuple[K, V]])(implicit ordk: Ordering[K], ordv: Ordering[V]): Boolean = {
+    if(c.length < source.length) return false
+    for(i<-0 until source.length){
+      val (ks, vs) = source(i)
+      val (kc, vc) = source(i)
 
-    c1.zipWithIndex.forall{case ((k, v), idx) =>
-      val (k1, v1) = source(idx)
-      ordk.equiv(k1, k) && ordv.equiv(v1, v)
+      if(!(ordk.equiv(ks, kc) && ordv.equiv(vc, vs))){
+        return false
+      }
     }
+
+    true
   }
 
   object DefaultComparators {

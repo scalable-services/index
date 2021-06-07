@@ -1,5 +1,6 @@
 package services.scalable.index
 
+import com.google.common.base.Charsets
 import org.apache.commons.lang3.RandomStringUtils
 import org.scalatest.flatspec.AnyFlatSpec
 import org.slf4j.LoggerFactory
@@ -26,8 +27,8 @@ class NextSpec extends AnyFlatSpec with Repeatable {
     import DefaultComparators._
     import DefaultSerializers._
 
-    val NUM_LEAF_ENTRIES = 8//rand.nextInt(4, 100)
-    val NUM_META_ENTRIES = 8//rand.nextInt(4, NUM_LEAF_ENTRIES)
+    val NUM_LEAF_ENTRIES = rand.nextInt(8, 64)
+    val NUM_META_ENTRIES = rand.nextInt(8, 64)
 
     //implicit val storage = new MemoryStorage[K, V]()
 
@@ -44,7 +45,7 @@ class NextSpec extends AnyFlatSpec with Repeatable {
     val index = new Index[Bytes,Bytes]()
 
     var data = Seq.empty[Tuple[Bytes, Bytes]]
-    val iter = 20//rand.nextInt(1, 100)
+    val iter = rand.nextInt(1, 20)
 
     var tasks = Seq.empty[() => Future[Boolean]]
 
@@ -112,45 +113,29 @@ class NextSpec extends AnyFlatSpec with Repeatable {
 
     Await.ready(serialiseFutures(tasks)(_.apply()), Duration.Inf)
 
-    val tdata = data.sortBy(_._1)
+    var it = index.inOrder()
 
-    var list = Seq.empty[Tuple2[Bytes, Bytes]]
+    var idata = Await.result(TestHelper.all(it), Duration.Inf)
+    var list = data.sortBy(_._1)
 
-    var cur: Option[Leaf[Bytes, Bytes]] = Await.result(index.first(), Duration.Inf)
-
-    while(cur.isDefined){
-      val block = cur.get
-      list = list ++ block.inOrder()
-
-      cur = Await.result(index.next(cur.map(_.unique_id)), Duration.Inf)
-    }
-
-    logger.debug(s"next: ${list.map{case (k, v) => new String(k) -> new String(v)}}\n")
-
-    list = Await.result(index.inOrder(), Duration.Inf)
-
-    logger.debug(s"tdata: ${tdata.map{case (k, v) => new String(k) -> new String(v)}}\n")
+    logger.debug(s"tdata: ${idata.map{case (k, v) => new String(k) -> new String(v)}}\n")
     logger.debug(s"idata: ${list.map{case (k, v) => new String(k) -> new String(v)}}")
 
-    assert(isColEqual(tdata, list))
-
-    val reverse = tdata.reverse
+    assert(isColEqual(list, idata))
 
     list = Seq.empty[Tuple[Bytes, Bytes]]
 
-    cur = Await.result(index.last(), Duration.Inf)
+    it = index.reverse()
 
-    while(cur.isDefined){
-      val block = cur.get
-      list = list ++ block.inOrder().reverse
-      cur = Await.result(index.prev(cur.map(_.unique_id)), Duration.Inf)
-    }
+    idata = Await.result(TestHelper.all(it), Duration.Inf)
+    list = data.reverse
 
-    assert(isColEqual(reverse, list))
+    logger.debug(s"tdata: ${idata.map{case (k, v) => new String(k) -> new String(v)}}\n")
+    logger.debug(s"idata: ${list.map{case (k, v) => new String(k) -> new String(v)}}")
 
-    //Await.ready(storage.close(), Duration.Inf)
+    assert(isColEqual(list, idata))
 
-    Await.ready(storage.close(), Duration.Inf)
+   // Await.ready(storage.close(), Duration.Inf)
   }
 
 }
