@@ -175,7 +175,7 @@ class Meta[K, V](override val id: String,
   override def print()(implicit kf: K => String, vf: V => String): String = {
     if(pointers.isEmpty) return "[]"
 
-    val sb = new StringBuilder()
+    val sb = new StringBuilder(s"${id}:")
     sb ++= Console.RED_B
     sb ++= "["
     sb ++= Console.RESET
