@@ -1,0 +1,64 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.thesamet</groupId>
+    <artifactId>sbt-protoc</artifactId>
+    <packaging>jar</packaging>
+    <description>SBT plugin for generating code from Protocol Buffer using protoc</description>
+    <url>https://github.com/thesamet/sbt-protoc</url>
+    <version>1.0.4</version>
+    <licenses>
+        <license>
+            <name>Apache-2.0</name>
+            <url>http://www.apache.org/licenses/LICENSE-2.0</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+    <name>sbt-protoc</name>
+    <organization>
+        <name>com.thesamet</name>
+        <url>https://github.com/thesamet/sbt-protoc</url>
+    </organization>
+    <scm>
+        <url>https://github.com/thesamet/sbt-protoc</url>
+        <connection>scm:git:https://github.com/thesamet/sbt-protoc.git</connection>
+        <developerConnection>scm:git:git@github.com:thesamet/sbt-protoc.git</developerConnection>
+    </scm>
+    <developers>
+        <developer>
+            <id>thesamet</id>
+            <name>Nadav Samet</name>
+            <url>https://www.thesamet.com</url>
+            <email>thesamet@gmail.com</email>
+        </developer>
+    </developers>
+    <properties>
+        <scalaVersion>2.12</scalaVersion>
+        <sbtVersion>1.0</sbtVersion>
+        <extraDependencyAttributes xml:space="preserve">+e:sbtVersion:#@#:+1.0:#@#:+module:#@#:+sbt-platform-deps:#@#:+e:scalaVersion:#@#:+2.12:#@#:+organisation:#@#:+org.portable-scala:#@#:+branch:#@#:+@#:NULL:#@:#@#:+revision:#@#:+1.0.0:#@#:</extraDependencyAttributes>
+    </properties>
+    <dependencies>
+        <dependency>
+            <groupId>org.scala-lang</groupId>
+            <artifactId>scala-library</artifactId>
+            <version>2.12.13</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.scala-sbt</groupId>
+            <artifactId>sbt</artifactId>
+            <version>1.2.8</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.portable-scala</groupId>
+            <artifactId>sbt-platform-deps</artifactId>
+            <version>1.0.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.thesamet.scalapb</groupId>
+            <artifactId>protoc-bridge_2.12</artifactId>
+            <version>0.9.2</version>
+        </dependency>
+    </dependencies>
+</project>

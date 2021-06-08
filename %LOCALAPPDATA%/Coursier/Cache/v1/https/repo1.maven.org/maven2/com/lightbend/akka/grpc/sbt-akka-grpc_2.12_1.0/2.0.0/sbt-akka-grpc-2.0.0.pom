@@ -1,0 +1,76 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.lightbend.akka.grpc</groupId>
+    <artifactId>sbt-akka-grpc</artifactId>
+    <packaging>jar</packaging>
+    <description>Akka gRPC - Support for building streaming gRPC servers and clients on top of Akka Streams.</description>
+    <url>https://akka.io/</url>
+    <version>2.0.0</version>
+    <licenses>
+        <license>
+            <name>Apache-2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+    <name>sbt-akka-grpc</name>
+    <organization>
+        <name>Lightbend Inc.</name>
+        <url>https://www.lightbend.com/</url>
+    </organization>
+    <scm>
+        <url>https://github.com/akka/akka-grpc</url>
+        <connection>scm:git:https://github.com/akka/akka-grpc.git</connection>
+        <developerConnection>scm:git:git@github.com:akka/akka-grpc.git</developerConnection>
+    </scm>
+    <developers>
+        <developer>
+            <id>contributors</id>
+            <name>Contributors</name>
+            <url>https://github.com/akka/akka-grpc/graphs/contributors</url>
+            <email>https://gitter.im/akka/dev</email>
+        </developer>
+    </developers>
+    <properties>
+        <scalaVersion>2.12</scalaVersion>
+        <sbtVersion>1.0</sbtVersion>
+        <info.apiURL>https://doc.akka.io/api/akka-grpc/2.0.0/akka/grpc/index.html</info.apiURL>
+        <extraDependencyAttributes xml:space="preserve">+e:sbtVersion:#@#:+1.0:#@#:+module:#@#:+sbt-protoc:#@#:+e:scalaVersion:#@#:+2.12:#@#:+organisation:#@#:+com.thesamet:#@#:+branch:#@#:+@#:NULL:#@:#@#:+revision:#@#:+1.0.4:#@#:</extraDependencyAttributes>
+    </properties>
+    <dependencies>
+        <dependency>
+            <groupId>org.scala-lang</groupId>
+            <artifactId>scala-library</artifactId>
+            <version>2.12.11</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.scala-sbt</groupId>
+            <artifactId>sbt</artifactId>
+            <version>1.5.2</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.lightbend.akka.grpc</groupId>
+            <artifactId>akka-grpc-codegen_2.12</artifactId>
+            <version>2.0.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.ghik</groupId>
+            <artifactId>silencer-lib_2.12.11</artifactId>
+            <version>1.7.1</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.thesamet.scalapb</groupId>
+            <artifactId>compilerplugin_2.12</artifactId>
+            <version>0.11.3</version>
+        </dependency>
+        <dependency>
+            <groupId>com.thesamet</groupId>
+            <artifactId>sbt-protoc</artifactId>
+            <version>1.0.4</version>
+        </dependency>
+    </dependencies>
+</project>

@@ -135,7 +135,7 @@ class NextSpec extends AnyFlatSpec with Repeatable {
 
     assert(isColEqual(list, idata))
 
-   // Await.ready(storage.close(), Duration.Inf)
+    Await.ready(storage.close(), Duration.Inf)
   }
 
 }
