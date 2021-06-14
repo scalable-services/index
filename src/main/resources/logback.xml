@@ -16,7 +16,7 @@
     </encoder>
     </appender>
 
-    <logger name="services.scalable.index" level="debug"></logger>
+    <logger name="services.scalable.index" level="info"></logger>
 
     <appender name="ASYNC" class="ch.qos.logback.classic.AsyncAppender">
         <queueSize>1024</queueSize>
