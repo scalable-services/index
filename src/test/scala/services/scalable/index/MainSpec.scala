@@ -184,7 +184,7 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
       assert(isColEqual(list, ltdata))
 
-      val found = Await.result(index.find(randomKey), Duration.Inf)
+      val found = Await.result(index.get(randomKey), Duration.Inf)
 
       assert(found.isDefined)
       logger.debug(s"\nfound key ${randomKeyStr} = ${found.map{case (k, v) => new String(k) -> new String(v)}}")

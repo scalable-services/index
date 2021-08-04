@@ -710,7 +710,7 @@ class Index[K, V]()(implicit val ec: ExecutionContext, val ctx: Context[K,V]){
     }
   }
 
-  def find(k: K)(implicit ord: Ordering[K]): Future[Option[Tuple[K,V]]] = {
+  def get(k: K)(implicit ord: Ordering[K]): Future[Option[Tuple[K,V]]] = {
     findPath(k).flatMap {
       case None => Future.successful(None)
       case Some(leaf) => Future.successful(leaf.find(k))

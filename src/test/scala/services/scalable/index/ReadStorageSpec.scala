@@ -64,7 +64,7 @@ class ReadStorageSpec extends AnyFlatSpec with Repeatable {
 
     println(ctx.root)
     println(cur.map(_.inOrder().map{case (k, v) => new String(k) -> new String(v)}))
-    println(Await.result(index.find(cur.get.last), Duration.Inf).map{case (k, v) => new String(k) -> new String(v)})
+    println(Await.result(index.get(cur.get.last), Duration.Inf).map{case (k, v) => new String(k) -> new String(v)})
 
     while(cur.isDefined){
       val block = cur.get
