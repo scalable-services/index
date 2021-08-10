@@ -779,11 +779,11 @@ class Index[K, V]()(implicit val ec: ExecutionContext, val ctx: Context[K,V]){
       case _ =>
     }
 
-    logger.debug("BEGIN BTREE:\n")
+    logger.info("BEGIN BTREE:\n")
     levels.keys.toSeq.sorted.foreach { case level =>
-      logger.debug(s"level[$level]: ${levels(level).map(_.print())}\n")
+      logger.info(s"level[$level]: ${levels(level).map(_.print())}\n")
     }
-    logger.debug("END BTREE\n")
+    logger.info("END BTREE\n")
 
     levels.size -> num_data_blocks
   }
