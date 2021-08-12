@@ -148,6 +148,8 @@ class Index[K, V]()(implicit val ec: ExecutionContext, val ctx: Context[K,V]){
 
         val meta = ctx.createMeta()
 
+        ctx.levels += 1
+
         meta.insert(Seq(
           left.last -> left.unique_id,
           right.last -> right.unique_id
@@ -250,6 +252,8 @@ class Index[K, V]()(implicit val ec: ExecutionContext, val ctx: Context[K,V]){
 
   protected def merge[S <: Block[K,V]](left: S, lpos: Int, right: S, rpos: Int, parent: Meta[K,V])
                                  (implicit ord: Ordering[K]): Future[Boolean] = {
+
+    ctx.levels -= 1
 
     left.merge(right)
 
@@ -392,7 +396,10 @@ class Index[K, V]()(implicit val ec: ExecutionContext, val ctx: Context[K,V]){
     var pos = 0
 
     def remove(): Future[Int] = {
-      if(pos == len) return Future.successful(sorted.length)
+      if(pos == len) {
+        ctx.num_elements -= sorted.length
+        return Future.successful(sorted.length)
+      }
 
       var list = sorted.slice(pos, len)
       val k = list(0)

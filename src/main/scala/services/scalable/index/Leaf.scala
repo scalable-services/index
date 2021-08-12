@@ -8,7 +8,7 @@ class Leaf[K, V](override val id: String,
                           override val MIN: Int,
                           override val MAX: Int,
                           override val size: Int = 0) extends Block[K,V] {
-  
+
   val logger = LoggerFactory.getLogger(this.getClass)
 
   var tuples = Seq.empty[Tuple[K,V]]

@@ -61,6 +61,7 @@ class DatomSpec extends AnyFlatSpec with Repeatable {
 
         r
       }
+
     }
 
     val termOrd = new Ordering[Datom]{
@@ -186,13 +187,13 @@ class DatomSpec extends AnyFlatSpec with Repeatable {
     val upperTerm = Datom(a = Some(pupper), v = Some(vupper))
     val upperPrefix = if(prefixPresent) Some(Datom(a = Some(pupper))) else None
 
-    val prefixOrd = new Ordering[Datom] {
+    val prefixOrd = new Ordering[K] {
       override def compare(pre: K, k: K): Int = {
         if(prefixPresent) comp.compare(prefix.get.getA.getBytes(Charsets.UTF_8), k.getA.getBytes(Charsets.UTF_8)) else -1
       }
     }
 
-    val upperPrefixOrd = new Ordering[Datom] {
+    val upperPrefixOrd = new Ordering[K] {
       override def compare(pre: K, k: K): Int = {
         if(prefixPresent) comp.compare(upperPrefix.get.getA.getBytes(Charsets.UTF_8), k.getA.getBytes(Charsets.UTF_8)) else -1
       }
