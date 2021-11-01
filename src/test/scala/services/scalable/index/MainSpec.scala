@@ -70,7 +70,7 @@ class MainSpec extends AnyFlatSpec with Repeatable {
       if(data.isEmpty) return
 
       val bound = if(data.length == 1) 1 else rand.nextInt(1, data.length)
-      val list = scala.util.Random.shuffle(data.slice(0, bound)).map(_._1).toSeq
+      val list = scala.util.Random.shuffle(data.slice(0, bound)).map(_._1)
 
       val m = Await.result(index.remove(list), Duration.Inf)
 
@@ -83,7 +83,7 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
       val bound = if(data.length == 1) 1 else rand.nextInt(1, data.length)
       val list = scala.util.Random.shuffle(data.slice(0, bound))
-        .map{case (k, _) => k -> RandomStringUtils.randomAlphabetic(5).getBytes("UTF-8")}.toSeq
+        .map{case (k, _) => k -> RandomStringUtils.randomAlphabetic(5).getBytes("UTF-8")}
 
       val m = Await.result(index.update(list), Duration.Inf)
 

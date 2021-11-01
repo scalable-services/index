@@ -21,6 +21,10 @@
       <excludeFolder url="file://$MODULE_DIR$/../../target/test-reports" />
       <excludeFolder url="file://$MODULE_DIR$/../../.bsp" />
       <excludeFolder url="file://$MODULE_DIR$/../../null" />
+      <excludeFolder url="file://$MODULE_DIR$/../../.bloop/index/bloop-internal-classes/classes-Metals-SESoZSZCSpuunyOgft1xmQ==-YnJK9EyGT9iDYLm66Ht8wg==/META-INF/semanticdb/target" />
+      <excludeFolder url="file://$MODULE_DIR$/../../.bloop" />
+      <excludeFolder url="file://$MODULE_DIR$/../../.metals" />
+      <excludeFolder url="file://$MODULE_DIR$/../../.vscode" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />

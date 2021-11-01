@@ -25,10 +25,7 @@ class RandomSpec extends AnyFlatSpec with Repeatable {
   val EMPTY_ARRAY = Array.empty[Byte]
 
   val rand = ThreadLocalRandom.current()
-
-  //val logger = LoggerFactory.getLogger(this.getClass)
-  val factory = LoggerFactory.getILoggerFactory.asInstanceOf[LoggerContext]
-  val logger = factory.getLogger(this.getClass)
+  val logger = LoggerFactory.getLogger(this.getClass)
 
   "it " should "serialize and order datoms (serialized as array of arrays of bytes) correctly " in {
 

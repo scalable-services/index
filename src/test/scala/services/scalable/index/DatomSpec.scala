@@ -18,7 +18,7 @@ import scala.concurrent.{Await, Future}
 
 class DatomSpec extends AnyFlatSpec with Repeatable {
 
-  override val times = 1000
+  override val times = 1
 
   implicit def strToBytes(str: String): Bytes = str.getBytes(Charsets.UTF_8)
 

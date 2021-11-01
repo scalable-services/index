@@ -124,7 +124,6 @@ class Leaf[K, V](override val id: String,
     val pos = len/2
 
     right.tuples = tuples.slice(pos, len)
-    right.tuples = tuples.slice(pos, len)
     tuples = tuples.slice(0, pos)
 
     right

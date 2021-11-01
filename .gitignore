@@ -3,3 +3,11 @@ null
 .bsp
 %LOCALAPPDATA%
 project/target
+*.class
+.bloop
+.metals
+project/.bloop
+project/target
+project/project
+project/metals.sbt
+.vscode

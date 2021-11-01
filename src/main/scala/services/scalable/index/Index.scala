@@ -250,7 +250,7 @@ class Index[K, V]()(implicit val ec: ExecutionContext, val ctx: Context[K,V]){
     insert()
   }
 
-  protected def merge[S <: Block[K,V]](left: S, lpos: Int, right: S, rpos: Int, parent: Meta[K,V])
+  protected def merge(left: Block[K, V], lpos: Int, right: Block[K, V], rpos: Int, parent: Meta[K,V])
                                  (implicit ord: Ordering[K]): Future[Boolean] = {
 
     ctx.levels -= 1
@@ -283,7 +283,7 @@ class Index[K, V]()(implicit val ec: ExecutionContext, val ctx: Context[K,V]){
     }
   }
 
-  protected def borrowRight[S <: Block[K,V]](target: S, left: Option[S], right: Option[String], parent: Meta[K,V], pos: Int)
+  protected def borrowRight(target: Block[K, V], left: Option[Block[K, V]], right: Option[String], parent: Meta[K,V], pos: Int)
                                        (implicit ord: Ordering[K]): Future[Boolean] = {
     right match {
       case Some(id) => ctx.get(id).flatMap { r =>
@@ -309,7 +309,7 @@ class Index[K, V]()(implicit val ec: ExecutionContext, val ctx: Context[K,V]){
     }
   }
 
-  protected def borrowLeft[S <: Block[K,V]](target: S, left: Option[String], right: Option[String], parent: Meta[K,V], pos: Int)
+  protected def borrowLeft(target: Block[K, V], left: Option[String], right: Option[String], parent: Meta[K,V], pos: Int)
                                       (implicit ord: Ordering[K]): Future[Boolean] = {
     left match {
       case Some(id) => ctx.get(id).flatMap { l =>
@@ -335,19 +335,14 @@ class Index[K, V]()(implicit val ec: ExecutionContext, val ctx: Context[K,V]){
     }
   }
 
-  protected def borrow[S <: Block[K,V]](target: S, parent: Meta[K,V], pos: Int)(implicit ord: Ordering[K]): Future[Boolean] = {
+  protected def borrow(target: Block[K, V], parent: Meta[K,V], pos: Int)(implicit ord: Ordering[K]): Future[Boolean] = {
 
     val left = parent.left(pos)
     val right = parent.right(pos)
 
     // One parent with one child node
     if(left.isEmpty && right.isEmpty){
-
       logger.debug(s"[remove] ONE LEVEL LESS...")
-
-      /*root = Some(target)
-      parents += target.unique_id -> (None, 0)*/
-
       return recursiveCopy(target)
     }
 

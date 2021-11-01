@@ -20,7 +20,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
         meta.setPointers()(ctx)
 
-        val bid = meta.findPath(k)((x: K, y: K) => ord.compare(x, y, if(ctx.levels == 1) true else level == (ctx.levels - 2)))
+        val bid = meta.findPath(k)((x: K, y: K) => ord.compare(x, y, if(ctx.levels <= 1) true else level == (ctx.levels - 1)))
 
         ctx.get(bid).flatMap { block =>
           findPath2(k, block, limit, level + 1)
@@ -76,17 +76,6 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
           case Some(b) =>
             cur = Some(b)
 
-            /* println("FIRST: \n")
-
-             println(b.tuples.map { case (k, _) =>
-               val d = k.asInstanceOf[Datom]
-               d.a -> (if(d.getA.compareTo("person/:age") == 0) d.getV.asReadOnlyByteBuffer().getInt() else new String(d.getV.toByteArray)) -> d.e
-             })
-
-             // println(b.tuples.map(_._1))
-
-             println(b.tuples.filter{case (k, _) => check(k) })*/
-
             val filtered = b.tuples.reverse.filter{case (k, _) => check(k) }
             //stop = filtered.isEmpty
 
@@ -101,15 +90,6 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
         case Some(b) =>
           cur = Some(b)
-
-          /*println()
-
-          println(b.tuples.map { case (k, _) =>
-            val d = k.asInstanceOf[Datom]
-            d.a -> (if(d.getA.compareTo("person/:age") == 0) d.getV.asReadOnlyByteBuffer().getInt() else new String(d.getV.toByteArray)) -> d.e
-          })
-
-          println(b.tuples.filter{case (k, _) => check(k) })*/
 
           val filtered = b.tuples.reverse.filter{case (k, _) => check(k) }
           stop = filtered.isEmpty
@@ -157,27 +137,8 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
             case Some(b) =>
               cur = Some(b)
 
-              /*println()
-
-              println(b.tuples.map { case (k, _) =>
-                val d = k.asInstanceOf[Datom]
-                d.a -> (if(d.getA.compareTo("person/:age") == 0) d.getV.asReadOnlyByteBuffer().getInt() else new String(d.getV.toByteArray)) -> d.e
-              })
-
-              // println(b.tuples.map(_._1))
-
-              println()*/
-
               val filtered = b.tuples.filter{case (k, _) => check(k) }
               stop = filtered.isEmpty
-
-              /**
-               * Exception in the case of having only the term left in the block because of the
-               * inclusive flag been set to false. This way we miss out the next elements.
-               */
-              /*if(!inclusive && filtered.isEmpty && b.tuples.exists{case(k, _) => termOrdering.equiv(k, term)}){
-                stop = false
-              }*/
 
               checkCounter(filtered.filter{case (k, v) => filter(k, v)})
           }
@@ -190,15 +151,6 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
           case Some(b) =>
             cur = Some(b)
-
-            /*println()
-
-            println(b.tuples.map { case (k, _) =>
-              val d = k.asInstanceOf[Datom]
-              d.a -> (if(d.getA.compareTo("person/:age") == 0) d.getV.asReadOnlyByteBuffer().getInt() else new String(d.getV.toByteArray)) -> d.e
-            })
-
-            println()*/
 
             val filtered = b.tuples.filter{case (k, _) => check(k) }
             stop = filtered.isEmpty
@@ -243,17 +195,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
           case Some(b) =>
             cur = Some(b)
 
-            /*println("FIRST:\n")
-
-            println(b.tuples.map { case (k, _) =>
-              val d = k.asInstanceOf[Datom]
-              d.a -> (if(d.getA.compareTo("person/:age") == 0) d.getV.asReadOnlyByteBuffer().getInt() else new String(d.getV.toByteArray)) -> d.e
-            })
-
-            println()*/
-
             val filtered = b.tuples.reverse.filter{case (k, _) => check(k) }
-            //stop = filtered.isEmpty
 
             checkCounter(filtered.filter{case (k, v) => filter(k, v)})
         }
@@ -312,15 +254,6 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
             case Some(b) =>
               cur = Some(b)
-
-              /*println()
-
-              println(b.tuples.map { case (k, _) =>
-                val d = k.asInstanceOf[Datom]
-                d.a -> (if(d.getA.compareTo("person/:age") == 0) d.getV.asReadOnlyByteBuffer().getInt() else new String(d.getV.toByteArray)) -> d.e
-              })
-
-              println()*/
 
               val filtered = b.tuples.filter{case (k, _) => check(k) }
               stop = filtered.isEmpty
@@ -381,17 +314,6 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
           case Some(b) =>
             cur = Some(b)
 
-            /*println()
-
-            println(b.tuples.map { case (k, _) =>
-              val d = k.asInstanceOf[Datom]
-              d.a -> (if(d.getA.compareTo("person/:age") == 0) d.getV.asReadOnlyByteBuffer().getInt() else new String(d.getV.toByteArray)) -> d.e
-            })
-
-            // println(b.tuples.map(_._1))
-
-            println()*/
-
             val filtered = b.tuples.reverse.filter{case (k, _) => check(k) }
 
             checkCounter(filtered.filter{case (k, v) => filter(k, v)})
@@ -405,15 +327,6 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
         case Some(b) =>
           cur = Some(b)
-
-          /*println()
-
-          println(b.tuples.map { case (k, _) =>
-            val d = k.asInstanceOf[Datom]
-            d.a -> (if(d.getA.compareTo("person/:age") == 0) d.getV.asReadOnlyByteBuffer().getInt() else new String(d.getV.toByteArray)) -> d.e
-          })
-
-          println()*/
 
           val filtered = b.tuples.reverse.filter{case (k, _) => check(k) }
           stop = filtered.isEmpty
@@ -464,17 +377,6 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
             case Some(b) =>
               cur = Some(b)
 
-              /*println()
-
-              println(b.tuples.map { case (k, _) =>
-                val d = k.asInstanceOf[Datom]
-                d.a -> (if(d.getA.compareTo("person/:age") == 0) d.getV.asReadOnlyByteBuffer().getInt() else new String(d.getV.toByteArray)) -> d.e
-              })
-
-              // println(b.tuples.map(_._1))
-
-              println()*/
-
               val filtered = b.tuples.filter { case (k, _) => check(k) }
               stop = filtered.isEmpty
 
@@ -489,15 +391,6 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
           case Some(b) =>
             cur = Some(b)
-
-            /*println()
-
-            println(b.tuples.map { case (k, _) =>
-              val d = k.asInstanceOf[Datom]
-              d.a -> (if(d.getA.compareTo("person/:age") == 0) d.getV.asReadOnlyByteBuffer().getInt() else new String(d.getV.toByteArray)) -> d.e
-            })
-
-            println()*/
 
             val filtered = b.tuples.filter { case (k, _) => check(k) }
             stop = filtered.isEmpty
