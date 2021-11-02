@@ -1,16 +1,20 @@
 package services.scalable.index
 
+import com.google.protobuf.ByteString
 import org.apache.commons.lang3.RandomStringUtils
 import org.scalatest.flatspec.AnyFlatSpec
 import org.slf4j.LoggerFactory
+import services.scalable.index.grpc.Datom
 import services.scalable.index.impl._
 
+import java.util.UUID
 import java.util.concurrent.ThreadLocalRandom
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.Await
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 import scala.language.postfixOps
+import com.google.protobuf.any.Any
 
 class MainSpec extends AnyFlatSpec with Repeatable {
 
@@ -27,36 +31,79 @@ class MainSpec extends AnyFlatSpec with Repeatable {
     import DefaultComparators._
     import DefaultIdGenerators._
 
-    var versions = ArrayBuffer.empty[Tuple2[Seq[Tuple[Bytes, Bytes]], Seq[Tuple[Bytes, Bytes]]]]
+    implicit val insertOrd = new Ordering[Datom] {
+      override def compare(x: Datom, y: Datom): Int = {
 
-    val NUM_LEAF_ENTRIES = 8//rand.nextInt(4, 100)
-    val NUM_META_ENTRIES = 8//rand.nextInt(4, NUM_LEAF_ENTRIES)
+        var r = x.a.compareTo(y.a)
+
+        if(r != 0) return r
+
+        r = ord.compare(x.v.toByteArray, y.v.toByteArray)
+
+        if(r != 0) return r
+
+        r = x.e.compareTo(y.e)
+
+        if(r != 0) return r
+
+        r = x.t.compareTo(y.t)
+
+        if(r != 0) return r
+
+        x.op.compareTo(y.op)
+      }
+    }
+
+    val NUM_LEAF_ENTRIES = 8//rand.nextInt(4, 20)
+    val NUM_META_ENTRIES = 8//rand.nextInt(4, if(NUM_LEAF_ENTRIES == 4) 5 else NUM_LEAF_ENTRIES)
 
     val indexId = "test_index"
 
-    implicit val cache = new DefaultCache[Bytes, Bytes]()
+    implicit val cache = new DefaultCache[Datom, Bytes](MAX_PARENT_ENTRIES = 80000)
     //implicit val storage = new CassandraStorage[Bytes, Bytes](TestConfig.KEYSPACE, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, truncate = true)
-    implicit val storage = new MemoryStorage[Bytes, Bytes](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+    implicit val storage = new MemoryStorage[Datom, Bytes](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
 
-    implicit val ctx = new DefaultContext[Bytes, Bytes](indexId, None, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+    implicit val ctx = new DefaultContext[Datom, Bytes](indexId, None, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
     
-    var data = Seq.empty[Tuple[Bytes, Bytes]]
-    val iter = 10//rand.nextInt(1, 100)
+    var data = Seq.empty[Tuple[Datom, Bytes]]
+    val iter = 5//rand.nextInt(1, 100)
 
-    def insert(index: Index[Bytes, Bytes]): Unit = {
+    val colors = Seq("red", "green", "blue", "yellow", "orange", "black", "white", "magenta", "gold", "brown", "pink")
 
-      val n = rand.nextInt(1, 100)
+    def insert(index: Index[Datom, Bytes]): Unit = {
 
-      var list = Seq.empty[Tuple[Bytes, Bytes]]
+      val n = rand.nextInt(1, 50)
+
+      var list = Seq.empty[Tuple[Datom, Bytes]]
 
       for(i<-0 until n){
-        val k = RandomStringUtils.randomAlphanumeric(5).getBytes("UTF-8")
-        val v = k.clone()//RandomStringUtils.randomAlphanumeric(5)
+        val now = System.currentTimeMillis()
+        val id = UUID.randomUUID.toString.getBytes()
+        val name = RandomStringUtils.randomAlphanumeric(5, 10).getBytes()
+        val age = java.nio.ByteBuffer.allocate(4).putInt(rand.nextInt(18, 100)).flip().array()
+        val color = colors(rand.nextInt(0, colors.length)).getBytes()
+        val height = java.nio.ByteBuffer.allocate(4).putInt(rand.nextInt(150, 210)).flip().array()
 
-        if(!list.exists{case (k1, _) => ord.equiv(k, k1)} && !data.exists{ case (k1, _) =>
+        //AVET
+        val datoms = Seq(
+          Datom("users/:name", ByteString.copyFrom(name), id, now, true),
+          Datom("users/:age", ByteString.copyFrom(age), id, now, true),
+          Datom("users/:color", ByteString.copyFrom(color), id, now, true),
+          Datom("users/:height", ByteString.copyFrom(height), id, now, true)
+        )
+
+        /*val pairs = datoms.map { d =>
+          Any.pack(d).toByteArray
+        }*/
+
+        for(d <- datoms){
+          list = list :+ d -> Array.empty[Byte]
+        }
+
+        /*if(!list.exists{case (k1, _) => ord.equiv(k, k1)} && !data.exists{ case (k1, _) =>
           ord.equiv(k1, k)}){
           list = list :+ k -> v
-        }
+        }*/
       }
 
       val m = Await.result(index.insert(list), Duration.Inf)
@@ -65,8 +112,8 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
       data = data ++ list.slice(0, m)
     }
-    
-    def remove(index: Index[Bytes, Bytes]): Unit = {
+
+    /*def remove(index: Index[Bytes, Bytes]): Unit = {
       if(data.isEmpty) return
 
       val bound = if(data.length == 1) 1 else rand.nextInt(1, data.length)
@@ -91,139 +138,94 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
       val notin = data.filterNot{case (k1, _) => list.exists{case (k, _) => ord.equiv(k, k1)}}
       data = (notin ++ list).sortBy(_._1)
+    }*/
+
+    def printDatom(d: Datom): String = {
+      d.a match {
+        case "users/:name" => s"[${d.a},${new String(d.v.toByteArray)},${d.e},${d.t}]"
+        case "users/:age" => s"[${d.a},${java.nio.ByteBuffer.allocate(4).put(d.v.toByteArray).flip().getInt()},${d.e},${d.t}]"
+        case "users/:color" => s"[${d.a},${new String(d.v.toByteArray)},${d.e},${d.t}]"
+        case "users/:height" => s"[${d.a},${java.nio.ByteBuffer.allocate(4).put(d.v.toByteArray).flip().getInt()},${d.e},${d.t}]"
+        case _ => ""
+      }
     }
 
    // implicit val storage = new CassandraStorage(NUM_LEAF_ENTRIES, NUM_META_ENTRIES, "indexes")
 
+    val index = new QueryableIndex[Datom, Bytes]()
+
     for(i<-0 until iter){
-
-      //implicit val ctx = new DefaultContext(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
-      val index = new Index[Bytes,Bytes]()
-
-      rand.nextInt(1, 4) match {
+      rand.nextInt(1, 2) match {
         case 1 => insert(index)
-        case 2 => update(index)
-        case 3 => remove(index)
+        /*case 2 => update(index)
+        case 3 => remove(index)*/
+        case _ =>
       }
 
       Await.ready(ctx.save(), Duration.Inf)
-
-      val before = data.sortBy(_._1)
-      versions += before -> Await.result(TestHelper.all(index.inOrder()), Duration.Inf)
     }
-
-    val index = new Index[Bytes,Bytes]()
 
     val tdata = data.sortBy(_._1)
     val idata = Await.result(TestHelper.all(index.inOrder()), Duration.Inf)
 
-    logger.debug(s"tdata: ${tdata.map{case (k, v) => new String(k) -> new String(v)}}\n")
-    logger.debug(s"idata: ${idata.map{case (k, v) => new String(k) -> new String(v)}}")
+    logger.debug(s"tdata: ${tdata.map{case (k, v) => printDatom(k) -> new String(v)}}\n")
+    logger.debug(s"idata: ${idata.map{case (k, v) => printDatom(k) -> new String(v)}}")
 
-    //assert(idata.equals(tdata))
+    assert(isColEqual(idata, tdata))
 
-    //assert(isColEqual(idata, tdata), s"idata len: ${idata.length} tdata len: ${tdata.length}")
+    if(tdata.length > 1){
+      println()
 
-    assert(idata == tdata, s"idata len: ${idata.length} tdata len: ${tdata.length}")
+      val inclusive = rand.nextBoolean()
 
-    logger.debug(s"\n")
+      val term = Datom("users/:height", ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(rand.nextInt(180, 210)).flip().array()))
+      val prefix = Datom(a = "users/:height")
 
-    var list = Seq.empty[Tuple2[Bytes, Bytes]]
-
-    var cur: Option[Leaf[Bytes, Bytes]] = Await.result(index.first(), Duration.Inf)
-
-    while(cur.isDefined){
-      val block = cur.get
-      list = list ++ block.inOrder()
-
-      cur = Await.result(index.next(cur.map(_.unique_id)), Duration.Inf)
-    }
-
-    logger.debug(s"next: ${list.map{case (k, v) => new String(k) -> new String(v)}}")
-
-    //assert(list.equals(idata))
-
-    assert(isColEqual(idata, list))
-
-    cur = Await.result(index.last(), Duration.Inf)
-    list = Seq.empty[Tuple[Bytes, Bytes]]
-
-    while(cur.isDefined){
-      val block = cur.get
-      list = list ++ block.inOrder().reverse
-
-      cur = Await.result(index.prev(cur.map(_.unique_id)), Duration.Inf)
-    }
-
-    // logger.debug(s"next: ${list.map{case (k, v) => new String(k) -> new String(v)}}")
-
-    val reversed = idata.reverse
-
-    // logger.debug(s"reverse: ${list.map{case (k, v) => new String(k) -> new String(v)}}")
-
-    //assert(list.equals(reversed))
-
-    assert(isColEqual(reversed, list))
-
-    if(!tdata.isEmpty){
-
-      val (randomKey, _) = tdata(if(tdata.length == 1) 0 else rand.nextInt(0, tdata.length))
-      val randomKeyStr = new String(randomKey)
-
-      cur = Await.result(index.findPath(randomKey), Duration.Inf)
-
-      list = Seq.empty[Tuple[Bytes, Bytes]]
-
-      while(cur.isDefined){
-        val block = cur.get
-        list = list ++ block.lt(randomKey)
-        cur = Await.result(index.prev(cur.map(_.unique_id)), Duration.Inf)
+      val prefixOrd = new Ordering[Datom] {
+        override def compare(x: Datom, y: Datom): Int = {
+          x.a.compareTo("users/:height")
+        }
       }
 
-      val ltdata = tdata.filter{case (k, _) => ord.lt(k, randomKey)}.reverse
+      var termOrd = new Ordering[Datom] {
+        override def compare(x: Datom, y: Datom): Int = {
+          /*val r = x.a.compareTo(y.a)
 
-      assert(isColEqual(list, ltdata))
+          if(r != 0) return -1
+*/
+          x.v.toByteArray.compareTo(y.v.toByteArray)
+        }
+      }
 
-      val found = Await.result(index.get(randomKey), Duration.Inf)
+      /*val dgreater = tdata.filter{case (k, _) => if(inclusive) termOrd.gteq(k, d) else termOrd.gt(k, d)}
+      val igreater = Await.result(TestHelper.all(index.gt(d, inclusive)(termOrd)), Duration.Inf)
 
-      assert(found.isDefined)
-      logger.debug(s"\nfound key ${randomKeyStr} = ${found.map{case (k, v) => new String(k) -> new String(v)}}")
+      logger.debug(s"dgreater > ${printDatom(d)}: ${dgreater.map{case (k, v) => printDatom(k) -> new String(v)}}\n")
+      logger.debug(s"igreater > ${printDatom(d)}: ${igreater.map{case (k, v) => printDatom(k) -> new String(v)}}")
 
-      val tmin: Option[Tuple[Bytes, Bytes]] = if(tdata.isEmpty) None else Some(tdata.min)
-      val imin: Option[Tuple[Bytes, Bytes]] = Await.result(index.min(), Duration.Inf)
+      assert(isColEqual(igreater, dgreater))
 
-      logger.debug(s"\ntmin: ${tmin.map{case (k, v) => new String(k) -> new String(v)}} imin: ${imin.map{case (k, v) => new String(k) -> new String(v)}}")
+      println()*/
 
-      assert(tmin.equals(imin))
+      termOrd = new Ordering[Datom] {
+        override def compare(x: Datom, y: Datom): Int = {
+          x.v.toByteArray.compareTo(y.v.toByteArray)
+        }
+      }
 
-      assert((tmin.isEmpty && imin.isEmpty) || tmin.map{case (k, _) => ord.equiv(k, imin.get._1)}.get)
+      def check(prefix: Datom, term: Datom, k: Datom, inclusive: Boolean): Boolean = {
+        prefixOrd.equiv(k, prefix) && ((inclusive && termOrd.lteq(k, term)) || termOrd.lt(k, term))
+      }
 
-      val tmax: Option[Tuple[Bytes, Bytes]] = if(tdata.isEmpty) None else Some(tdata.max)
-      val imax: Option[Tuple[Bytes, Bytes]] = Await.result(index.max(), Duration.Inf)
+      val dlower = tdata.filter{case (k, _) => check(prefix, term, k, inclusive)}
+      val ilower = Await.result(TestHelper.all(index.lt(prefix, term, inclusive)(prefixOrd, termOrd)), Duration.Inf)
 
-      logger.debug(s"\ntmax: ${tmax.map{case (k, v) => new String(k) -> new String(v)}} imax: ${imax.map{case (k, v) => new String(k) -> new String(v)}}")
+      logger.debug(s"${Console.MAGENTA_B}dlower < ${printDatom(term)}: ${dlower.map{case (k, v) => printDatom(k) -> new String(v)}}${Console.RESET}\n")
+      logger.debug(s"${Console.BLUE_B}ilower < ${printDatom(term)}: ${ilower.map{case (k, v) => printDatom(k) -> new String(v)}}\n${Console.RESET}")
 
-      assert(tmax.equals(imax))
+      assert(isColEqual(ilower, dlower))
 
-      assert((tmax.isEmpty && imax.isEmpty) || tmax.map{case (k, _) => ord.equiv(k, imax.get._1)}.get)
     }
-
-    logger.debug("\nVERSION\n")
-
-    for(j<-0 until iter){
-      val (s, t) = versions(j)
-
-      logger.debug("\n")
-
-      logger.debug(s"source: ${s.map{case (k, v) => new String(k) -> new String(v)}}")
-      logger.debug(s"index: ${t.map{case (k, v) => new String(k) -> new String(v)}}")
-
-      logger.debug("\n")
-
-      assert(s == t)
-    }
-
-    Await.ready(storage.close(), Duration.Inf)
 
   }
 

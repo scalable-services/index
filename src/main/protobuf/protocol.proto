@@ -1,13 +1,21 @@
 syntax = "proto3";
 
+
 //#options
 option java_multiple_files = true;
 option java_package = "services.scalable.index.grpc";
 option java_outer_classname = "ClientServiceProto";
 
+import "scalapb/scalapb.proto";
 import "google/protobuf/wrappers.proto";
 
-package services.scalable.index;
+package services.scalable.index.grpc;
+
+option (scalapb.options) = {
+  single_file: true
+  flat_package: true
+  preserve_unknown_fields: false
+};
 
 message Tuple {
   bytes key = 1;
@@ -44,8 +52,9 @@ message MetaBlock {
 }
 
 message Datom {
-  google.protobuf.StringValue e = 1;
-  google.protobuf.StringValue a = 2;
-  google.protobuf.BytesValue v = 3;
-  google.protobuf.Int64Value t = 4;
+  string a = 1;
+  bytes v = 2;
+  string e = 3;
+  int64 t = 4;
+  bool op = 5;
 }
