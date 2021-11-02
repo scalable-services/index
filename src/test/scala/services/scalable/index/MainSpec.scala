@@ -37,7 +37,7 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
         if(r != 0) return r
 
-        r = x.getV.toByteArray.compareTo(y.getV.toByteArray)
+        r = ord.compare(x.getV.toByteArray, y.getV.toByteArray)
 
         if(r != 0) return r
 
@@ -141,11 +141,11 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
     def printDatom(d: Datom): String = {
       d.getA match {
-       /* case "users/:name" => s"[${d.a},${new String(d.getV.toByteArray)},${d.e},${d.t}]"
+        case "users/:name" => s"[${d.a},${new String(d.getV.toByteArray)},${d.e},${d.t}]"
         case "users/:age" => s"[${d.a},${java.nio.ByteBuffer.allocate(4).put(d.getV.toByteArray).flip().getInt()},${d.e},${d.t}]"
         case "users/:color" => s"[${d.a},${new String(d.getV.toByteArray)},${d.e},${d.t}]"
-        case "users/:height" => s"[${d.a},${java.nio.ByteBuffer.allocate(4).put(d.getV.toByteArray).flip().getInt()},${d.e},${d.t}]"*/
-        case "users/:height" => s"[${java.nio.ByteBuffer.allocate(4).put(d.getV.toByteArray).flip().getInt()}]"
+        case "users/:height" => s"[${d.a},${java.nio.ByteBuffer.allocate(4).put(d.getV.toByteArray).flip().getInt()},${d.e},${d.t}]"
+        //case "users/:height" => s"[${java.nio.ByteBuffer.allocate(4).put(d.getV.toByteArray).flip().getInt()}]"
         case _ => ""
       }
     }
@@ -173,59 +173,58 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
     assert(isColEqual(idata, tdata))
 
-    if(tdata.length < 0){
-      println()
+    println()
 
-      val inclusive = rand.nextBoolean()
+    val inclusive = rand.nextBoolean()
 
-      val term = Datom(Some("users/:height"), Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(rand.nextInt(180, 210)).flip().array())))
-      val prefix = Datom(a = Some("users/:height"))
+    val term = Datom(Some("users/:height"), Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(rand.nextInt(180, 210)).flip().array())))
+    val prefix = Datom(a = Some("users/:height"))
 
-      val prefixOrd = new Ordering[Datom] {
-        override def compare(x: Datom, y: Datom): Int = {
-          x.getA.compareTo("users/:height")
-        }
+    val prefixOrd = new Ordering[Datom] {
+      override def compare(x: Datom, y: Datom): Int = {
+        x.getA.compareTo("users/:height")
       }
-
-      var termOrd = new Ordering[Datom] {
-        override def compare(x: Datom, y: Datom): Int = {
-          /*val r = x.a.compareTo(y.a)
-
-          if(r != 0) return -1
-*/
-          x.getV.toByteArray.compareTo(y.getV.toByteArray)
-        }
-      }
-
-      /*val dgreater = tdata.filter{case (k, _) => if(inclusive) termOrd.gteq(k, d) else termOrd.gt(k, d)}
-      val igreater = Await.result(TestHelper.all(index.gt(d, inclusive)(termOrd)), Duration.Inf)
-
-      logger.debug(s"dgreater > ${printDatom(d)}: ${dgreater.map{case (k, v) => printDatom(k) -> new String(v)}}\n")
-      logger.debug(s"igreater > ${printDatom(d)}: ${igreater.map{case (k, v) => printDatom(k) -> new String(v)}}")
-
-      assert(isColEqual(igreater, dgreater))
-
-      println()*/
-
-      termOrd = new Ordering[Datom] {
-        override def compare(x: Datom, y: Datom): Int = {
-          x.getV.toByteArray.compareTo(y.getV.toByteArray)
-        }
-      }
-
-      def check(prefix: Datom, term: Datom, k: Datom, inclusive: Boolean): Boolean = {
-        prefixOrd.equiv(k, prefix) && ((inclusive && termOrd.lteq(k, term)) || termOrd.lt(k, term))
-      }
-
-      val dlower = tdata.filter{case (k, _) => check(prefix, term, k, inclusive)}
-      val ilower = Await.result(TestHelper.all(index.lt(prefix, term, inclusive)(prefixOrd, termOrd)), Duration.Inf)
-
-      logger.debug(s"${Console.MAGENTA_B}dlower < ${printDatom(term)}: ${dlower.map{case (k, v) => printDatom(k) -> new String(v)}}${Console.RESET}\n")
-      logger.debug(s"${Console.BLUE_B}ilower < ${printDatom(term)}: ${ilower.map{case (k, v) => printDatom(k) -> new String(v)}}\n${Console.RESET}")
-
-      assert(isColEqual(ilower, dlower))
-
     }
+
+    var termOrd = new Ordering[Datom] {
+      override def compare(x: Datom, y: Datom): Int = {
+        val r = x.getA.compareTo(y.getA)
+
+        if(r != 0) return -1
+
+        ord.compare(x.getV.toByteArray, y.getV.toByteArray)
+      }
+    }
+
+    /*val dgreater = tdata.filter{case (k, _) => if(inclusive) termOrd.gteq(k, d) else termOrd.gt(k, d)}
+    val igreater = Await.result(TestHelper.all(index.gt(d, inclusive)(termOrd)), Duration.Inf)
+
+    logger.debug(s"dgreater > ${printDatom(d)}: ${dgreater.map{case (k, v) => printDatom(k) -> new String(v)}}\n")
+    logger.debug(s"igreater > ${printDatom(d)}: ${igreater.map{case (k, v) => printDatom(k) -> new String(v)}}")
+
+    assert(isColEqual(igreater, dgreater))
+
+    println()*/
+
+    termOrd = new Ordering[Datom] {
+      override def compare(x: Datom, y: Datom): Int = {
+        /*ord.compare(x.getV.toByteArray, y.getV.toByteArray)*/
+
+        avetOrd.compare(x, y)
+      }
+    }
+
+    def check(prefix: Datom, term: Datom, k: Datom, inclusive: Boolean): Boolean = {
+      prefixOrd.equiv(k, prefix) && ((inclusive && termOrd.lteq(k, term)) || termOrd.lt(k, term))
+    }
+
+    val dlower = tdata.filter{case (k, _) => check(prefix, term, k, inclusive)}
+    val ilower = Await.result(TestHelper.all(index.lt(prefix, term, inclusive)(prefixOrd, termOrd)), Duration.Inf)
+
+    logger.debug(s"${Console.MAGENTA_B}dlower < ${printDatom(term)}: ${dlower.map{case (k, v) => printDatom(k) -> new String(v)}}${Console.RESET}\n")
+    logger.debug(s"${Console.BLUE_B}ilower < ${printDatom(term)}: ${ilower.map{case (k, v) => printDatom(k) -> new String(v)}}\n${Console.RESET}")
+
+    assert(isColEqual(ilower, dlower))
 
   }
 

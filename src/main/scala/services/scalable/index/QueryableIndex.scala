@@ -77,7 +77,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
           if(r != 0) return r
 
-          0
+          -1
         }
       }
 
@@ -104,7 +104,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
               cur = Some(b)
 
               val filtered = b.tuples.filter{case (k, _) => check(k) }
-              //stop = filtered.isEmpty
+              stop = filtered.isEmpty
 
               println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => printDatom(k.asInstanceOf[Datom])}} filtered: ${filtered.length}${Console.RESET}\n")
 
@@ -112,7 +112,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
           }
         }
 
-        $this.next(cur.map(_.unique_id))(termOrd).map {
+        $this.next(cur.map(_.unique_id))(order).map {
 
           case None =>
 
