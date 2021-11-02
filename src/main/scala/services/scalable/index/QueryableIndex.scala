@@ -59,11 +59,11 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
   }
 
   def printDatom(d: Datom): String = {
-    d.a match {
-      case "users/:name" => s"[${d.a},${new String(d.v.toByteArray)},${d.e},${d.t}]"
-      case "users/:age" => s"[${d.a},${java.nio.ByteBuffer.allocate(4).put(d.v.toByteArray).flip().getInt()},${d.e},${d.t}]"
-      case "users/:color" => s"[${d.a},${new String(d.v.toByteArray)},${d.e},${d.t}]"
-      case "users/:height" => s"[${d.a},${java.nio.ByteBuffer.allocate(4).put(d.v.toByteArray).flip().getInt()},${d.e},${d.t}]"
+    d.getA match {
+      case "users/:name" => s"[${d.a},${new String(d.getV.toByteArray)},${d.e},${d.t}]"
+      case "users/:age" => s"[${d.a},${java.nio.ByteBuffer.allocate(4).put(d.getV.toByteArray).flip().getInt()},${d.e},${d.t}]"
+      case "users/:color" => s"[${d.a},${new String(d.getV.toByteArray)},${d.e},${d.t}]"
+      case "users/:height" => s"[${d.a},${java.nio.ByteBuffer.allocate(4).put(d.getV.toByteArray).flip().getInt()},${d.e},${d.t}]"
       case _ => ""
     }
   }

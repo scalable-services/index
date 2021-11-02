@@ -31,26 +31,25 @@ class MainSpec extends AnyFlatSpec with Repeatable {
     import DefaultComparators._
     import DefaultIdGenerators._
 
-    implicit val insertOrd = new Ordering[Datom] {
+    implicit val avetOrd = new Ordering[Datom] {
       override def compare(x: Datom, y: Datom): Int = {
-
-        var r = x.a.compareTo(y.a)
-
-        if(r != 0) return r
-
-        r = ord.compare(x.v.toByteArray, y.v.toByteArray)
+        var r = x.getA.compareTo(y.getA)
 
         if(r != 0) return r
 
-        r = x.e.compareTo(y.e)
+        r = x.getV.toByteArray.compareTo(y.getV.toByteArray)
 
         if(r != 0) return r
 
-        r = x.t.compareTo(y.t)
+        r = x.getE.compareTo(y.getE)
 
         if(r != 0) return r
 
-        x.op.compareTo(y.op)
+        r = x.getT.compareTo(y.getT)
+
+        if(r != 0) return r
+
+        x.getOp.compareTo(y.getOp)
       }
     }
 
@@ -86,10 +85,10 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
         //AVET
         val datoms = Seq(
-          Datom("users/:name", ByteString.copyFrom(name), id, now, true),
-          Datom("users/:age", ByteString.copyFrom(age), id, now, true),
-          Datom("users/:color", ByteString.copyFrom(color), id, now, true),
-          Datom("users/:height", ByteString.copyFrom(height), id, now, true)
+          Datom(Some("users/:name"), Some(ByteString.copyFrom(name)), Some(id), Some(now), Some(true)),
+          Datom(Some("users/:age"), Some(ByteString.copyFrom(age)), Some(id), Some(now), Some(true)),
+          Datom(Some("users/:color"), Some(ByteString.copyFrom(color)), Some(id), Some(now), Some(true)),
+          Datom(Some("users/:height"), Some(ByteString.copyFrom(height)), Some(id), Some(now), Some(true))
         )
 
         /*val pairs = datoms.map { d =>
@@ -141,11 +140,12 @@ class MainSpec extends AnyFlatSpec with Repeatable {
     }*/
 
     def printDatom(d: Datom): String = {
-      d.a match {
-        case "users/:name" => s"[${d.a},${new String(d.v.toByteArray)},${d.e},${d.t}]"
-        case "users/:age" => s"[${d.a},${java.nio.ByteBuffer.allocate(4).put(d.v.toByteArray).flip().getInt()},${d.e},${d.t}]"
-        case "users/:color" => s"[${d.a},${new String(d.v.toByteArray)},${d.e},${d.t}]"
-        case "users/:height" => s"[${d.a},${java.nio.ByteBuffer.allocate(4).put(d.v.toByteArray).flip().getInt()},${d.e},${d.t}]"
+      d.getA match {
+       /* case "users/:name" => s"[${d.a},${new String(d.getV.toByteArray)},${d.e},${d.t}]"
+        case "users/:age" => s"[${d.a},${java.nio.ByteBuffer.allocate(4).put(d.getV.toByteArray).flip().getInt()},${d.e},${d.t}]"
+        case "users/:color" => s"[${d.a},${new String(d.getV.toByteArray)},${d.e},${d.t}]"
+        case "users/:height" => s"[${d.a},${java.nio.ByteBuffer.allocate(4).put(d.getV.toByteArray).flip().getInt()},${d.e},${d.t}]"*/
+        case "users/:height" => s"[${java.nio.ByteBuffer.allocate(4).put(d.getV.toByteArray).flip().getInt()}]"
         case _ => ""
       }
     }
@@ -173,17 +173,17 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
     assert(isColEqual(idata, tdata))
 
-    if(tdata.length > 1){
+    if(tdata.length < 0){
       println()
 
       val inclusive = rand.nextBoolean()
 
-      val term = Datom("users/:height", ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(rand.nextInt(180, 210)).flip().array()))
-      val prefix = Datom(a = "users/:height")
+      val term = Datom(Some("users/:height"), Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(rand.nextInt(180, 210)).flip().array())))
+      val prefix = Datom(a = Some("users/:height"))
 
       val prefixOrd = new Ordering[Datom] {
         override def compare(x: Datom, y: Datom): Int = {
-          x.a.compareTo("users/:height")
+          x.getA.compareTo("users/:height")
         }
       }
 
@@ -193,7 +193,7 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
           if(r != 0) return -1
 */
-          x.v.toByteArray.compareTo(y.v.toByteArray)
+          x.getV.toByteArray.compareTo(y.getV.toByteArray)
         }
       }
 
@@ -209,7 +209,7 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
       termOrd = new Ordering[Datom] {
         override def compare(x: Datom, y: Datom): Int = {
-          x.v.toByteArray.compareTo(y.v.toByteArray)
+          x.getV.toByteArray.compareTo(y.getV.toByteArray)
         }
       }
 
