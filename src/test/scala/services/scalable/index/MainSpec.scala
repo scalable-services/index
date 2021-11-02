@@ -1,5 +1,6 @@
 package services.scalable.index
 
+import com.google.common.base.Charsets
 import com.google.protobuf.ByteString
 import org.apache.commons.lang3.RandomStringUtils
 import org.scalatest.flatspec.AnyFlatSpec
@@ -181,36 +182,19 @@ class MainSpec extends AnyFlatSpec with Repeatable {
     val prefix = Datom(a = Some("users/:height"))
 
     val prefixOrd = new Ordering[Datom] {
-      override def compare(x: Datom, y: Datom): Int = {
-        x.getA.compareTo("users/:height")
+      override def compare(pre: Datom, k: Datom): Int = {
+        pre.getA.compareTo(k.getA)
       }
     }
 
-    var termOrd = new Ordering[Datom] {
-      override def compare(x: Datom, y: Datom): Int = {
-        val r = x.getA.compareTo(y.getA)
+    val termOrd = new Ordering[Datom]{
+      override def compare(search: Datom, x: Datom): Int = {
+        if(!search.a.isEmpty){
+          val r = search.getA.compareTo(x.getA)
+          if(r != 0) return r
+        }
 
-        if(r != 0) return -1
-
-        ord.compare(x.getV.toByteArray, y.getV.toByteArray)
-      }
-    }
-
-    /*val dgreater = tdata.filter{case (k, _) => if(inclusive) termOrd.gteq(k, d) else termOrd.gt(k, d)}
-    val igreater = Await.result(TestHelper.all(index.gt(d, inclusive)(termOrd)), Duration.Inf)
-
-    logger.debug(s"dgreater > ${printDatom(d)}: ${dgreater.map{case (k, v) => printDatom(k) -> new String(v)}}\n")
-    logger.debug(s"igreater > ${printDatom(d)}: ${igreater.map{case (k, v) => printDatom(k) -> new String(v)}}")
-
-    assert(isColEqual(igreater, dgreater))
-
-    println()*/
-
-    termOrd = new Ordering[Datom] {
-      override def compare(x: Datom, y: Datom): Int = {
-        /*ord.compare(x.getV.toByteArray, y.getV.toByteArray)*/
-
-        avetOrd.compare(x, y)
+        ord.compare(search.getV.toByteArray, x.getV.toByteArray)
       }
     }
 
@@ -219,7 +203,7 @@ class MainSpec extends AnyFlatSpec with Repeatable {
     }
 
     val dlower = tdata.filter{case (k, _) => check(prefix, term, k, inclusive)}
-    val ilower = Await.result(TestHelper.all(index.lt2(term, inclusive)(prefixOrd, termOrd)), Duration.Inf)
+    val ilower = Await.result(TestHelper.all(index.lt2(prefix, term, inclusive)(prefixOrd, termOrd)), Duration.Inf)
 
     logger.debug(s"${Console.MAGENTA_B}dlower < ${printDatom(term)}: ${dlower.map{case (k, v) => printDatom(k) -> new String(v)}}${Console.RESET}\n")
     logger.debug(s"${Console.BLUE_B}ilower < ${printDatom(term)}: ${ilower.map{case (k, v) => printDatom(k) -> new String(v)}}\n${Console.RESET}")

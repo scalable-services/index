@@ -133,15 +133,15 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
     }
   }
 
-  def lt2(term: K, inclusive: Boolean = false)(implicit prefixOrder: Ordering[K], termOrd: Ordering[K]): RichAsyncIterator[K, V] = {
+  def lt2(prefix: K, term: K, inclusive: Boolean = false)(implicit prefixOrder: Ordering[K], termOrd: Ordering[K]): RichAsyncIterator[K, V] = {
 
     new RichAsyncIterator[K, V] {
 
       val ltOrd = new Ordering[K] {
         override def compare(x: K, y: K): Int = {
-          val r = prefixOrder.compare(y, y)
+          val r = prefixOrder.compare(y, prefix)
 
-          if(r != 0) return r
+          if(r != 0) return termOrd.compare(x, y)
 
           -1
         }
@@ -153,7 +153,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
       }
 
       protected def check(k: K): Boolean = {
-        prefixOrder.equiv(k, k) && (inclusive && termOrd.lteq(k, term) || termOrd.lt(k, term))
+        prefixOrder.equiv(k, prefix) && (inclusive && termOrd.lteq(k, term) || termOrd.lt(k, term))
       }
 
       override def next(): Future[Seq[Tuple[K, V]]] = {
