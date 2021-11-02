@@ -133,4 +133,65 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
     }
   }
 
+  def lt2(term: K, inclusive: Boolean = false)(implicit prefixOrder: Ordering[K], termOrd: Ordering[K]): RichAsyncIterator[K, V] = {
+
+    new RichAsyncIterator[K, V] {
+
+      val ltOrd = new Ordering[K] {
+        override def compare(x: K, y: K): Int = {
+          val r = prefixOrder.compare(y, y)
+
+          if(r != 0) return r
+
+          -1
+        }
+      }
+
+      override def hasNext(): Future[Boolean] = {
+        if(!firstTime) return Future.successful(ctx.root.isDefined)
+        Future.successful(!stop && cur.isDefined)
+      }
+
+      protected def check(k: K): Boolean = {
+        prefixOrder.equiv(k, k) && (inclusive && termOrd.lteq(k, term) || termOrd.lt(k, term))
+      }
+
+      override def next(): Future[Seq[Tuple[K, V]]] = {
+        if(!firstTime){
+          firstTime = true
+
+          return findPath(term)(ltOrd).map {
+            case None =>
+              cur = None
+              Seq.empty[Tuple[K, V]]
+
+            case Some(b) =>
+              cur = Some(b)
+
+              val filtered = b.tuples.filter{case (k, _) => check(k) }
+              stop = filtered.isEmpty
+
+              println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => printDatom(k.asInstanceOf[Datom])}} filtered: ${filtered.length}${Console.RESET}\n")
+
+              checkCounter(filtered.filter{case (k, v) => filter(k, v)})
+          }
+        }
+
+        $this.next(cur.map(_.unique_id))(termOrd).map {
+          case None =>
+            cur = None
+            Seq.empty[Tuple[K, V]]
+
+          case Some(b) =>
+            cur = Some(b)
+
+            val filtered = b.tuples.filter{case (k, v) => check(k)}
+            stop = filtered.isEmpty
+
+            checkCounter(filtered.filter{case (k, v) => filter(k, v) })
+        }
+      }
+    }
+  }
+
 }

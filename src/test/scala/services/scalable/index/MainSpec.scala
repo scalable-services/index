@@ -219,7 +219,7 @@ class MainSpec extends AnyFlatSpec with Repeatable {
     }
 
     val dlower = tdata.filter{case (k, _) => check(prefix, term, k, inclusive)}
-    val ilower = Await.result(TestHelper.all(index.lt(prefix, term, inclusive)(prefixOrd, termOrd)), Duration.Inf)
+    val ilower = Await.result(TestHelper.all(index.lt2(term, inclusive)(prefixOrd, termOrd)), Duration.Inf)
 
     logger.debug(s"${Console.MAGENTA_B}dlower < ${printDatom(term)}: ${dlower.map{case (k, v) => printDatom(k) -> new String(v)}}${Console.RESET}\n")
     logger.debug(s"${Console.BLUE_B}ilower < ${printDatom(term)}: ${ilower.map{case (k, v) => printDatom(k) -> new String(v)}}\n${Console.RESET}")
