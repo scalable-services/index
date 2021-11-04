@@ -263,7 +263,7 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
     var op = ""
 
-    rand.nextInt(3, 4) match {
+    rand.nextInt(1, 4) match {
       case 1 =>
 
         op = if(inclusiveLower) s"<= ${printDatom(lowerTerm)}" else s"< ${printDatom(lowerTerm)}"
