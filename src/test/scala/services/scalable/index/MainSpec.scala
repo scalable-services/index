@@ -21,7 +21,7 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
   val logger = LoggerFactory.getLogger(this.getClass)
 
-  override val times: Int = 100
+  override val times: Int = 1000
 
   val rand = ThreadLocalRandom.current()
 
@@ -54,8 +54,8 @@ class MainSpec extends AnyFlatSpec with Repeatable {
       }
     }
 
-    val NUM_LEAF_ENTRIES = 8//rand.nextInt(4, 20)
-    val NUM_META_ENTRIES = 8//rand.nextInt(4, if(NUM_LEAF_ENTRIES == 4) 5 else NUM_LEAF_ENTRIES)
+    val NUM_LEAF_ENTRIES = 5//rand.nextInt(4, 20)
+    val NUM_META_ENTRIES = 5//rand.nextInt(4, if(NUM_LEAF_ENTRIES == 4) 5 else NUM_LEAF_ENTRIES)
 
     val indexId = "test_index"
 
@@ -64,11 +64,13 @@ class MainSpec extends AnyFlatSpec with Repeatable {
     implicit val storage = new MemoryStorage[Datom, Bytes](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
 
     implicit val ctx = new DefaultContext[Datom, Bytes](indexId, None, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
-    
+
     var data = Seq.empty[Tuple[Datom, Bytes]]
-    val iter = 5//rand.nextInt(1, 100)
+    val iter = rand.nextInt(1, 100)
 
     val colors = Seq("red", "green", "blue", "yellow", "orange", "black", "white", "magenta", "gold", "brown", "pink")
+
+    var nOfH = 0
 
     def insert(index: Index[Datom, Bytes]): Unit = {
 
@@ -82,7 +84,14 @@ class MainSpec extends AnyFlatSpec with Repeatable {
         val name = RandomStringUtils.randomAlphanumeric(5, 10).getBytes()
         val age = java.nio.ByteBuffer.allocate(4).putInt(rand.nextInt(18, 100)).flip().array()
         val color = colors(rand.nextInt(0, colors.length)).getBytes()
-        val height = java.nio.ByteBuffer.allocate(4).putInt(rand.nextInt(150, 210)).flip().array()
+
+        val h = if(nOfH < 30) 150 else rand.nextInt(150, 210)
+
+        val height = java.nio.ByteBuffer.allocate(4).putInt(h).flip().array()
+
+        if(h == 150){
+          nOfH += 1
+        }
 
         //AVET
         val datoms = Seq(
@@ -113,7 +122,7 @@ class MainSpec extends AnyFlatSpec with Repeatable {
       data = data ++ list.slice(0, m)
     }
 
-    /*def remove(index: Index[Bytes, Bytes]): Unit = {
+    def remove(index: Index[Datom, Bytes]): Unit = {
       if(data.isEmpty) return
 
       val bound = if(data.length == 1) 1 else rand.nextInt(1, data.length)
@@ -122,10 +131,10 @@ class MainSpec extends AnyFlatSpec with Repeatable {
       val m = Await.result(index.remove(list), Duration.Inf)
 
       logger.debug(s"removal result m: $m")
-      data = data.filterNot{case (k, _) => list.exists{k1 => ord.equiv(k, k1)}}
+      data = data.filterNot{case (k, _) => list.exists{k1 => avetOrd.equiv(k, k1)}}
     }
 
-    def update(index: Index[Bytes, Bytes]): Unit = {
+    def update(index: Index[Datom, Bytes]): Unit = {
       if(data.isEmpty) return
 
       val bound = if(data.length == 1) 1 else rand.nextInt(1, data.length)
@@ -136,9 +145,9 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
       logger.debug(s"update result m: $m")
 
-      val notin = data.filterNot{case (k1, _) => list.exists{case (k, _) => ord.equiv(k, k1)}}
+      val notin = data.filterNot{case (k1, _) => list.exists{case (k, _) => avetOrd.equiv(k, k1)}}
       data = (notin ++ list).sortBy(_._1)
-    }*/
+    }
 
     def printDatom(d: Datom): String = {
       d.getA match {
@@ -158,8 +167,8 @@ class MainSpec extends AnyFlatSpec with Repeatable {
     for(i<-0 until iter){
       rand.nextInt(1, 2) match {
         case 1 => insert(index)
-        /*case 2 => update(index)
-        case 3 => remove(index)*/
+        case 2 => update(index)
+        case 3 => remove(index)
         case _ =>
       }
 
@@ -176,10 +185,21 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
     println()
 
-    val inclusive = rand.nextBoolean()
+    val reverse = rand.nextBoolean()
 
-    val term = Datom(Some("users/:height"), Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(rand.nextInt(180, 210)).flip().array())))
-    val prefix = Datom(a = Some("users/:height"))
+    val inclusiveLower = rand.nextBoolean()
+    val withLowerPrefix = rand.nextBoolean()
+
+    val inclusiveUpper = rand.nextBoolean()
+    val withUpperPrefix = rand.nextBoolean()
+
+    val lh = rand.nextInt(150, 210)
+    val lowerTerm = Datom(Some("users/:height"), Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(lh).flip().array())))
+    val lowerPrefix = Datom(a = Some("users/:height"))
+
+    val hh = if(lh == 210) 210 else rand.nextInt(lh, 210)
+    val upperTerm = Datom(Some("users/:height"), Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(hh).flip().array())))
+    val upperPrefix = Datom(a = Some("users/:height"))
 
     val prefixOrd = new Ordering[Datom] {
       override def compare(pre: Datom, k: Datom): Int = {
@@ -187,28 +207,130 @@ class MainSpec extends AnyFlatSpec with Repeatable {
       }
     }
 
-    val termOrd = new Ordering[Datom]{
-      override def compare(search: Datom, x: Datom): Int = {
-        if(!search.a.isEmpty){
-          val r = search.getA.compareTo(x.getA)
-          if(r != 0) return r
-        }
+    val termOrdPrefix = new Ordering[Datom]{
+      override def compare(x: Datom, y: Datom): Int = {
 
-        ord.compare(search.getV.toByteArray, x.getV.toByteArray)
+        var r = ord.compare(x.getV.toByteArray, y.getV.toByteArray)
+
+        if(r != 0) return r
+
+        r = x.getE.compareTo(y.getE)
+
+        if(r != 0) return r
+
+        r = x.getT.compareTo(y.getT)
+
+        if(r != 0) return r
+
+        x.getOp.compareTo(y.getOp)
+
       }
     }
 
-    def check(prefix: Datom, term: Datom, k: Datom, inclusive: Boolean): Boolean = {
-      prefixOrd.equiv(k, prefix) && ((inclusive && termOrd.lteq(k, term)) || termOrd.lt(k, term))
+    val termOrd = avetOrd
+
+    def checkLtPrefix(prefix: Datom, term: Datom, k: Datom, inclusive: Boolean): Boolean = {
+      prefixOrd.equiv(k, prefix) && ((inclusive && termOrdPrefix.lteq(k, term)) || termOrdPrefix.lt(k, term))
     }
 
-    val dlower = tdata.filter{case (k, _) => check(prefix, term, k, inclusive)}
-    val ilower = Await.result(TestHelper.all(index.lt2(prefix, term, inclusive)(prefixOrd, termOrd)), Duration.Inf)
+    def checkLt(term: Datom, k: Datom, inclusive: Boolean): Boolean = {
+      (inclusive && termOrd.lteq(k, term)) || termOrd.lt(k, term)
+    }
 
-    logger.debug(s"${Console.MAGENTA_B}dlower < ${printDatom(term)}: ${dlower.map{case (k, v) => printDatom(k) -> new String(v)}}${Console.RESET}\n")
-    logger.debug(s"${Console.BLUE_B}ilower < ${printDatom(term)}: ${ilower.map{case (k, v) => printDatom(k) -> new String(v)}}\n${Console.RESET}")
+    def checkGtPrefix(prefix: Datom, term: Datom, k: Datom, inclusive: Boolean): Boolean = {
+      prefixOrd.equiv(k, prefix) && ((inclusive && termOrdPrefix.gteq(k, term)) || termOrdPrefix.gt(k, term))
+    }
 
-    assert(isColEqual(ilower, dlower))
+    def checkGt(term: Datom, k: Datom, inclusive: Boolean): Boolean = {
+      (inclusive && termOrd.gteq(k, term)) || termOrd.gt(k, term)
+    }
+
+    def checkIntervalPrefix(lowerPrefix: Option[Datom], upperPrefix: Option[Datom], lowerTerm: Datom, upperTerm: Datom,
+                            lowerPrefixOrd: Option[Ordering[Datom]],
+                            upperPrefixOrd: Option[Ordering[Datom]],
+                            lowerTermOrd: Ordering[Datom],
+                            upperTermOrd: Ordering[Datom],
+                            k: Datom,
+                            inclusiveLower: Boolean,
+                            inclusiveUpper: Boolean): Boolean = {
+
+      ((lowerPrefix.isEmpty || lowerPrefixOrd.get.equiv(k, lowerPrefix.get)) && (inclusiveLower && lowerTermOrd.gteq(k, lowerTerm) || lowerTermOrd.gt(k, lowerTerm))) &&
+        ((upperPrefix.isEmpty || upperPrefixOrd.get.equiv(k, upperPrefix.get)) && (inclusiveUpper && upperTermOrd.lteq(k, upperTerm) || upperTermOrd.lt(k, upperTerm)))
+    }
+
+    var dlist = Seq.empty[(Datom, Bytes)]
+    var ilist = Seq.empty[(Datom, Bytes)]
+
+    var op = ""
+
+    rand.nextInt(3, 4) match {
+      case 1 =>
+
+        op = if(inclusiveLower) s"<= ${printDatom(lowerTerm)}" else s"< ${printDatom(lowerTerm)}"
+
+        dlist = if(withLowerPrefix) tdata.filter{case (k, _) => checkLtPrefix(lowerPrefix, lowerTerm, k, inclusiveLower)} else
+          tdata.filter{case (k, _) => checkLt(lowerTerm, k, inclusiveLower)}
+
+        dlist = if(reverse) dlist.reverse else dlist
+
+        ilist = if(withLowerPrefix) Await.result(TestHelper.all(index.lt(lowerPrefix, lowerTerm, inclusiveLower, reverse)(prefixOrd, termOrdPrefix)), Duration.Inf)
+          else Await.result(TestHelper.all(index.lt(lowerTerm, inclusiveLower, reverse)(termOrd)), Duration.Inf)
+
+      case 2 =>
+
+        op = if(inclusiveLower) s">= ${printDatom(lowerTerm)}" else s"> ${printDatom(lowerTerm)}"
+
+        dlist = if(withLowerPrefix) tdata.filter{case (k, _) => checkGtPrefix(lowerPrefix, lowerTerm, k, inclusiveLower)} else
+          tdata.filter{case (k, _) => checkGt(lowerTerm, k, inclusiveLower)}
+
+        dlist = if(reverse) dlist.reverse else dlist
+
+        ilist = if(withLowerPrefix) Await.result(TestHelper.all(index.gt(lowerPrefix, lowerTerm, inclusiveLower, reverse)(prefixOrd, termOrdPrefix)), Duration.Inf)
+        else Await.result(TestHelper.all(index.gt(lowerTerm, inclusiveLower, reverse)(termOrd)), Duration.Inf)
+
+      case 3 =>
+
+        op = s"${printDatom(lowerTerm)} ${if(inclusiveLower) "<=" else "<"} x ${if(inclusiveUpper) "<=" else "<"} ${printDatom(upperTerm)}"
+
+        dlist = tdata.filter{case (k, _) => checkIntervalPrefix(
+          if(withLowerPrefix) Some(lowerPrefix) else None,
+          if(withUpperPrefix) Some(upperPrefix) else None,
+          lowerTerm,
+          upperTerm,
+          if(withLowerPrefix) Some(prefixOrd) else None,
+          if(withUpperPrefix) Some(prefixOrd) else None,
+
+          if(withLowerPrefix) termOrdPrefix else termOrd,
+          if(withUpperPrefix) termOrdPrefix else termOrd,
+          k,
+          inclusiveLower,
+          inclusiveUpper
+        )}
+
+        dlist = if(reverse) dlist.reverse else dlist
+
+        ilist = Await.result(TestHelper.all(index.interval(
+          lowerTerm,
+          upperTerm,
+          if(withLowerPrefix) Some(lowerPrefix) else None,
+          if(withUpperPrefix) Some(upperPrefix) else None,
+          inclusiveLower,
+          inclusiveUpper,
+          if(withLowerPrefix) Some(prefixOrd) else None,
+          if(withUpperPrefix) Some(prefixOrd) else None,
+
+          if(withLowerPrefix) termOrdPrefix else termOrd,
+          if(withUpperPrefix) termOrdPrefix else termOrd,
+          reverse
+        )), Duration.Inf)
+
+      case _ =>
+    }
+
+    logger.debug(s"${Console.MAGENTA_B}dlist ${op}: ${dlist.map{case (k, v) => printDatom(k) -> new String(v)}}${Console.RESET}\n")
+    logger.debug(s"${Console.BLUE_B}ilist ${op}: ${ilist.map{case (k, v) => printDatom(k) -> new String(v)}}\n${Console.RESET}")
+
+    assert(isColEqual(ilist, dlist))
 
   }
 

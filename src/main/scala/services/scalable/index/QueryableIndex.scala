@@ -1,7 +1,6 @@
 package services.scalable.index
 
 import services.scalable.index.grpc.Datom
-
 import scala.concurrent.{ExecutionContext, Future}
 
 class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, override val ctx: Context[K, V],
@@ -9,8 +8,24 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
   override val $this = this
 
-  def gt(term: K, inclusive: Boolean = false)(implicit ord: Ordering[K]): RichAsyncIterator[K, V] = {
+  def gtr(term: K, prefix:Option[K], inclusive: Boolean, prefixOrder: Option[Ordering[K]], termOrd: Ordering[K]): RichAsyncIterator[K, V] = {
     new RichAsyncIterator[K, V] {
+
+      // Find the first prefix...
+      val gtOrd = if(prefix.isDefined) new Ordering[K] {
+        override def compare(x: K, y: K): Int = {
+
+          val r = prefixOrder.get.compare(prefix.get, y)
+
+          if(r != 0) return r
+
+          1
+        }
+      } else new Ordering[K] {
+        override def compare(x: K, y: K): Int = {
+          1
+        }
+      }
 
       override def hasNext(): Future[Boolean] = {
         if(!firstTime) return Future.successful(ctx.root.isDefined)
@@ -18,7 +33,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
       }
 
       def check(k: K): Boolean = {
-        (inclusive && ord.gteq(k, term)) || ord.gt(k, term)
+        (prefix.isEmpty || prefixOrder.get.equiv(k, prefix.get)) && (inclusive && termOrd.gteq(k, term) || termOrd.gt(k, term))
       }
 
       override def next(): Future[Seq[Tuple[K, V]]] = {
@@ -26,7 +41,77 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
           firstTime = true
 
           // From the first block with e >= term to the last block.
-          return findPath(term)(ord).map {
+          return findPath(term)(gtOrd).map {
+            case None =>
+              cur = None
+              Seq.empty[Tuple[K, V]]
+
+            case Some(b) =>
+              cur = Some(b)
+
+              val filtered = b.tuples.filter{case (k, _) => check(k) }.reverse
+              //stop = filtered.isEmpty
+
+              checkCounter(filtered.filter{case (k, v) => filter(k, v)})
+          }
+        }
+
+        $this.prev(cur.map(_.unique_id))(order).map {
+          case None =>
+            cur = None
+            Seq.empty[Tuple[K, V]]
+
+          case Some(b) =>
+            cur = Some(b)
+
+            val filtered = b.tuples.filter{case (k, _) => check(k) }.reverse
+            stop = filtered.isEmpty
+
+            checkCounter(filtered.filter{case (k, v) => filter(k, v) })
+        }
+      }
+    }
+  }
+
+  def gt(term: K, prefix:Option[K], inclusive: Boolean, prefixOrder: Option[Ordering[K]], termOrd: Ordering[K], reverse: Boolean): RichAsyncIterator[K, V] = {
+
+    if(reverse){
+      return gtr(term, prefix, inclusive, prefixOrder, termOrd)
+    }
+
+    new RichAsyncIterator[K, V] {
+
+      // Find the first prefix...
+      val gtOrd = if(prefix.isDefined) new Ordering[K] {
+        override def compare(x: K, y: K): Int = {
+
+          val r = prefixOrder.get.compare(prefix.get, y)
+
+          if(r != 0) return r
+
+          termOrd.compare(x, y)
+        }
+      } else new Ordering[K] {
+        override def compare(x: K, y: K): Int = {
+          termOrd.compare(x, y)
+        }
+      }
+
+      override def hasNext(): Future[Boolean] = {
+        if(!firstTime) return Future.successful(ctx.root.isDefined)
+        Future.successful(!stop && cur.isDefined)
+      }
+
+      def check(k: K): Boolean = {
+        (prefix.isEmpty || prefixOrder.get.equiv(k, prefix.get)) && (inclusive && termOrd.gteq(k, term) || termOrd.gt(k, term))
+      }
+
+      override def next(): Future[Seq[Tuple[K, V]]] = {
+        if(!firstTime){
+          firstTime = true
+
+          // From the first block with e >= term to the last block.
+          return findPath(term)(gtOrd).map {
             case None =>
               cur = None
               Seq.empty[Tuple[K, V]]
@@ -41,7 +126,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
           }
         }
 
-        $this.next(cur.map(_.unique_id))(ord).map {
+        $this.next(cur.map(_.unique_id))(order).map {
           case None =>
             cur = None
             Seq.empty[Tuple[K, V]]
@@ -68,16 +153,26 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
     }
   }
 
-  def lt(prefix: K, term: K, inclusive: Boolean = false)(implicit prefixOrd: Ordering[K], termOrd: Ordering[K]): RichAsyncIterator[K, V] = {
+  protected def ltr(term: K, prefix:Option[K], inclusive: Boolean, prefixOrder: Option[Ordering[K]], termOrd: Ordering[K]): RichAsyncIterator[K, V] = {
     new RichAsyncIterator[K, V] {
 
-      val sOrd = new Ordering[K] {
+      // Find the first prefix...
+      val ltOrd = if(prefix.isDefined) new Ordering[K] {
         override def compare(x: K, y: K): Int = {
-          val r = prefixOrd.compare(x, prefix)
+
+          val r = prefixOrder.get.compare(prefix.get, y)
 
           if(r != 0) return r
 
-          -1
+          termOrd.compare(x, y)
+        }
+      } else new Ordering[K] {
+        override def compare(x: K, y: K): Int = {
+          val r = termOrd.compare(term, y)
+
+          if(r != 0) return r
+
+          if(inclusive) 1 else -1
         }
       }
 
@@ -86,16 +181,15 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
         Future.successful(!stop && cur.isDefined)
       }
 
-      def check(k: K): Boolean = {
-        prefixOrd.equiv(k, prefix) && ((inclusive && termOrd.lteq(k, term)) || termOrd.lt(k, term))
+      protected def check(k: K): Boolean = {
+        (prefix.isEmpty || prefixOrder.get.equiv(k, prefix.get)) && (inclusive && termOrd.lteq(k, term) || termOrd.lt(k, term))
       }
 
       override def next(): Future[Seq[Tuple[K, V]]] = {
         if(!firstTime){
           firstTime = true
 
-          // From the first block with e >= term to the last element >= term.
-          return findPath(term)(sOrd).map {
+          return findPath(term)(ltOrd).map {
             case None =>
               cur = None
               Seq.empty[Tuple[K, V]]
@@ -103,8 +197,8 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
             case Some(b) =>
               cur = Some(b)
 
-              val filtered = b.tuples.filter{case (k, _) => check(k) }
-              stop = filtered.isEmpty
+              val filtered = b.tuples.filter{case (k, _) => check(k) }.reverse
+              //stop = filtered.isEmpty
 
               println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => printDatom(k.asInstanceOf[Datom])}} filtered: ${filtered.length}${Console.RESET}\n")
 
@@ -112,20 +206,16 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
           }
         }
 
-        $this.next(cur.map(_.unique_id))(order).map {
-
+        $this.prev(cur.map(_.unique_id))(order).map {
           case None =>
-
             cur = None
             Seq.empty[Tuple[K, V]]
 
           case Some(b) =>
             cur = Some(b)
 
-            val filtered = b.tuples.filter{case (k, _) => check(k) }
+            val filtered = b.tuples.filter{case (k, v) => check(k)}.reverse
             stop = filtered.isEmpty
-
-            println(s"${Console.GREEN_B}${filtered.map{case (k, _) => printDatom(k.asInstanceOf[Datom])}}${Console.RESET}\n")
 
             checkCounter(filtered.filter{case (k, v) => filter(k, v) })
         }
@@ -133,16 +223,25 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
     }
   }
 
-  def lt2(prefix: K, term: K, inclusive: Boolean = false)(implicit prefixOrder: Ordering[K], termOrd: Ordering[K]): RichAsyncIterator[K, V] = {
+  protected def lt(term: K, prefix:Option[K], inclusive: Boolean, prefixOrder: Option[Ordering[K]], termOrd: Ordering[K], reverse: Boolean): RichAsyncIterator[K, V] = {
+
+    if(reverse){
+      return ltr(term, prefix, inclusive, prefixOrder, termOrd)
+    }
 
     new RichAsyncIterator[K, V] {
 
-      val ltOrd = new Ordering[K] {
+      // Find the first prefix...
+      val ltOrd = if(prefix.isDefined) new Ordering[K] {
         override def compare(x: K, y: K): Int = {
-          val r = prefixOrder.compare(y, prefix)
+          val r = prefixOrder.get.compare(prefix.get, y)
 
-          if(r != 0) return termOrd.compare(x, y)
+          if(r != 0) return r
 
+          -1
+        }
+      } else new Ordering[K] {
+        override def compare(x: K, y: K): Int = {
           -1
         }
       }
@@ -153,7 +252,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
       }
 
       protected def check(k: K): Boolean = {
-        prefixOrder.equiv(k, prefix) && (inclusive && termOrd.lteq(k, term) || termOrd.lt(k, term))
+        (prefix.isEmpty || prefixOrder.get.equiv(k, prefix.get)) && (inclusive && termOrd.lteq(k, term) || termOrd.lt(k, term))
       }
 
       override def next(): Future[Seq[Tuple[K, V]]] = {
@@ -177,7 +276,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
           }
         }
 
-        $this.next(cur.map(_.unique_id))(termOrd).map {
+        $this.next(cur.map(_.unique_id))(order).map {
           case None =>
             cur = None
             Seq.empty[Tuple[K, V]]
@@ -188,10 +287,177 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
             val filtered = b.tuples.filter{case (k, v) => check(k)}
             stop = filtered.isEmpty
 
+            //println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => printDatom(k.asInstanceOf[Datom])}} filtered: ${filtered.length}${Console.RESET}\n")
+
             checkCounter(filtered.filter{case (k, v) => filter(k, v) })
         }
       }
     }
+  }
+
+  def intervalr(lowerTerm: K, upperTerm: K, lowerPrefix: Option[K], upperPrefix: Option[K],
+               inclusiveLower: Boolean, inclusiveUpper: Boolean, lowerPrefixOrder: Option[Ordering[K]], upperPrefixOrder: Option[Ordering[K]],
+               lowerOrder: Ordering[K], upperOrder: Ordering[K]): RichAsyncIterator[K, V] = {
+    new RichAsyncIterator[K, V] {
+
+      // Find the first prefix...
+      val upperGtOrd = if(upperPrefix.isDefined) new Ordering[K] {
+        override def compare(x: K, y: K): Int = {
+          val r = upperPrefixOrder.get.compare(upperPrefix.get, y)
+
+          if(r != 0) return r
+
+          upperOrder.compare(upperTerm, y)
+        }
+      } else new Ordering[K] {
+        override def compare(x: K, y: K): Int = {
+
+          val r = upperOrder.compare(upperTerm, y)
+
+          if(r != 0) return r
+
+          if(inclusiveUpper) 1 else -1
+        }
+      }
+
+      override def hasNext(): Future[Boolean] = {
+        if(!firstTime) return Future.successful(ctx.root.isDefined)
+        Future.successful(!stop && cur.isDefined)
+      }
+
+      def check(k: K): Boolean = {
+        ((lowerPrefix.isEmpty || lowerPrefixOrder.get.equiv(k, lowerPrefix.get)) && (inclusiveLower && lowerOrder.gteq(k, lowerTerm) || lowerOrder.gt(k, lowerTerm))) &&
+          ((upperPrefix.isEmpty || upperPrefixOrder.get.equiv(k, upperPrefix.get)) && (inclusiveUpper && upperOrder.lteq(k, upperTerm) || upperOrder.lt(k, upperTerm)))
+      }
+
+      override def next(): Future[Seq[Tuple[K, V]]] = {
+        if(!firstTime){
+          firstTime = true
+
+          // From the first block with e >= term to the last block.
+          return findPath(lowerTerm)(upperGtOrd).map {
+            case None =>
+              cur = None
+              Seq.empty[Tuple[K, V]]
+
+            case Some(b) =>
+              cur = Some(b)
+
+              val filtered = b.tuples.filter{case (k, _) => check(k) }.reverse
+              //stop = filtered.isEmpty
+
+              println(s"${printDatom(lowerTerm.asInstanceOf[Datom])} - ${printDatom(upperTerm.asInstanceOf[Datom])}")
+              println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => printDatom(k.asInstanceOf[Datom])}} filtered: ${filtered.length}${Console.RESET}\n")
+
+              checkCounter(filtered.filter{case (k, v) => filter(k, v)})
+          }
+        }
+
+        $this.prev(cur.map(_.unique_id))(order).map {
+          case None =>
+            cur = None
+            Seq.empty[Tuple[K, V]]
+
+          case Some(b) =>
+            cur = Some(b)
+
+            val filtered = b.tuples.filter{case (k, _) => check(k) }.reverse
+            stop = filtered.isEmpty
+
+            checkCounter(filtered.filter{case (k, v) => filter(k, v) })
+        }
+      }
+    }
+  }
+
+  def interval(lowerTerm: K, upperTerm: K, lowerPrefix: Option[K], upperPrefix: Option[K],
+                         inclusiveLower: Boolean, inclusiveUpper: Boolean, lowerPrefixOrder: Option[Ordering[K]], upperPrefixOrder: Option[Ordering[K]],
+                         lowerOrder: Ordering[K], upperOrder: Ordering[K], reverse: Boolean): RichAsyncIterator[K, V] = {
+
+    if(reverse){
+      return intervalr(lowerTerm, upperTerm, lowerPrefix, upperPrefix, inclusiveLower, inclusiveUpper, lowerPrefixOrder,
+        upperPrefixOrder, lowerOrder, upperOrder)
+    }
+
+    new RichAsyncIterator[K, V] {
+
+      // Find the first prefix...
+      val lowerGtOrd = if(lowerPrefix.isDefined) new Ordering[K] {
+        override def compare(x: K, y: K): Int = {
+
+          val r = lowerPrefixOrder.get.compare(lowerPrefix.get, y)
+
+          if(r != 0) return r
+
+          lowerOrder.compare(lowerTerm, y)
+        }
+      } else new Ordering[K] {
+        override def compare(x: K, y: K): Int = {
+          lowerOrder.compare(lowerTerm, y)
+        }
+      }
+
+      override def hasNext(): Future[Boolean] = {
+        if(!firstTime) return Future.successful(ctx.root.isDefined)
+        Future.successful(!stop && cur.isDefined)
+      }
+
+      def check(k: K): Boolean = {
+        ((lowerPrefix.isEmpty || lowerPrefixOrder.get.equiv(k, lowerPrefix.get)) && (inclusiveLower && lowerOrder.gteq(k, lowerTerm) || lowerOrder.gt(k, lowerTerm))) &&
+          ((upperPrefix.isEmpty || upperPrefixOrder.get.equiv(k, upperPrefix.get)) && (inclusiveUpper && upperOrder.lteq(k, upperTerm) || upperOrder.lt(k, upperTerm)))
+      }
+
+      override def next(): Future[Seq[Tuple[K, V]]] = {
+        if(!firstTime){
+          firstTime = true
+
+          // From the first block with e >= term to the last block.
+          return findPath(lowerTerm)(lowerGtOrd).map {
+            case None =>
+              cur = None
+              Seq.empty[Tuple[K, V]]
+
+            case Some(b) =>
+              cur = Some(b)
+
+              val filtered = b.tuples.filter{case (k, _) => check(k) }
+              //stop = filtered.isEmpty
+
+              checkCounter(filtered.filter{case (k, v) => filter(k, v)})
+          }
+        }
+
+        $this.next(cur.map(_.unique_id))(order).map {
+          case None =>
+            cur = None
+            Seq.empty[Tuple[K, V]]
+
+          case Some(b) =>
+            cur = Some(b)
+
+            val filtered = b.tuples.filter{case (k, _) => check(k) }
+            stop = filtered.isEmpty
+
+            checkCounter(filtered.filter{case (k, v) => filter(k, v) })
+        }
+      }
+    }
+  }
+
+  def lt(prefix: K, term: K, inclusive: Boolean, reverse: Boolean)(implicit prefixOrder: Ordering[K], termOrd: Ordering[K]): RichAsyncIterator[K, V] = {
+    lt(term, Some(prefix), inclusive, Some(prefixOrder), termOrd, reverse)
+  }
+
+  def lt(term: K, inclusive: Boolean, reverse: Boolean)(implicit termOrd: Ordering[K]): RichAsyncIterator[K, V] = {
+    lt(term, None, inclusive, None, termOrd, reverse)
+  }
+
+  def gt(prefix: K, term: K, inclusive: Boolean, reverse: Boolean)(implicit prefixOrder: Ordering[K], termOrd: Ordering[K]): RichAsyncIterator[K, V] = {
+    gt(term, Some(prefix), inclusive, Some(prefixOrder), termOrd, reverse)
+  }
+
+  def gt(term: K, inclusive: Boolean, reverse: Boolean)(implicit termOrd: Ordering[K]): RichAsyncIterator[K, V] = {
+    gt(term, None, inclusive, None, termOrd, reverse)
   }
 
 }
