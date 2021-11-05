@@ -11,7 +11,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
   def gtr(term: K, prefix:Option[K], inclusive: Boolean, prefixOrder: Option[Ordering[K]], termOrd: Ordering[K]): RichAsyncIterator[K, V] = {
     new RichAsyncIterator[K, V] {
 
-      // Find the first prefix...
+      // Find the last prefix...
       val gtOrd = if(prefix.isDefined) new Ordering[K] {
         override def compare(x: K, y: K): Int = {
 
@@ -21,7 +21,9 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
           1
         }
-      } else new Ordering[K] {
+      }
+      // Iterate from the last block
+      else new Ordering[K] {
         override def compare(x: K, y: K): Int = {
           1
         }
@@ -81,7 +83,6 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
     new RichAsyncIterator[K, V] {
 
-      // Find the first prefix...
       val gtOrd = if(prefix.isDefined) new Ordering[K] {
         override def compare(x: K, y: K): Int = {
 
@@ -120,7 +121,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
               cur = Some(b)
 
               val filtered = b.tuples.filter{case (k, _) => check(k) }
-              stop = filtered.isEmpty
+              //stop = filtered.isEmpty
 
               checkCounter(filtered.filter{case (k, v) => filter(k, v)})
           }
@@ -159,20 +160,15 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
       // Find the first prefix...
       val ltOrd = if(prefix.isDefined) new Ordering[K] {
         override def compare(x: K, y: K): Int = {
-
           val r = prefixOrder.get.compare(prefix.get, y)
 
           if(r != 0) return r
 
-          termOrd.compare(x, y)
+          termOrd.compare(term, y)
         }
       } else new Ordering[K] {
         override def compare(x: K, y: K): Int = {
-          val r = termOrd.compare(term, y)
-
-          if(r != 0) return r
-
-          if(inclusive) 1 else -1
+          termOrd.compare(term, y)
         }
       }
 
@@ -231,7 +227,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
     new RichAsyncIterator[K, V] {
 
-      // Find the first prefix...
+      // Find the first prefix and iterate from there...
       val ltOrd = if(prefix.isDefined) new Ordering[K] {
         override def compare(x: K, y: K): Int = {
           val r = prefixOrder.get.compare(prefix.get, y)
@@ -240,7 +236,9 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
           -1
         }
-      } else new Ordering[K] {
+      }
+      // Iterate from the first block...
+      else new Ordering[K] {
         override def compare(x: K, y: K): Int = {
           -1
         }
@@ -268,7 +266,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
               cur = Some(b)
 
               val filtered = b.tuples.filter{case (k, _) => check(k) }
-              stop = filtered.isEmpty
+              //stop = filtered.isEmpty
 
               println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => printDatom(k.asInstanceOf[Datom])}} filtered: ${filtered.length}${Console.RESET}\n")
 
@@ -300,7 +298,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
                lowerOrder: Ordering[K], upperOrder: Ordering[K]): RichAsyncIterator[K, V] = {
     new RichAsyncIterator[K, V] {
 
-      // Find the first prefix...
+      // Find the last prefix...
       val upperGtOrd = if(upperPrefix.isDefined) new Ordering[K] {
         override def compare(x: K, y: K): Int = {
           val r = upperPrefixOrder.get.compare(upperPrefix.get, y)
@@ -309,14 +307,18 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
           upperOrder.compare(upperTerm, y)
         }
-      } else new Ordering[K] {
+      }
+      // Find the last element
+      else new Ordering[K] {
         override def compare(x: K, y: K): Int = {
 
-          val r = upperOrder.compare(upperTerm, y)
+          /*val r = upperOrder.compare(upperTerm, y)
 
           if(r != 0) return r
 
-          if(inclusiveUpper) 1 else -1
+          if(inclusiveUpper) 1 else -1*/
+
+          upperOrder.compare(upperTerm, y)
         }
       }
 
