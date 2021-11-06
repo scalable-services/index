@@ -395,6 +395,9 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
         }
       } else new Ordering[K] {
         override def compare(x: K, y: K): Int = {
+
+          println(printDatom(lowerTerm.asInstanceOf[Datom]), printDatom(y.asInstanceOf[Datom]))
+
           lowerOrder.compare(lowerTerm, y)
         }
       }
@@ -424,6 +427,8 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
               val filtered = b.tuples.filter{case (k, _) => check(k) }
               //stop = filtered.isEmpty
+
+              println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => printDatom(k.asInstanceOf[Datom])}} filtered: ${filtered.length}${Console.RESET}\n")
 
               checkCounter(filtered.filter{case (k, v) => filter(k, v)})
           }
