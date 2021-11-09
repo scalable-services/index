@@ -46,7 +46,7 @@ class QueryableIndex()(override implicit val ec: ExecutionContext, override val 
               val filtered = b.tuples.filter{case (k, _) => check(k) }.reverse
               //stop = filtered.isEmpty
 
-              println(s"${Console.RED_B}${b.tuples.map{case (k, _) => new String(k)}} filtered: ${filtered.length}${Console.RESET}\n")
+              logger.debug(s"${Console.RED_B}${b.tuples.map{case (k, _) => new String(k)}} filtered: ${filtered.length}${Console.RESET}\n")
 
               // Maybe we got into next block...
               if(filtered.isEmpty){
@@ -123,7 +123,7 @@ class QueryableIndex()(override implicit val ec: ExecutionContext, override val 
               val filtered = b.tuples.filter{case (k, _) => check(k) }
               //stop = filtered.isEmpty
 
-              println(s"${Console.RED_B}${b.tuples.map{case (k, _) => new String(k)}} filtered: ${filtered.length}${Console.RESET}\n")
+              logger.debug(s"${Console.RED_B}${b.tuples.map{case (k, _) => new String(k)}} filtered: ${filtered.length}${Console.RESET}\n")
 
               if(filtered.isEmpty){
                 next()
@@ -200,7 +200,7 @@ class QueryableIndex()(override implicit val ec: ExecutionContext, override val 
               val filtered = b.tuples.filter{case (k, _) => check(k) }.reverse
               //stop = filtered.isEmpty
 
-              println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k)}} filtered: ${filtered.length}${Console.RESET}\n")
+              logger.debug(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k)}} filtered: ${filtered.length}${Console.RESET}\n")
 
               if(filtered.isEmpty){
                 next()
@@ -221,7 +221,7 @@ class QueryableIndex()(override implicit val ec: ExecutionContext, override val 
             val filtered = b.tuples.filter{case (k, _) => check(k) }.reverse
             stop = filtered.isEmpty
 
-            println(s"${Console.RED_B}${b.tuples.map{case (k, _) => new String(k)}} filtered: ${filtered.length}${Console.RESET}\n")
+            logger.debug(s"${Console.RED_B}${b.tuples.map{case (k, _) => new String(k)}} filtered: ${filtered.length}${Console.RESET}\n")
 
             checkCounter(filtered.filter{case (k, v) => filter(k, v) })
         }
@@ -270,7 +270,7 @@ class QueryableIndex()(override implicit val ec: ExecutionContext, override val 
               val filtered = b.tuples.filter{case (k, _) => check(k) }
               //stop = filtered.isEmpty
 
-              println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k)}} filtered: ${filtered.length}${Console.RESET}\n")
+              logger.debug(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k)}} filtered: ${filtered.length}${Console.RESET}\n")
 
               if(filtered.isEmpty){
                 next()
@@ -339,7 +339,7 @@ class QueryableIndex()(override implicit val ec: ExecutionContext, override val 
               val filtered = b.tuples.filter{case (k, _) => check(k) }.reverse
               //stop = filtered.isEmpty
 
-              println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k)}} filtered: ${filtered.length}${Console.RESET}\n")
+              logger.debug(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k)}} filtered: ${filtered.length}${Console.RESET}\n")
 
               if(filtered.isEmpty){
                 next()
@@ -403,7 +403,7 @@ class QueryableIndex()(override implicit val ec: ExecutionContext, override val 
               val filtered = b.tuples.filter{case (k, _) => check(k) }
               //stop = filtered.isEmpty
 
-              println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k)}} filtered: ${filtered.length}${Console.RESET}\n")
+              logger.debug(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k)}} filtered: ${filtered.length}${Console.RESET}\n")
 
               if(filtered.isEmpty){
                 next()

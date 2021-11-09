@@ -185,13 +185,13 @@ class MainSpec extends AnyFlatSpec with Repeatable {
     val useFromPrefix = rand.nextBoolean()
     val useToPrefix = rand.nextBoolean()
 
-    val reverse = rand.nextBoolean()
+    var reverse = rand.nextBoolean()
 
-    val from_prefix = if(useFromPrefix) Some(fromPrefix) else None
-    val from_term = if(useFromPrefix) fromTerm else fromWord
+    var from_prefix = if(useFromPrefix) Some(fromPrefix) else None
+    var from_term = if(useFromPrefix) fromTerm else fromWord
 
-    val to_prefix = if(useToPrefix) Some(toPrefix) else None
-    val to_term = if(useToPrefix) toTerm else toWord
+    var to_prefix = if(useToPrefix) Some(toPrefix) else None
+    var to_term = if(useToPrefix) toTerm else toWord
 
     rand.nextInt(1, 4) match {
       case 1 =>
@@ -206,6 +206,8 @@ class MainSpec extends AnyFlatSpec with Repeatable {
       case 2 =>
 
         println(">=")
+
+        reverse = false
 
         tdata = filterGt(from_prefix, from_term, tdata, includeFrom)
         if(reverse) tdata = tdata.reverse
