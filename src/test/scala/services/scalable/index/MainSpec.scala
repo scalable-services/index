@@ -207,10 +207,6 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
         println(">=")
 
-        /*reverse = rand.nextBoolean()
-        useFromPrefix = true
-        includeFrom = true*/
-
         tdata = filterGt(from_prefix, from_term, tdata, includeFrom)
         if(reverse) tdata = tdata.reverse
 
