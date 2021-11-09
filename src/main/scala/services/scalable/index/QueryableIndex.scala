@@ -302,17 +302,15 @@ class QueryableIndex()(override implicit val ec: ExecutionContext, override val 
     val fromWord = if(fromPrefix.isDefined) fromPrefix.get ++ from else from
     val toWord = if(toPrefix.isDefined) toPrefix.get ++ to else to
 
-    val sord = if(toPrefix.isEmpty) new Ordering[K] {
-      override def compare(x: K, y: K): Int = 1
+    /*val sord = if(toPrefix.isEmpty) new Ordering[K] {
+      override def compare(x: K, y: K): Int = {
+        order.compare(toWord, y)
+      }
     } else new Ordering[K] {
       override def compare(x: K, y: K): Int = {
-        val r = order.compare(toPrefix.get, y.slice(0, toPrefix.get.length))
-
-        if(r != 0) return r
-
-        1
+        order.compare(toWord, y)
       }
-    }
+    }*/
 
     new RichAsyncIterator[K, V] {
 
@@ -330,7 +328,7 @@ class QueryableIndex()(override implicit val ec: ExecutionContext, override val 
         if(!firstTime){
           firstTime = true
 
-          return findPath(toWord)(sord).flatMap {
+          return findPath(toWord)(order).flatMap {
             case None =>
               cur = None
               Future.successful(Seq.empty[Tuple[K, V]])
@@ -338,7 +336,7 @@ class QueryableIndex()(override implicit val ec: ExecutionContext, override val 
             case Some(b) =>
               cur = Some(b)
 
-              val filtered = b.tuples.filter{case (k, _) => check(k) }
+              val filtered = b.tuples.filter{case (k, _) => check(k) }.reverse
               //stop = filtered.isEmpty
 
               println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k)}} filtered: ${filtered.length}${Console.RESET}\n")
@@ -360,7 +358,7 @@ class QueryableIndex()(override implicit val ec: ExecutionContext, override val 
           case Some(b) =>
             cur = Some(b)
 
-            val filtered = b.tuples.filter{case (k, _) => check(k) }
+            val filtered = b.tuples.filter{case (k, _) => check(k) }.reverse
             stop = filtered.isEmpty
 
             checkCounter(filtered.filter{case (k, v) => filter(k, v) })

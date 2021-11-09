@@ -187,12 +187,10 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
     var reverse = rand.nextBoolean()
 
-    rand.nextInt(1, 3) match {
+    rand.nextInt(1, 4) match {
       case 1 =>
 
         println("<=")
-
-        reverse = rand.nextBoolean()
 
         tdata = filterLt(if(useFromPrefix) Some(fromPrefix) else None, if(useFromPrefix) fromTerm
           else fromWord, tdata, includeFrom)
