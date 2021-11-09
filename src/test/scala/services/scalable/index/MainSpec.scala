@@ -179,18 +179,20 @@ class MainSpec extends AnyFlatSpec with Repeatable {
     val fromTerm = fromWord.slice(fromPrefix.length, fromWord.length)
     val toTerm = toWord.slice(toPrefix.length, toWord.length)
 
-    val includeFrom = rand.nextBoolean()
-    val includeTo = rand.nextBoolean()
+    var includeFrom = rand.nextBoolean()
+    var includeTo = rand.nextBoolean()
 
-    val useFromPrefix = rand.nextBoolean()
-    val useToPrefix = rand.nextBoolean()
+    var useFromPrefix = rand.nextBoolean()
+    var useToPrefix = rand.nextBoolean()
 
-    var reverse = false//rand.nextBoolean()
+    var reverse = rand.nextBoolean()
 
-    rand.nextInt(1, 4) match {
+    rand.nextInt(1, 3) match {
       case 1 =>
 
         println("<=")
+
+        reverse = rand.nextBoolean()
 
         tdata = filterLt(if(useFromPrefix) Some(fromPrefix) else None, if(useFromPrefix) fromTerm
           else fromWord, tdata, includeFrom)
@@ -202,6 +204,10 @@ class MainSpec extends AnyFlatSpec with Repeatable {
       case 2 =>
 
         println(">=")
+
+        /*reverse = rand.nextBoolean()
+        useFromPrefix = true
+        includeFrom = true*/
 
         tdata = filterGt(if(useFromPrefix) Some(fromPrefix) else None, if(useFromPrefix) fromTerm
           else fromWord, tdata, includeFrom)
@@ -222,7 +228,7 @@ class MainSpec extends AnyFlatSpec with Repeatable {
           if(useFromPrefix) fromWord else fromTerm, if(useToPrefix) toWord else toTerm, includeFrom, includeTo, reverse)), Duration.Inf)
     }
 
-    logger.debug(s"${Console.MAGENTA_B}useFromPrefix: ${useFromPrefix} useToPrefix: ${useToPrefix} ${Console.RESET}\n")
+    logger.debug(s"${Console.MAGENTA_B}useFromPrefix: ${useFromPrefix} useToPrefix: ${useToPrefix} reverse: ${reverse}${Console.RESET}\n")
     logger.debug(s"${Console.MAGENTA_B}tdata: ${tdata.map{case (k, v) => new String(k) -> new String(v)}}${Console.RESET}\n")
     logger.debug(s"${Console.BLUE_B}idata: ${idata.map{case (k, v) => new String(k) -> new String(v)}}${Console.RESET}\n")
 

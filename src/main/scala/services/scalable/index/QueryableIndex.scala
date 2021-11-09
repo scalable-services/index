@@ -10,8 +10,10 @@ class QueryableIndex()(override implicit val ec: ExecutionContext, override val 
   type K = Bytes
   type V = Bytes
 
-  protected def ltr(term: Bytes, inclusive: Boolean): RichAsyncIterator[K, V] = {
+  protected def ltr(prefix: Option[K], term: K, inclusive: Boolean): RichAsyncIterator[K, V] = {
     new RichAsyncIterator[K, V] {
+
+      val word = if(prefix.isDefined) prefix.get ++ term else term
 
       override def hasNext(): Future[Boolean] = {
         if(!firstTime) return Future.successful(ctx.root.isDefined)
@@ -19,14 +21,21 @@ class QueryableIndex()(override implicit val ec: ExecutionContext, override val 
       }
 
       def check(k: K): Boolean = {
-        inclusive && order.lteq(k, term) || order.lt(k, term)
+        if(prefix.isEmpty || k.length < prefix.get.length){
+          return (inclusive && order.lteq(k, word)) || order.lt(k, word)
+        }
+
+        val p = k.slice(0, prefix.get.length)
+        val t = k.slice(prefix.get.length, k.length)
+
+        order.equiv(p, prefix.get) && (inclusive && order.lteq(t, term) || order.lt(t, term))
       }
 
       override def next(): Future[Seq[Tuple[K, V]]] = {
         if(!firstTime){
           firstTime = true
 
-          return findPath(term)(order).flatMap {
+          return findPath(word)(order).flatMap {
             case None =>
               cur = None
               Future.successful(Seq.empty[Tuple[K, V]])
@@ -70,7 +79,7 @@ class QueryableIndex()(override implicit val ec: ExecutionContext, override val 
     val word = if(prefix.isDefined) prefix.get ++ term else term
 
     if(reverse){
-      return ltr(term, inclusive)
+      return ltr(prefix, term, inclusive)
     }
 
     val sord = if(prefix.isEmpty) new Ordering[K] {
@@ -142,7 +151,91 @@ class QueryableIndex()(override implicit val ec: ExecutionContext, override val 
     }
   }
 
+  protected def gtr(prefix: Option[K], term: K, inclusive: Boolean): RichAsyncIterator[K, V] = {
+
+    val word = if(prefix.isDefined) prefix.get ++ term else term
+
+    new RichAsyncIterator[K, V] {
+
+      val sord = if(prefix.isEmpty) new Ordering[K] {
+        override def compare(x: K, y: K): Int = 1
+      } else new Ordering[K] {
+        override def compare(x: K, y: K): Int = {
+          var r = order.compare(prefix.get, y.slice(0, prefix.get.length))
+
+          if(r != 0) return r
+
+          //r = order.compare(term, y.slice(prefix.get.length, y.length))
+
+          1
+        }
+      }
+
+      override def hasNext(): Future[Boolean] = {
+        if(!firstTime) return Future.successful(ctx.root.isDefined)
+        Future.successful(!stop && cur.isDefined)
+      }
+
+      def check(k: K): Boolean = {
+        if(prefix.isEmpty || k.length < prefix.get.length){
+          return (inclusive && order.gteq(k, word)) || order.gt(k, word)
+        }
+
+        val p = k.slice(0, prefix.get.length)
+        val t = k.slice(prefix.get.length, k.length)
+
+        order.equiv(p, prefix.get) && (inclusive && order.gteq(t, term) || order.gt(t, term))
+      }
+
+      override def next(): Future[Seq[Tuple[K, V]]] = {
+        if(!firstTime){
+          firstTime = true
+
+          return findPath(word)(sord).flatMap {
+            case None =>
+              cur = None
+              Future.successful(Seq.empty[Tuple[K, V]])
+
+            case Some(b) =>
+              cur = Some(b)
+
+              val filtered = b.tuples.filter{case (k, _) => check(k) }.reverse
+              //stop = filtered.isEmpty
+
+              println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k)}} filtered: ${filtered.length}${Console.RESET}\n")
+
+              if(filtered.isEmpty){
+                next()
+              } else {
+                Future.successful(checkCounter(filtered.filter{case (k, v) => filter(k, v)}))
+              }
+          }
+        }
+
+        $this.prev(cur.map(_.unique_id))(order).map {
+          case None =>
+            cur = None
+            Seq.empty[Tuple[K, V]]
+
+          case Some(b) =>
+            cur = Some(b)
+
+            val filtered = b.tuples.filter{case (k, _) => check(k) }.reverse
+            stop = filtered.isEmpty
+
+            println(s"${Console.RED_B}${b.tuples.map{case (k, _) => new String(k)}} filtered: ${filtered.length}${Console.RESET}\n")
+
+            checkCounter(filtered.filter{case (k, v) => filter(k, v) })
+        }
+      }
+    }
+  }
+
   def gt(prefix: Option[K], term: K, inclusive: Boolean, reverse: Boolean): RichAsyncIterator[K, V] = {
+
+    if(reverse){
+      return gtr(prefix, term, inclusive)
+    }
 
     val word = if(prefix.isDefined) prefix.get ++ term else term
 
