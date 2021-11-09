@@ -179,25 +179,29 @@ class MainSpec extends AnyFlatSpec with Repeatable {
     val fromTerm = fromWord.slice(fromPrefix.length, fromWord.length)
     val toTerm = toWord.slice(toPrefix.length, toWord.length)
 
-    var includeFrom = rand.nextBoolean()
-    var includeTo = rand.nextBoolean()
+    val includeFrom = rand.nextBoolean()
+    val includeTo = rand.nextBoolean()
 
-    var useFromPrefix = rand.nextBoolean()
-    var useToPrefix = rand.nextBoolean()
+    val useFromPrefix = rand.nextBoolean()
+    val useToPrefix = rand.nextBoolean()
 
-    var reverse = rand.nextBoolean()
+    val reverse = rand.nextBoolean()
+
+    val from_prefix = if(useFromPrefix) Some(fromPrefix) else None
+    val from_term = if(useFromPrefix) fromTerm else fromWord
+
+    val to_prefix = if(useToPrefix) Some(toPrefix) else None
+    val to_term = if(useToPrefix) toTerm else toWord
 
     rand.nextInt(1, 4) match {
       case 1 =>
 
         println("<=")
 
-        tdata = filterLt(if(useFromPrefix) Some(fromPrefix) else None, if(useFromPrefix) fromTerm
-          else fromWord, tdata, includeFrom)
+        tdata = filterLt(from_prefix, from_term, tdata, includeFrom)
         if(reverse) tdata = tdata.reverse
 
-        idata = Await.result(TestHelper.all(index.lt(if(useFromPrefix) Some(fromPrefix) else None, if(useFromPrefix) fromTerm
-          else fromWord, includeFrom, reverse)), Duration.Inf)
+        idata = Await.result(TestHelper.all(index.lt(from_prefix, from_term, includeFrom, reverse)), Duration.Inf)
 
       case 2 =>
 
@@ -207,23 +211,19 @@ class MainSpec extends AnyFlatSpec with Repeatable {
         useFromPrefix = true
         includeFrom = true*/
 
-        tdata = filterGt(if(useFromPrefix) Some(fromPrefix) else None, if(useFromPrefix) fromTerm
-          else fromWord, tdata, includeFrom)
+        tdata = filterGt(from_prefix, from_term, tdata, includeFrom)
         if(reverse) tdata = tdata.reverse
 
-        idata = Await.result(TestHelper.all(index.gt(if(useFromPrefix) Some(fromPrefix) else None, if(useFromPrefix) fromTerm
-          else fromWord, includeFrom, reverse)), Duration.Inf)
+        idata = Await.result(TestHelper.all(index.gt(from_prefix, from_term, includeFrom, reverse)), Duration.Inf)
 
       case 3 =>
 
         println("range")
 
-        tdata = filterRange(if(useFromPrefix) Some(fromPrefix) else None, if(useToPrefix) Some(toPrefix) else None,
-          if(useFromPrefix) fromWord else fromTerm, if(useToPrefix) toWord else toTerm, tdata, includeFrom, includeTo)
+        tdata = filterRange(from_prefix, to_prefix, from_term, to_term, tdata, includeFrom, includeTo)
         if(reverse) tdata = tdata.reverse
 
-        idata = Await.result(TestHelper.all(index.range(if(useFromPrefix) Some(fromPrefix) else None, if(useToPrefix) Some(toPrefix) else None,
-          if(useFromPrefix) fromWord else fromTerm, if(useToPrefix) toWord else toTerm, includeFrom, includeTo, reverse)), Duration.Inf)
+        idata = Await.result(TestHelper.all(index.range(from_prefix, to_prefix, from_term, to_term, includeFrom, includeTo, reverse)), Duration.Inf)
     }
 
     logger.debug(s"${Console.MAGENTA_B}useFromPrefix: ${useFromPrefix} useToPrefix: ${useToPrefix} reverse: ${reverse}${Console.RESET}\n")
