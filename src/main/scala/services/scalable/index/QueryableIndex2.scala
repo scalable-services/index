@@ -384,6 +384,10 @@ class QueryableIndex2[K, V]()(override implicit val ec: ExecutionContext, overri
   def range(lowerPrefix: Option[K], upperPrefix: Option[K], lowerTerm: K, upperTerm: K, inclusiveLower: Boolean, inclusiveUpper: Boolean, reverse: Boolean)
            (lowerPrefixOrder: Option[Ordering[K]], upperPrefixOrder: Option[Ordering[K]], lowerOrder: Ordering[K], upperOrder: Ordering[K]): RichAsyncIterator[K, V] = {
 
+    /*// Check if interval is valid
+    assert((lowerPrefix.isDefined && upperPrefix.isDefined && lowerPrefixOrder.isDefined && upperPrefixOrder.isDefined &&
+      upperPrefixOrder.get.gteq(upperPrefix.get, lowerPrefix.get) && upperOrder.gteq(upperTerm, lowerTerm)) || (lowerPrefixOrder.isEmpty && upperPrefixOrder.isEmpty && upperOrder.gteq(upperTerm, lowerTerm)))*/
+
     if(reverse){
       return ranger(lowerPrefix, upperPrefix, lowerTerm, upperTerm, inclusiveLower, inclusiveUpper)(lowerPrefixOrder, upperPrefixOrder, lowerOrder, upperOrder)
     }
