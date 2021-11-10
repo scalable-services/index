@@ -388,8 +388,8 @@ class MainSpec2 extends AnyFlatSpec with Repeatable {
           inclusiveLower,
           inclusiveUpper,
           reverse
-        )(if(withLowerPrefix) Some(prefixOrd) else None, if(withLowerPrefix) Some(prefixOrd) else None,
-          if(withUpperPrefix) termOrdPrefix else termOrd, if(withUpperPrefix) termOrdPrefix else termOrd)), Duration.Inf)
+        )(if(withLowerPrefix) Some(prefixOrd) else None, if(withUpperPrefix) Some(prefixOrd) else None,
+          if(withLowerPrefix) termOrdPrefix else termOrd, if(withUpperPrefix) termOrdPrefix else termOrd)), Duration.Inf)
 
       case _ =>
     }
