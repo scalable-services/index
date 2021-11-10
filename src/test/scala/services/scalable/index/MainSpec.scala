@@ -290,20 +290,12 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
     val termOrd = avetOrd
 
-    def ltPrefix(prefix: Datom, term: Datom, k: Datom, inclusive: Boolean): Boolean = {
-      prefixOrd.equiv(k, prefix) && ((inclusive && termOrdPrefix.lteq(k, term)) || termOrdPrefix.lt(k, term))
+    def lt(prefix: Option[Datom], term: Datom, k: Datom, inclusive: Boolean): Boolean = {
+      (prefix.isEmpty || prefixOrd.equiv(k, prefix.get)) && (inclusive && termOrd.lteq(k, term) || termOrd.lt(k, term))
     }
 
-    def lt(term: Datom, k: Datom, inclusive: Boolean): Boolean = {
-      (inclusive && termOrd.lteq(k, term)) || termOrd.lt(k, term)
-    }
-
-    def gtPrefix(prefix: Datom, term: Datom, k: Datom, inclusive: Boolean): Boolean = {
-      prefixOrd.equiv(k, prefix) && ((inclusive && termOrdPrefix.gteq(k, term)) || termOrdPrefix.gt(k, term))
-    }
-
-    def gt(term: Datom, k: Datom, inclusive: Boolean): Boolean = {
-      (inclusive && termOrd.gteq(k, term)) || termOrd.gt(k, term)
+    def gt(prefix: Option[Datom], term: Datom, k: Datom, inclusive: Boolean): Boolean = {
+      (prefix.isEmpty || prefixOrd.equiv(k, prefix.get)) && (inclusive && termOrd.gteq(k, term) || termOrd.gt(k, term))
     }
 
     def range(lowerPrefix: Option[Datom], upperPrefix: Option[Datom], lowerTerm: Datom, upperTerm: Datom,
@@ -329,8 +321,8 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
         op = if(inclusiveLower) s"<= ${printDatom(lowerTerm, lower_prefix)}" else s"< ${printDatom(lowerTerm, lower_prefix)}"
 
-        dlist = if(withPrefix) tdata.filter{case (k, _) => ltPrefix(lowerPrefix, lowerTerm, k, inclusiveLower)} else
-          tdata.filter{case (k, _) => lt(lowerTerm, k, inclusiveLower)}
+        dlist = if(withPrefix) tdata.filter{case (k, _) => lt(Some(lowerPrefix), lowerTerm, k, inclusiveLower)} else
+          tdata.filter{case (k, _) => lt(None, lowerTerm, k, inclusiveLower)}
 
         dlist = if(reverse) dlist.reverse else dlist
 
@@ -341,8 +333,8 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
         op = if(inclusiveLower) s">= ${printDatom(lowerTerm, lower_prefix)}" else s"> ${printDatom(lowerTerm, lower_prefix)}"
 
-        dlist = if(withPrefix) tdata.filter{case (k, _) => gtPrefix(lowerPrefix, lowerTerm, k, inclusiveLower)} else
-          tdata.filter{case (k, _) => gt(lowerTerm, k, inclusiveLower)}
+        dlist = if(withPrefix) tdata.filter{case (k, _) => gt(Some(lowerPrefix), lowerTerm, k, inclusiveLower)} else
+          tdata.filter{case (k, _) => gt(None, lowerTerm, k, inclusiveLower)}
 
         dlist = if(reverse) dlist.reverse else dlist
 
