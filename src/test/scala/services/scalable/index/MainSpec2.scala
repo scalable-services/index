@@ -188,7 +188,8 @@ class MainSpec2 extends AnyFlatSpec with Repeatable {
     var reverse = false//rand.nextBoolean()
 
     val inclusiveLower = rand.nextBoolean()
-    val withPrefix = rand.nextBoolean()
+    val withLowerPrefix = rand.nextBoolean()
+    val withUpperPrefix = rand.nextBoolean()
 
     val inclusiveUpper = rand.nextBoolean()
 
@@ -209,7 +210,7 @@ class MainSpec2 extends AnyFlatSpec with Repeatable {
     val lowerTerm: Datom = lower_prefix match {
       case "users/:age" =>
 
-        if(withPrefix){
+        if(withLowerPrefix){
           Datom(Some(lower_prefix), Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(rand.nextInt(18, 100)).flip().array())))
         } else {
           Datom(v = Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(rand.nextInt(18, 100)).flip().array())))
@@ -217,7 +218,7 @@ class MainSpec2 extends AnyFlatSpec with Repeatable {
 
       case "users/:color" =>
 
-        if(withPrefix){
+        if(withLowerPrefix){
           Datom(Some(lower_prefix), Some(ByteString.copyFrom(colors(rand.nextInt(0, colors.length)).getBytes())))
         } else {
           Datom(v = Some(ByteString.copyFrom(colors(rand.nextInt(0, colors.length)).getBytes())))
@@ -226,7 +227,7 @@ class MainSpec2 extends AnyFlatSpec with Repeatable {
       case "users/:height" =>
         val lh = rand.nextInt(150, 210)
 
-        if(withPrefix){
+        if(withLowerPrefix){
           Datom(Some(lower_prefix), Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(lh).flip().array())))
         } else {
           Datom(v = Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(lh).flip().array())))
@@ -237,7 +238,7 @@ class MainSpec2 extends AnyFlatSpec with Repeatable {
     val upperTerm: Datom = upper_prefix match {
       case "users/:age" =>
 
-        if(withPrefix){
+        if(withLowerPrefix){
           Datom(Some(upper_prefix), Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(rand.nextInt(18, 100)).flip().array())))
         } else {
           Datom(v = Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(rand.nextInt(18, 100)).flip().array())))
@@ -246,7 +247,7 @@ class MainSpec2 extends AnyFlatSpec with Repeatable {
 
       case "users/:color" =>
 
-        if(withPrefix){
+        if(withLowerPrefix){
           Datom(Some(upper_prefix), Some(ByteString.copyFrom(colors(rand.nextInt(0, colors.length)).getBytes())))
         } else {
           Datom(v = Some(ByteString.copyFrom(colors(rand.nextInt(0, colors.length)).getBytes())))
@@ -255,7 +256,7 @@ class MainSpec2 extends AnyFlatSpec with Repeatable {
       case "users/:height" =>
         val lh = rand.nextInt(150, 210)
 
-        if(withPrefix){
+        if(withLowerPrefix){
           Datom(Some(upper_prefix), Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(lh).flip().array())))
         } else {
           Datom(v = Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(lh).flip().array())))
@@ -332,12 +333,12 @@ class MainSpec2 extends AnyFlatSpec with Repeatable {
 
         op = if(inclusiveLower) s"<= ${printDatom(lowerTerm, lower_prefix)}" else s"< ${printDatom(lowerTerm, lower_prefix)}"
 
-        dlist = if(withPrefix) tdata.filter{case (k, _) => ltPrefix(lowerPrefix, lowerTerm, k, inclusiveLower)} else
+        dlist = if(withLowerPrefix) tdata.filter{case (k, _) => ltPrefix(lowerPrefix, lowerTerm, k, inclusiveLower)} else
           tdata.filter{case (k, _) => lt(lowerTerm, k, inclusiveLower)}
 
         dlist = if(reverse) dlist.reverse else dlist
 
-        ilist = if(withPrefix) Await.result(TestHelper.all(index.lt(Some(lowerPrefix), lowerTerm, inclusiveLower, reverse)(Some(prefixOrd), termOrdPrefix)), Duration.Inf)
+        ilist = if(withLowerPrefix) Await.result(TestHelper.all(index.lt(Some(lowerPrefix), lowerTerm, inclusiveLower, reverse)(Some(prefixOrd), termOrdPrefix)), Duration.Inf)
           else Await.result(TestHelper.all(index.lt(None, lowerTerm, inclusiveLower, reverse)(None, termOrd)), Duration.Inf)
 
       case 2 =>
@@ -346,12 +347,12 @@ class MainSpec2 extends AnyFlatSpec with Repeatable {
 
         op = if(inclusiveLower) s">= ${printDatom(lowerTerm, lower_prefix)}" else s"> ${printDatom(lowerTerm, lower_prefix)}"
 
-        dlist = if(withPrefix) tdata.filter{case (k, _) => gtPrefix(lowerPrefix, lowerTerm, k, inclusiveLower)} else
+        dlist = if(withLowerPrefix) tdata.filter{case (k, _) => gtPrefix(lowerPrefix, lowerTerm, k, inclusiveLower)} else
           tdata.filter{case (k, _) => gt(lowerTerm, k, inclusiveLower)}
 
         dlist = if(reverse) dlist.reverse else dlist
 
-        ilist = if(withPrefix) Await.result(TestHelper.all(index.gt(Some(lowerPrefix), lowerTerm, inclusiveLower, reverse)(Some(prefixOrd), termOrdPrefix)), Duration.Inf)
+        ilist = if(withLowerPrefix) Await.result(TestHelper.all(index.gt(Some(lowerPrefix), lowerTerm, inclusiveLower, reverse)(Some(prefixOrd), termOrdPrefix)), Duration.Inf)
           else Await.result(TestHelper.all(index.gt(None, lowerTerm, inclusiveLower, reverse)(None, termOrd)), Duration.Inf)
 
       case 3 =>
@@ -361,15 +362,15 @@ class MainSpec2 extends AnyFlatSpec with Repeatable {
         op = s"${printDatom(lowerTerm, lower_prefix)} ${if(inclusiveLower) "<=" else "<"} x ${if(inclusiveUpper) "<=" else "<"} ${printDatom(upperTerm, upper_prefix)}"
 
         dlist = tdata.filter { case (k, _) => range(
-          if(withPrefix) Some(lowerPrefix) else None,
-          if(withPrefix) Some(upperPrefix) else None,
+          if(withLowerPrefix) Some(lowerPrefix) else None,
+          if(withUpperPrefix) Some(upperPrefix) else None,
           lowerTerm,
           upperTerm,
-          if(withPrefix) Some(prefixOrd) else None,
-          if(withPrefix) Some(prefixOrd) else None,
+          if(withLowerPrefix) Some(prefixOrd) else None,
+          if(withUpperPrefix) Some(prefixOrd) else None,
 
-          if(withPrefix) termOrdPrefix else termOrd,
-          if(withPrefix) termOrdPrefix else termOrd,
+          if(withLowerPrefix) termOrdPrefix else termOrd,
+          if(withUpperPrefix) termOrdPrefix else termOrd,
           k,
           inclusiveLower,
           inclusiveUpper
@@ -378,8 +379,8 @@ class MainSpec2 extends AnyFlatSpec with Repeatable {
         dlist = if(reverse) dlist.reverse else dlist
 
         ilist = Await.result(TestHelper.all(index.range(
-          if(withPrefix) Some(lowerPrefix) else None,
-          if(withPrefix) Some(upperPrefix) else None,
+          if(withLowerPrefix) Some(lowerPrefix) else None,
+          if(withUpperPrefix) Some(upperPrefix) else None,
 
           lowerTerm,
           upperTerm,
@@ -387,13 +388,13 @@ class MainSpec2 extends AnyFlatSpec with Repeatable {
           inclusiveLower,
           inclusiveUpper,
           reverse
-        )(if(withPrefix) Some(prefixOrd) else None, if(withPrefix) Some(prefixOrd) else None,
-          if(withPrefix) termOrdPrefix else termOrd, if(withPrefix) termOrdPrefix else termOrd)), Duration.Inf)
+        )(if(withLowerPrefix) Some(prefixOrd) else None, if(withLowerPrefix) Some(prefixOrd) else None,
+          if(withUpperPrefix) termOrdPrefix else termOrd, if(withUpperPrefix) termOrdPrefix else termOrd)), Duration.Inf)
 
       case _ =>
     }
 
-    logger.debug(s"${Console.BLUE_B}useLowerPrefix: ${withPrefix} reverse: ${reverse}${Console.RESET}\n")
+    logger.debug(s"${Console.BLUE_B}withLowerPrefix: ${withLowerPrefix} withUpperPrefix: ${withUpperPrefix} reverse: ${reverse}${Console.RESET}\n")
     logger.debug(s"${Console.MAGENTA_B}dlist ${op}: ${dlist.map{case (k, v) => printDatom(k, k.getA) -> new String(v)}}${Console.RESET}\n")
     logger.debug(s"${Console.BLUE_B}ilist ${op}: ${ilist.map{case (k, v) => printDatom(k, k.getA) -> new String(v)}}\n${Console.RESET}")
 
