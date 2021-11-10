@@ -1,23 +1,11 @@
 package services.scalable.index
 
-import services.scalable.index.grpc.Datom
-
 import scala.concurrent.{ExecutionContext, Future}
 
 class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, override val ctx: Context[K, V],
                              implicit val order: Ordering[K]) extends Index[K, V]()(ec, ctx) {
 
   override val $this = this
-
-  def printDatom(d: Datom): String = {
-    d.getA match {
-      case "users/:name" => s"[${d.a},${new String(d.getV.toByteArray)},${d.e},${d.t}]"
-      case "users/:age" => s"[${d.a},${java.nio.ByteBuffer.allocate(4).put(d.getV.toByteArray).flip().getInt()},${d.e},${d.t}]"
-      case "users/:color" => s"[${d.a},${new String(d.getV.toByteArray)},${d.e},${d.t}]"
-      case "users/:height" => s"[${d.a},${java.nio.ByteBuffer.allocate(4).put(d.getV.toByteArray).flip().getInt()},${d.e},${d.t}]"
-      case _ => ""
-    }
-  }
 
   protected def ltr(prefix: Option[K], term: K, inclusive: Boolean)(prefixOrd: Option[Ordering[K]], termOrd: Ordering[K]): RichAsyncIterator[K, V] = {
     new RichAsyncIterator[K, V] {
@@ -60,8 +48,6 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
               val filtered = b.tuples.filter{case (k, _) => check(k) }.reverse
               //stop = filtered.isEmpty
-
-              println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => printDatom(k.asInstanceOf[Datom])}} filtered: ${filtered.length}${Console.RESET}\n")
 
               // Maybe we got into next block...
               if(filtered.isEmpty){
@@ -132,8 +118,6 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
               val filtered = b.tuples.filter{case (k, _) => check(k) }
               //stop = filtered.isEmpty
-
-              println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => printDatom(k.asInstanceOf[Datom])}} filtered: ${filtered.length}${Console.RESET}\n")
 
               if(filtered.isEmpty){
                 next()
@@ -434,8 +418,6 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
               val filtered = b.tuples.filter{case (k, _) => check(k) }
               //stop = filtered.isEmpty
 
-              println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => printDatom(k.asInstanceOf[Datom])}} filtered: ${filtered.length}${Console.RESET}\n")
-
               if(filtered.isEmpty){
                 next()
               } else {
@@ -460,6 +442,34 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
         }
       }
     }
+  }
+
+  def lt(term: K, inclusive: Boolean, reverse: Boolean)(implicit ord: Ordering[K]): RichAsyncIterator[K, V] = {
+    lt(None, term, inclusive, reverse)(None, ord)
+  }
+
+  def lt(prefix: K, term: K, inclusive: Boolean, reverse: Boolean)(prefixOrd: Ordering[K], termOrd: Ordering[K]): RichAsyncIterator[K, V] = {
+    lt(Some(prefix), term, inclusive, reverse)(Some(prefixOrd), termOrd)
+  }
+
+  def gt(term: K, inclusive: Boolean, reverse: Boolean)(implicit ord: Ordering[K]): RichAsyncIterator[K, V] = {
+    gt(None, term, inclusive, reverse)(None, ord)
+  }
+
+  def gt(prefix: K, term: K, inclusive: Boolean, reverse: Boolean)(prefixOrd: Ordering[K], termOrd: Ordering[K]): RichAsyncIterator[K, V] = {
+    gt(Some(prefix), term, inclusive, reverse)(Some(prefixOrd), termOrd)
+  }
+
+  def range(lowerPrefix: K, lowerTerm: K, upperPrefix: K, upperTerm: K, includeLower: Boolean, includeUpper: Boolean, reverse: Boolean)(lowerPrefixOrd: Ordering[K],
+                              upperPrefixOrd: Ordering[K],
+                              lowerTermOrd: Ordering[K],
+                              upperTermOrd: Ordering[K]): RichAsyncIterator[K, V] = {
+    range(Some(lowerPrefix), Some(upperPrefix), lowerTerm, upperTerm, includeLower, includeUpper, reverse)(Some(lowerPrefixOrd),
+      Some(upperPrefixOrd), lowerTermOrd, upperTermOrd)
+  }
+
+  def range(lowerTerm: K, upperTerm: K, includeLower: Boolean, includeUpper: Boolean, reverse: Boolean)(lowerTermOrd: Ordering[K], upperTermOrd: Ordering[K]): RichAsyncIterator[K, V] = {
+    range(None, None, lowerTerm, upperTerm, includeLower, includeUpper, reverse)(None, None, lowerTermOrd, upperTermOrd)
   }
 
 }
