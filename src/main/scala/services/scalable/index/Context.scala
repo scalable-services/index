@@ -18,7 +18,7 @@ trait Context {
   def get(id: String): Future[Block]
   def getLeaf(id: String): Future[Leaf]
   def getMeta(id: String): Future[Meta]
-  
+
   def createLeaf(): Leaf
   def createMeta(): Meta
 
