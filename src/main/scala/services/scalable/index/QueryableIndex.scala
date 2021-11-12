@@ -11,31 +11,25 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
   def gt(prefix: Option[K], term: K, inclusive: Boolean, reverse: Boolean)(prefixOrd: Option[Ordering[K]], termOrd: Ordering[K]): RichAsyncIterator[K, V] = {
 
-    val sord = if(prefix.isDefined) new Ordering[K] {
-      override def compare(x: K, y: K): Int = {
-        var r = prefixOrd.get.compare(prefix.get, y)
-
-        if(r != 0) return r
-
-        r = termOrd.compare(term, y)
-
-        if(r != 0) return r
-
-        // We must get immediately before or after the desired target to account for repeated values spread over many blocks.
-        if(inclusive) -1 else 1
-      }
-    } else new Ordering[K] {
-      override def compare(x: K, y: K): Int = {
-        val r = termOrd.compare(term, y)
-
-        if(r != 0) return r
-
-        // We must get immediately before or after the desired target to account for repeated values spread over many blocks.
-        if(inclusive) -1 else 1
-      }
-    }
-
     new RichAsyncIterator[K, V] {
+
+       val sord = if(prefix.isEmpty) new Ordering[K] {
+         override def compare(x: K, y: K): Int = {
+           val r = termOrd.compare(x, y)
+
+           if(r != 0) return r
+
+           if(inclusive) 0 else 1
+         }
+       } else new Ordering[K]{
+         override def compare(x: K, y: K): Int = {
+           val r = prefixOrd.get.compare(x, y)
+
+           if(r != 0) return r
+
+           termOrd.compare(x, y)
+         }
+       }
 
       override def hasNext(): Future[Boolean] = {
         if(!firstTime) return Future.successful(ctx.root.isDefined)
@@ -43,16 +37,14 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
       }
 
       def check(k: K): Boolean = {
-        /*(prefix.isEmpty || prefixOrd.get.equiv(k, prefix.get)) && (inclusive && termOrd.gteq(k, term) || !inclusive && termOrd.gt(k, term))*/
-
-        (inclusive && termOrd.gteq(k, term) || !inclusive && termOrd.gt(k, term))
+        (prefix.isEmpty || prefixOrd.get.equiv(k, prefix.get)) && ((inclusive && termOrd.gteq(k, term)) || (!inclusive && termOrd.gt(k, term)))
       }
 
       override def next(): Future[Seq[Tuple[K, V]]] = {
         if(!firstTime){
           firstTime = true
 
-          return findPath(term)(termOrd).map {
+          return findPath(term)(sord).map {
             case None =>
               cur = None
               Seq.empty[Tuple[K, V]]
@@ -64,12 +56,13 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
               stop = filtered.isEmpty
 
              // println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => k.asInstanceOf[Datom]}.map(d => printDatom(d, d.getA))} filtered: ${filtered.length}${Console.RESET}\n")
+              println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k.asInstanceOf[Bytes])}} filtered: ${filtered.length}${Console.RESET}\n")
 
               checkCounter(filtered.filter{case (k, v) => filter(k, v)})
           }
         }
 
-        $this.next(cur.map(_.unique_id))(order).map {
+        $this.next(cur.map(_.unique_id))(sord).map {
           case None =>
             cur = None
             Seq.empty[Tuple[K, V]]
@@ -81,6 +74,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
             stop = filtered.isEmpty
 
             //println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => k.asInstanceOf[Datom]}.map(d => printDatom(d, d.getA))} filtered: ${filtered.length}${Console.RESET}\n")
+            println(s"${Console.BLUE_B}${b.tuples.map{case (k, _) => new String(k.asInstanceOf[Bytes])}} filtered: ${filtered.length}${Console.RESET}\n")
 
             checkCounter(filtered.filter{case (k, v) => filter(k, v) })
         }

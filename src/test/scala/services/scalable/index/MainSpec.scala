@@ -335,9 +335,9 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
         dlist = if(reverse) dlist.reverse else dlist
 
-        ilist = if(withPrefix) Await.result(TestHelper.all(index.gt(Some(lowerPrefix), lowerTerm, inclusiveLower, reverse)(Some(prefixOrd), termOrdPrefix)), Duration.Inf)
+        /*ilist = if(withPrefix) Await.result(TestHelper.all(index.gt(Some(lowerPrefix), lowerTerm, inclusiveLower, reverse)(Some(prefixOrd), termOrdPrefix)), Duration.Inf)
           else Await.result(TestHelper.all(index.gt(None, lowerTerm, inclusiveLower, reverse)(None, termOrd)), Duration.Inf)
-
+*/
       /*case 3 =>
 
         reverse = false

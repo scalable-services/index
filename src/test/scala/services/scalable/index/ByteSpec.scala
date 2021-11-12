@@ -135,7 +135,7 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
     println()
 
     var reverse = false//rand.nextBoolean()
-    var withPrefix = false//rand.nextBoolean()
+    var withPrefix = rand.nextBoolean()
 
     val inclusiveLower = rand.nextBoolean()
     val inclusiveUpper = rand.nextBoolean()
@@ -164,34 +164,32 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
     val prefix = word.slice(0, 3)
     val term = word.slice(prefix.length, word.length)
 
+
     val p = if(withPrefix) Some(prefix) else None
     val t = if(withPrefix) term else word
 
-    val prefixOrd = new Ordering[K] {
-      override def compare(x: K, y: K): Int = {
-        if(y.length >= x.length){
-          return ord.compare(x, y.slice(0, x.length))
-        }
-
-        ord.compare(x, y)
-      }
-    }
-
-    val termOrd = new Ordering[K] {
-      override def compare(x: K, y: K): Int = {
-        ord.compare(x, y)
-      }
-    }
-
-    val po = if(withPrefix) prefixOrd else ord
-    val to = if(withPrefix) termOrd else ord
-
-    dlist = tdata.filter{case (k, _) => gt(p, t, k, inclusiveLower)(po, to)}
+    dlist = tdata.filter{case (k, _) => gt(p, t, k, inclusiveLower)(ord, ord)}
     if(reverse) dlist = dlist.reverse
 
     op = s"${if(inclusiveLower) ">=" else ">"} word: ${new String(word)} prefix: ${new String(prefix)} term: ${new String(term)}"
 
-    ilist = Await.result(TestHelper.all(index.gt(p, t, inclusiveLower, reverse)(Some(ord), ord)), Duration.Inf)
+    val po = if(withPrefix) new Ordering[K]{
+      override def compare(x: K, y: K): Int = {
+        if(x.length >= y.length){
+          return ord.compare(x, y)
+        }
+
+        ord.compare(x.slice(0, prefix.length), y)
+      }
+    } else ord
+
+    val to = if(withPrefix) new Ordering[K]{
+      override def compare(x: K, y: K): Int = {
+        ord.compare(x.slice(prefix.length, x.length), y)
+      }
+    } else ord
+
+    ilist = Await.result(TestHelper.all(index.gt(p, t, inclusiveLower, reverse)(Some(po), to)), Duration.Inf)
 
     logger.debug(s"${Console.BLUE_B}withPrefix: ${withPrefix} inclusiveLower: ${inclusiveLower} inclusiveUpper: ${inclusiveUpper} reverse: ${reverse}${Console.RESET}\n")
     logger.debug(s"${Console.MAGENTA_B}${op} dlist: ${dlist.map{case (k, v) => new String(k) /*-> new String(v)*/}}${Console.RESET}\n")
