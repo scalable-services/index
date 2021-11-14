@@ -140,19 +140,30 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
     val inclusiveLower = rand.nextBoolean()
     val inclusiveUpper = rand.nextBoolean()
 
-    def gt(prefix: Option[K], term: K, k: K, inclusive: Boolean)(prefixOrd: Ordering[K], termOrd: Ordering[K]): Boolean = {
-      /*(prefix.isEmpty || prefixOrd.equiv(k, prefix.get)) && (inclusive && termOrd.gteq(k, term) || !inclusive && termOrd.gt(k, term))*/
-
-      (inclusive && termOrd.gteq(k, term) || !inclusive && termOrd.gt(k, term))
+    def lt(term: K, k: K, inclusive: Boolean)(ord: Ordering[K]): Boolean = {
+      inclusive && ord.lteq(k, term) || !inclusive && ord.lt(k, term)
     }
 
-    def lt(prefix: Option[K], term: K, k: K, inclusive: Boolean)(prefixOrd: Ordering[K], termOrd: Ordering[K]): Boolean = {
-      (prefix.isEmpty || prefixOrd.equiv(k, prefix.get)) && (inclusive && termOrd.lteq(k, term) || !inclusive && termOrd.lt(k, term))
+    def ltPrefix(prefix: K, term: K, k: K, inclusive: Boolean)(prefixOrd: Ordering[K], termOrd: Ordering[K]): Boolean = {
+      prefixOrd.equiv(k, prefix) && (inclusive && termOrd.lteq(k, term) || !inclusive && termOrd.lt(k, term))
     }
 
-    def range(p0: Option[K], t0: K, p1: Option[K], t1: K, k: K, inclusiveLower: Boolean, inclusiveUpper: Boolean)(prefixOrd: Ordering[K], termOrd: Ordering[K]): Boolean = {
-      (p0.isEmpty || prefixOrd.equiv(k, p0.get)) && (inclusiveLower && termOrd.gteq(k, t0) || !inclusiveLower && termOrd.gt(k, t0)) &&
-        (p1.isEmpty || prefixOrd.equiv(k, p1.get)) && (inclusiveUpper && termOrd.lteq(k, t1) || !inclusiveUpper && termOrd.lt(k, t1))
+    def gt(term: K, k: K, inclusive: Boolean)(ord: Ordering[K]): Boolean = {
+      inclusive && ord.gteq(k, term) || !inclusive && ord.gt(k, term)
+    }
+
+    def gtPrefix(prefix: K, term: K, k: K, inclusive: Boolean)(prefixOrd: Ordering[K], termOrd: Ordering[K]): Boolean = {
+      prefixOrd.equiv(k, prefix) && (inclusive && termOrd.gteq(k, term) || !inclusive && termOrd.gt(k, term))
+    }
+
+    def range(fromTerm: K, toTerm: K, k: K, inclusiveFrom: Boolean, inclusiveTo: Boolean)(order: Ordering[K]): Boolean = {
+      (inclusiveFrom && order.gteq(k, fromTerm) || !inclusiveFrom && order.gt(k, fromTerm)) &&
+        (inclusiveTo && order.lteq(k, toTerm) || !inclusiveTo && order.lt(k, toTerm))
+    }
+
+    def rangePrefix(fromPrefix: K, fromTerm: K, toPrefix: K, toTerm: K, k: K, inclusiveFrom: Boolean, inclusiveTo: Boolean)(prefixOrd: Ordering[K], order: Ordering[K]): Boolean = {
+      (prefixOrd.equiv(k, fromPrefix) && (inclusiveFrom && order.gteq(k, fromTerm) || !inclusiveFrom && order.gt(k, fromTerm))) &&
+        (prefixOrd.equiv(k, toPrefix) && (inclusiveTo && order.lteq(k, toTerm) || !inclusiveTo && order.lt(k, toTerm)))
     }
 
     var dlist = Seq.empty[(K, V)]
@@ -160,36 +171,93 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
 
     var op = ""
 
-    val (word, _) = tdata(rand.nextInt(0, tdata.length))
-    val prefix = word.slice(0, 3)
-    val term = word.slice(prefix.length, word.length)
+    val idx = rand.nextInt(0, tdata.length)
+    val (fromWord, _) = tdata(idx)
+    val fromPrefix = fromWord.slice(0, 3)
+    val fromTerm = fromWord.slice(fromPrefix.length, fromWord.length)
 
+    val (toWord, _) = tdata(rand.nextInt(idx, tdata.length))
+    val toPrefix = toWord.slice(0, 3)
+    val toTerm = toWord.slice(toPrefix.length, toWord.length)
 
-    val p = if(withPrefix) Some(prefix) else None
-    val t = if(withPrefix) term else word
-
-    dlist = tdata.filter{case (k, _) => gt(p, t, k, inclusiveLower)(ord, ord)}
-    if(reverse) dlist = dlist.reverse
-
-    op = s"${if(inclusiveLower) ">=" else ">"} word: ${new String(word)} prefix: ${new String(prefix)} term: ${new String(term)}"
-
-    val po = if(withPrefix) new Ordering[K]{
+    val prefixOrd = new Ordering[K] {
       override def compare(x: K, y: K): Int = {
-        if(x.length >= y.length){
+        if (x.length < y.length) {
           return ord.compare(x, y)
         }
 
-        ord.compare(x.slice(0, prefix.length), y)
+        ord.compare(x.slice(0, fromPrefix.length), y)
       }
-    } else ord
+    }
 
-    val to = if(withPrefix) new Ordering[K]{
+    val termOrd = new Ordering[K] {
       override def compare(x: K, y: K): Int = {
-        ord.compare(x.slice(prefix.length, x.length), y)
+        ord.compare(x.slice(0, fromPrefix.length), y)
       }
-    } else ord
+    }
 
-    ilist = Await.result(TestHelper.all(index.gt(p, t, inclusiveLower, reverse)(Some(po), to)), Duration.Inf)
+    rand.nextInt(1, 4) match {
+      case 1 =>
+
+        if(withPrefix){
+          dlist = tdata.filter{case (k, _) => gtPrefix(fromPrefix, fromTerm, k, inclusiveLower)(prefixOrd, termOrd)}
+          if(reverse) dlist = dlist.reverse
+
+          op = s"${if(inclusiveLower) ">=" else ">"} prefix: ${new String(fromPrefix)} term: ${new String(fromTerm)}"
+
+          ilist = Await.result(TestHelper.all(index.gt(fromPrefix, fromTerm, inclusiveLower, reverse)(prefixOrd, termOrd)), Duration.Inf)
+        } else {
+
+          dlist = tdata.filter{case (k, _) => gt(fromWord, k, inclusiveLower)(ord)}
+          if(reverse) dlist = dlist.reverse
+
+          op = s"${if(inclusiveLower) ">=" else ">"} word: ${new String(fromWord)}"
+
+          ilist = Await.result(TestHelper.all(index.gt(fromWord, inclusiveLower, reverse)(ord)), Duration.Inf)
+        }
+
+      case 2 =>
+
+        if(withPrefix){
+          dlist = tdata.filter{case (k, _) => ltPrefix(fromPrefix, fromTerm, k, inclusiveLower)(prefixOrd, termOrd)}
+          if(reverse) dlist = dlist.reverse
+
+          op = s"${if(inclusiveLower) "<=" else "<"} prefix: ${new String(fromPrefix)} term: ${new String(fromTerm)}"
+
+          ilist = Await.result(TestHelper.all(index.lt(fromPrefix, fromTerm, inclusiveLower, reverse)(prefixOrd, termOrd)), Duration.Inf)
+        } else {
+
+          dlist = tdata.filter{case (k, _) => lt(fromWord, k, inclusiveLower)(ord)}
+          if(reverse) dlist = dlist.reverse
+
+          op = s"${if(inclusiveLower) "<=" else "<"} word: ${new String(fromWord)}"
+
+          ilist = Await.result(TestHelper.all(index.lt(fromWord, inclusiveLower, reverse)(ord)), Duration.Inf)
+        }
+
+      case 3 =>
+
+        if(withPrefix){
+
+          dlist = tdata.filter{case (k, _) => rangePrefix(fromPrefix, fromTerm, toPrefix, toTerm, k, inclusiveLower, inclusiveUpper)(prefixOrd, ord)}
+          if(reverse) dlist = dlist.reverse
+
+          op = s"range: fromPrefix: ${new String(fromPrefix)}-${new String(fromTerm)} ${if(inclusiveLower) "<=" else "<"} x ${if(inclusiveUpper) "<=" else "<"} ${new String(fromPrefix)}-${new String(toTerm)}"
+
+          ilist = Await.result(TestHelper.all(index.range(fromPrefix, fromTerm, toPrefix, toTerm, inclusiveLower, inclusiveUpper, reverse)(prefixOrd, ord)), Duration.Inf)
+
+        } else {
+          dlist = tdata.filter{case (k, _) => range(fromWord, toWord, k, inclusiveLower, inclusiveUpper)(ord)}
+          if(reverse) dlist = dlist.reverse
+
+          op = s"range: ${new String(fromWord)} ${if(inclusiveLower) "<=" else "<"} x ${if(inclusiveUpper) "<=" else "<"} ${new String(toWord)}"
+
+          ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveLower, inclusiveUpper, reverse)(ord)), Duration.Inf)
+        }
+
+      case _ =>
+
+    }
 
     logger.debug(s"${Console.BLUE_B}withPrefix: ${withPrefix} inclusiveLower: ${inclusiveLower} inclusiveUpper: ${inclusiveUpper} reverse: ${reverse}${Console.RESET}\n")
     logger.debug(s"${Console.MAGENTA_B}${op} dlist: ${dlist.map{case (k, v) => new String(k) /*-> new String(v)*/}}${Console.RESET}\n")
