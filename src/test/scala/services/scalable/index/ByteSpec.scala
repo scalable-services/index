@@ -18,7 +18,7 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
 
   val logger = LoggerFactory.getLogger(this.getClass)
 
-  override val times: Int = 1000
+  override val times: Int = 10000
 
   val rand = ThreadLocalRandom.current()
 
@@ -114,7 +114,7 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
     val index = new QueryableIndex[K, V]()
 
     for(i<-0 until iter){
-      rand.nextInt(1, 2) match {
+      rand.nextInt(1, 4) match {
         case 1 => insert(index)
         case 2 => update(index)
         case 3 => remove(index)
