@@ -193,23 +193,23 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
     val properties = Seq("users/:age", "users/:color", "users/:height")
 
-    val lower_prefix = properties(rand.nextInt(0, properties.length))
-    val upper_prefix = lower_prefix//properties(rand.nextInt(0, properties.length))
+    val from_prefix = properties(rand.nextInt(0, properties.length))
+    val to_prefix = from_prefix//properties(rand.nextInt(0, properties.length))
 
-    val fromPrefix = Datom(a = Some(lower_prefix))
-    val toPrefix = Datom(a = Some(lower_prefix))
+    val fromPrefix = Datom(a = Some(from_prefix))
+    val toPrefix = Datom(a = Some(from_prefix))
 
     var fromWord: Datom = null
     var toWord: Datom = null
 
-    lower_prefix match {
+    from_prefix match {
       case "users/:age" =>
 
         val lv = rand.nextInt(18, 100)
         val uv = rand.nextInt(lv, 100)
 
-        fromWord = Datom(Some(lower_prefix), Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(lv).flip().array())))
-        toWord = Datom(Some(upper_prefix), Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(uv).flip().array())))
+        fromWord = Datom(a = Some(from_prefix), v = Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(lv).flip().array())))
+        toWord = Datom(a = Some(to_prefix), v = Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(uv).flip().array())))
 
       case "users/:color" =>
 
@@ -217,16 +217,16 @@ class MainSpec extends AnyFlatSpec with Repeatable {
         val filtered = colors.filter(_.compareTo(lv) >= 0)
         val uv = if(filtered.length > 1) filtered(rand.nextInt(0, filtered.length)) else lv
 
-        fromWord = Datom(Some(lower_prefix), Some(ByteString.copyFrom(lv.getBytes())))
-        toWord = Datom(Some(upper_prefix), Some(ByteString.copyFrom(uv.getBytes())))
+        fromWord = Datom(Some(from_prefix), Some(ByteString.copyFrom(lv.getBytes())))
+        toWord = Datom(Some(to_prefix), Some(ByteString.copyFrom(uv.getBytes())))
 
       case "users/:height" =>
 
         val lv = rand.nextInt(150, 210)
         val uv = rand.nextInt(lv, 210)
 
-        fromWord = Datom(Some(lower_prefix), Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(lv).flip().array())))
-        toWord = Datom(Some(upper_prefix), Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(uv).flip().array())))
+        fromWord = Datom(Some(from_prefix), Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(lv).flip().array())))
+        toWord = Datom(Some(to_prefix), Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(uv).flip().array())))
     }
 
     val prefixOrd = new Ordering[Datom] {
@@ -319,7 +319,7 @@ class MainSpec extends AnyFlatSpec with Repeatable {
           dlist = tdata.filter{case (k, _) => range(fromWord, toWord, k, inclusiveLower, inclusiveUpper, Some(fromPrefix), Some(toPrefix), Some(prefixOrd), avetOrd)}
           if(reverse) dlist = dlist.reverse
 
-          //op = s"range: fromPrefix: ${printDatom(fromPrefix, fromPrefix.getA)}-${printDatom(fromWord, fromWord.getA)} ${if(inclusiveLower) "<=" else "<"} x ${if(inclusiveUpper) "<=" else "<"} ${printDatom(fromPrefix, fromPrefix.getA)}-${printDatom(toWord, toWord.getA)}"
+          op = s"range: fromPrefix: ${from_prefix}-${printDatom(fromWord, fromWord.getA)} ${if(inclusiveLower) "<=" else "<"} x ${if(inclusiveUpper) "<=" else "<"} ${to_prefix}-${printDatom(toWord, toWord.getA)}"
 
           ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveLower, inclusiveUpper, reverse, Some(fromPrefix), Some(toPrefix), Some(prefixOrd), avetOrd)), Duration.Inf)
 
@@ -327,7 +327,7 @@ class MainSpec extends AnyFlatSpec with Repeatable {
           dlist = tdata.filter{case (k, _) => range(fromWord, toWord, k, inclusiveLower, inclusiveUpper, None, None, None, avetOrd)}
           if(reverse) dlist = dlist.reverse
 
-          //op = s"range: ${printDatom(fromWord, fromWord.getA)} ${if(inclusiveLower) "<=" else "<"} x ${if(inclusiveUpper) "<=" else "<"} ${printDatom(toWord, toWord.getA)}"
+          op = s"range: ${printDatom(fromWord, fromWord.getA)} ${if(inclusiveLower) "<=" else "<"} x ${if(inclusiveUpper) "<=" else "<"} ${printDatom(toWord, toWord.getA)}"
 
           ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveLower, inclusiveUpper, reverse, None, None, None, avetOrd)), Duration.Inf)
         }
