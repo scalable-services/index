@@ -181,8 +181,6 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
       rand.nextInt(1, 4) match {
         case 1 =>
 
-          reverse = rand.nextBoolean()
-
           if(withPrefix){
             dlist = tdata.filter{case (k, _) => gt(fromWord, k, inclusiveLower, Some(fromPrefix), Some(prefixOrd), ord)}
             if(reverse) dlist = dlist.reverse
@@ -202,8 +200,6 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
 
         case 2 =>
 
-          reverse = rand.nextBoolean()
-
           if(withPrefix){
             dlist = tdata.filter{case (k, _) => lt(fromWord, k, inclusiveLower, Some(fromPrefix), Some(prefixOrd), ord)}
             if(reverse) dlist = dlist.reverse
@@ -222,9 +218,6 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
           }
 
         case 3 =>
-
-          //withPrefix = false
-          reverse = rand.nextBoolean()
 
           if(withPrefix){
 
