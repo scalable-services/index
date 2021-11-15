@@ -134,26 +134,26 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
 
     println()
 
-    var reverse = false//rand.nextBoolean()
-    var withPrefix = rand.nextBoolean()
-
-    var inclusiveLower = rand.nextBoolean()
-    var inclusiveUpper = rand.nextBoolean()
-
-    def lt(term: K, k: K, inclusive: Boolean, prefix: Option[K], prefixOrd: Option[Ordering[K]], order: Ordering[K]): Boolean = {
-      (prefix.isEmpty || prefixOrd.get.equiv(k, prefix.get)) && (inclusive && order.lteq(k, term) || !inclusive && order.lt(k, term))
-    }
-
-    def gt(term: K, k: K, inclusive: Boolean, prefix: Option[K], prefixOrd: Option[Ordering[K]], order: Ordering[K]): Boolean = {
-      (prefix.isEmpty || prefixOrd.get.equiv(k, prefix.get)) && (inclusive && order.gteq(k, term) || !inclusive && order.gt(k, term))
-    }
-
-    def range(fromTerm: K, toTerm: K, k: K, inclusiveFrom: Boolean, inclusiveTo: Boolean, fromPrefix: Option[K], toPrefix: Option[K], prefixOrd: Option[Ordering[K]], order: Ordering[K]): Boolean = {
-      ((fromPrefix.isEmpty || prefixOrd.get.equiv(k, fromPrefix.get)) && (inclusiveFrom && order.gteq(k, fromTerm) || !inclusiveFrom && order.gt(k, fromTerm))) &&
-        ((toPrefix.isEmpty || prefixOrd.get.equiv(k, toPrefix.get)) && (inclusiveTo && order.lteq(k, toTerm) || !inclusiveTo && order.lt(k, toTerm)))
-    }
-
     if(!tdata.isEmpty){
+
+      val reverse = rand.nextBoolean()
+      val withPrefix = rand.nextBoolean()
+
+      val inclusiveLower = rand.nextBoolean()
+      val inclusiveUpper = rand.nextBoolean()
+
+      def lt(term: K, k: K, inclusive: Boolean, prefix: Option[K], prefixOrd: Option[Ordering[K]], order: Ordering[K]): Boolean = {
+        (prefix.isEmpty || prefixOrd.get.equiv(k, prefix.get)) && (inclusive && order.lteq(k, term) || !inclusive && order.lt(k, term))
+      }
+
+      def gt(term: K, k: K, inclusive: Boolean, prefix: Option[K], prefixOrd: Option[Ordering[K]], order: Ordering[K]): Boolean = {
+        (prefix.isEmpty || prefixOrd.get.equiv(k, prefix.get)) && (inclusive && order.gteq(k, term) || !inclusive && order.gt(k, term))
+      }
+
+      def range(fromTerm: K, toTerm: K, k: K, inclusiveFrom: Boolean, inclusiveTo: Boolean, fromPrefix: Option[K], toPrefix: Option[K], prefixOrd: Option[Ordering[K]], order: Ordering[K]): Boolean = {
+        ((fromPrefix.isEmpty || prefixOrd.get.equiv(k, fromPrefix.get)) && (inclusiveFrom && order.gteq(k, fromTerm) || !inclusiveFrom && order.gt(k, fromTerm))) &&
+          ((toPrefix.isEmpty || prefixOrd.get.equiv(k, toPrefix.get)) && (inclusiveTo && order.lteq(k, toTerm) || !inclusiveTo && order.lt(k, toTerm)))
+      }
 
       var dlist = Seq.empty[(K, V)]
       var ilist = Seq.empty[(K, V)]
