@@ -153,12 +153,12 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
         ((toPrefix.isEmpty || prefixOrd.get.equiv(k, toPrefix.get)) && (inclusiveTo && order.lteq(k, toTerm) || !inclusiveTo && order.lt(k, toTerm)))
     }
 
-    var dlist = Seq.empty[(K, V)]
-    var ilist = Seq.empty[(K, V)]
-
-    var op = ""
-
     if(!tdata.isEmpty){
+
+      var dlist = Seq.empty[(K, V)]
+      var ilist = Seq.empty[(K, V)]
+
+      var op = ""
 
       val idx = rand.nextInt(0, tdata.length)
       val (fromWord, _) = tdata(idx)
