@@ -6,11 +6,17 @@ abstract class RichAsyncIterator[K, V]() extends AsyncIterator[Seq[Tuple[K, V]]]
   protected var counter = 0
 
   protected var filter: (K, V) => Boolean = (_, _) => true
+  protected var checkPrefix: (K) => Boolean = _ => true
 
   protected var cur: Option[Block[K, V]] = None
 
   protected var firstTime = false
   protected var stop = false
+
+  def withPrefix(f: K => Boolean): RichAsyncIterator[K, V] = synchronized {
+    this.checkPrefix = f
+    this
+  }
 
   def setLimit(lim: Int): Unit = {
     this.limit = lim
