@@ -50,7 +50,7 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
 
     def insert(index: Index[K, V]): Unit = {
 
-      val n = rand.nextInt(1, 50)
+      val n = rand.nextInt(5, 100)
 
       var list = Seq.empty[Tuple[K, V]]
 
@@ -158,99 +158,103 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
 
     var op = ""
 
-    val idx = rand.nextInt(0, tdata.length)
-    val (fromWord, _) = tdata(idx)
-    val fromPrefix = fromWord.slice(0, 3)
-    val fromTerm = fromWord.slice(fromPrefix.length, fromWord.length)
+    if(!tdata.isEmpty){
+      val idx = rand.nextInt(0, tdata.length)
+      val (fromWord, _) = tdata(idx)
+      val fromPrefix = fromWord.slice(0, 3)
+      val fromTerm = fromWord.slice(fromPrefix.length, fromWord.length)
 
-    val (toWord, _) = tdata(rand.nextInt(idx, tdata.length))
-    val toPrefix = toWord.slice(0, 3)
-    val toTerm = toWord.slice(toPrefix.length, toWord.length)
+      val (toWord, _) = tdata(rand.nextInt(idx, tdata.length))
+      val toPrefix = toWord.slice(0, 3)
+      val toTerm = toWord.slice(toPrefix.length, toWord.length)
 
-    val prefixOrd = new Ordering[K] {
-      override def compare(input: K, prefix: K): Int = {
-        if (input.length < prefix.length) {
-          return ord.compare(input, prefix)
+      val prefixOrd = new Ordering[K] {
+        override def compare(input: K, prefix: K): Int = {
+          if (input.length < prefix.length) {
+            return ord.compare(input, prefix)
+          }
+
+          ord.compare(input.slice(0, prefix.length), prefix)
         }
-
-        ord.compare(input.slice(0, prefix.length), prefix)
       }
+
+      rand.nextInt(1, 4) match {
+        case 1 =>
+
+          reverse = rand.nextBoolean()
+
+          if(withPrefix){
+            dlist = tdata.filter{case (k, _) => gt(fromWord, k, inclusiveLower, Some(fromPrefix), Some(prefixOrd), ord)}
+            if(reverse) dlist = dlist.reverse
+
+            op = s"${if(inclusiveLower) ">=" else ">"} prefix: ${new String(fromPrefix)} term: ${new String(fromTerm)} word: ${new String(fromWord)}"
+
+            ilist = Await.result(TestHelper.all(index.gt(fromWord, inclusiveLower, reverse, Some(fromPrefix), Some(prefixOrd))), Duration.Inf)
+          } else {
+
+            dlist = tdata.filter{case (k, _) => gt(fromWord, k, inclusiveLower, None, None, ord)}
+            if(reverse) dlist = dlist.reverse
+
+            op = s"${if(inclusiveLower) ">=" else ">"} word: ${new String(fromWord)}"
+
+            ilist = Await.result(TestHelper.all(index.gt(fromWord, inclusiveLower, reverse, None, None)), Duration.Inf)
+          }
+
+        case 2 =>
+
+          reverse = rand.nextBoolean()
+
+          if(withPrefix){
+            dlist = tdata.filter{case (k, _) => lt(fromWord, k, inclusiveLower, Some(fromPrefix), Some(prefixOrd), ord)}
+            if(reverse) dlist = dlist.reverse
+
+            op = s"${if(inclusiveLower) "<=" else "<"} prefix: ${new String(fromPrefix)} term: ${new String(fromTerm)}"
+
+            ilist = Await.result(TestHelper.all(index.lt(fromWord, inclusiveLower, reverse, Some(fromPrefix), Some(prefixOrd))), Duration.Inf)
+          } else {
+
+            dlist = tdata.filter{case (k, _) => lt(fromWord, k, inclusiveLower, None, None, ord)}
+            if(reverse) dlist = dlist.reverse
+
+            op = s"${if(inclusiveLower) "<=" else "<"} word: ${new String(fromWord)}"
+
+            ilist = Await.result(TestHelper.all(index.lt(fromWord, inclusiveLower, reverse, None, None)), Duration.Inf)
+          }
+
+        case 3 =>
+
+          //withPrefix = false
+          reverse = rand.nextBoolean()
+
+          if(withPrefix){
+
+            dlist = tdata.filter{case (k, _) => range(fromWord, toWord, k, inclusiveLower, inclusiveUpper, Some(fromPrefix), Some(toPrefix), Some(prefixOrd), ord)}
+            if(reverse) dlist = dlist.reverse
+
+            op = s"range: fromPrefix: ${new String(fromPrefix)}-${new String(fromTerm)} ${if(inclusiveLower) "<=" else "<"} x ${if(inclusiveUpper) "<=" else "<"} ${new String(fromPrefix)}-${new String(toTerm)}"
+
+            ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveLower, inclusiveUpper, reverse, Some(fromPrefix), Some(toPrefix), Some(prefixOrd))), Duration.Inf)
+
+          } else {
+            dlist = tdata.filter{case (k, _) => range(fromWord, toWord, k, inclusiveLower, inclusiveUpper, None, None, None, ord)}
+            if(reverse) dlist = dlist.reverse
+
+            op = s"range: ${new String(fromWord)} ${if(inclusiveLower) "<=" else "<"} x ${if(inclusiveUpper) "<=" else "<"} ${new String(toWord)}"
+
+            ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveLower, inclusiveUpper, reverse, None, None, None)), Duration.Inf)
+          }
+
+        case _ =>
+
+      }
+
+      logger.debug(s"${Console.BLUE_B}withPrefix: ${withPrefix} inclusiveLower: ${inclusiveLower} inclusiveUpper: ${inclusiveUpper} reverse: ${reverse}${Console.RESET}\n")
+      logger.debug(s"${Console.MAGENTA_B}${op} dlist: ${dlist.map{case (k, v) => new String(k) /*-> new String(v)*/}}${Console.RESET}\n")
+      logger.debug(s"${Console.BLUE_B}${op} ilist: ${ilist.map{case (k, v) => new String(k) /*-> new String(v)*/}}\n${Console.RESET}")
+      logger.debug(s"${Console.GREEN_B}length: ${ilist.length == dlist.length}${Console.RESET}")
+
+      assert(isColEqual(ilist, dlist))
     }
-
-    rand.nextInt(1, 4) match {
-      case 1 =>
-
-        withPrefix = false
-
-        if(withPrefix){
-          dlist = tdata.filter{case (k, _) => gt(fromWord, k, inclusiveLower, Some(fromPrefix), Some(prefixOrd), ord)}
-          if(reverse) dlist = dlist.reverse
-
-          op = s"${if(inclusiveLower) ">=" else ">"} prefix: ${new String(fromPrefix)} term: ${new String(fromTerm)} word: ${fromWord}"
-
-          ilist = Await.result(TestHelper.all(index.gt(fromWord, inclusiveLower, reverse, Some(fromPrefix), Some(prefixOrd))), Duration.Inf)
-        } else {
-
-          dlist = tdata.filter{case (k, _) => gt(fromWord, k, inclusiveLower, None, None, ord)}
-          if(reverse) dlist = dlist.reverse
-
-          op = s"${if(inclusiveLower) ">=" else ">"} word: ${new String(fromWord)}"
-
-          ilist = Await.result(TestHelper.all(index.gt(fromWord, inclusiveLower, reverse, None, None)), Duration.Inf)
-        }
-
-      case 2 =>
-
-        if(withPrefix){
-          dlist = tdata.filter{case (k, _) => lt(fromWord, k, inclusiveLower, Some(fromPrefix), Some(prefixOrd), ord)}
-          if(reverse) dlist = dlist.reverse
-
-          op = s"${if(inclusiveLower) "<=" else "<"} prefix: ${new String(fromPrefix)} term: ${new String(fromTerm)}"
-
-          ilist = Await.result(TestHelper.all(index.lt(fromWord, inclusiveLower, reverse, Some(fromPrefix), Some(prefixOrd))), Duration.Inf)
-        } else {
-
-          dlist = tdata.filter{case (k, _) => lt(fromWord, k, inclusiveLower, None, None, ord)}
-          if(reverse) dlist = dlist.reverse
-
-          op = s"${if(inclusiveLower) "<=" else "<"} word: ${new String(fromWord)}"
-
-          ilist = Await.result(TestHelper.all(index.lt(fromWord, inclusiveLower, reverse, None, None)), Duration.Inf)
-        }
-
-      case 3 =>
-
-        if(withPrefix){
-
-          dlist = tdata.filter{case (k, _) => range(fromWord, toWord, k, inclusiveLower, inclusiveUpper, Some(fromPrefix), Some(toPrefix), Some(prefixOrd), ord)}
-          if(reverse) dlist = dlist.reverse
-
-          op = s"range: fromPrefix: ${new String(fromPrefix)}-${new String(fromTerm)} ${if(inclusiveLower) "<=" else "<"} x ${if(inclusiveUpper) "<=" else "<"} ${new String(fromPrefix)}-${new String(toTerm)}"
-
-          ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveLower, inclusiveUpper, reverse, Some(fromPrefix), Some(toPrefix), Some(prefixOrd))), Duration.Inf)
-
-        } else {
-          dlist = tdata.filter{case (k, _) => range(fromWord, toWord, k, inclusiveLower, inclusiveUpper, None, None, None, ord)}
-          if(reverse) dlist = dlist.reverse
-
-          op = s"range: ${new String(fromWord)} ${if(inclusiveLower) "<=" else "<"} x ${if(inclusiveUpper) "<=" else "<"} ${new String(toWord)}"
-
-          ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveLower, inclusiveUpper, reverse, None, None, None)), Duration.Inf)
-        }
-
-      case _ =>
-
-    }
-
-    logger.debug(s"${Console.BLUE_B}withPrefix: ${withPrefix} inclusiveLower: ${inclusiveLower} inclusiveUpper: ${inclusiveUpper} reverse: ${reverse}${Console.RESET}\n")
-    logger.debug(s"${Console.MAGENTA_B}${op} dlist: ${dlist.map{case (k, v) => new String(k) /*-> new String(v)*/}}${Console.RESET}\n")
-    logger.debug(s"${Console.BLUE_B}${op} ilist: ${ilist.map{case (k, v) => new String(k) /*-> new String(v)*/}}\n${Console.RESET}")
-    logger.debug(s"${Console.GREEN_B}length: ${ilist.length == dlist.length}${Console.RESET}")
-
-    assert(isColEqual(ilist, dlist))
-
-    //assert(!dlist.isEmpty)
-
   }
 
 }
