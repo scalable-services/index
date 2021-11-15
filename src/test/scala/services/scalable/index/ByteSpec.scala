@@ -188,7 +188,7 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
 
             op = s"${if(inclusiveLower) ">=" else ">"} prefix: ${new String(fromPrefix)} term: ${new String(fromTerm)} word: ${new String(fromWord)}"
 
-            ilist = Await.result(TestHelper.all(index.gt(fromWord, inclusiveLower, reverse, Some(fromPrefix), Some(prefixOrd))), Duration.Inf)
+            ilist = Await.result(TestHelper.all(index.gt(fromWord, inclusiveLower, reverse, Some(fromPrefix), Some(prefixOrd), ord)), Duration.Inf)
           } else {
 
             dlist = tdata.filter{case (k, _) => gt(fromWord, k, inclusiveLower, None, None, ord)}
@@ -196,7 +196,7 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
 
             op = s"${if(inclusiveLower) ">=" else ">"} word: ${new String(fromWord)}"
 
-            ilist = Await.result(TestHelper.all(index.gt(fromWord, inclusiveLower, reverse, None, None)), Duration.Inf)
+            ilist = Await.result(TestHelper.all(index.gt(fromWord, inclusiveLower, reverse, None, None, ord)), Duration.Inf)
           }
 
         case 2 =>
@@ -207,7 +207,7 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
 
             op = s"${if(inclusiveLower) "<=" else "<"} prefix: ${new String(fromPrefix)} term: ${new String(fromTerm)}"
 
-            ilist = Await.result(TestHelper.all(index.lt(fromWord, inclusiveLower, reverse, Some(fromPrefix), Some(prefixOrd))), Duration.Inf)
+            ilist = Await.result(TestHelper.all(index.lt(fromWord, inclusiveLower, reverse, Some(fromPrefix), Some(prefixOrd), ord)), Duration.Inf)
           } else {
 
             dlist = tdata.filter{case (k, _) => lt(fromWord, k, inclusiveLower, None, None, ord)}
@@ -215,7 +215,7 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
 
             op = s"${if(inclusiveLower) "<=" else "<"} word: ${new String(fromWord)}"
 
-            ilist = Await.result(TestHelper.all(index.lt(fromWord, inclusiveLower, reverse, None, None)), Duration.Inf)
+            ilist = Await.result(TestHelper.all(index.lt(fromWord, inclusiveLower, reverse, None, None, ord)), Duration.Inf)
           }
 
         case 3 =>
@@ -227,7 +227,7 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
 
             op = s"range: fromPrefix: ${new String(fromPrefix)}-${new String(fromTerm)} ${if(inclusiveLower) "<=" else "<"} x ${if(inclusiveUpper) "<=" else "<"} ${new String(fromPrefix)}-${new String(toTerm)}"
 
-            ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveLower, inclusiveUpper, reverse, Some(fromPrefix), Some(toPrefix), Some(prefixOrd))), Duration.Inf)
+            ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveLower, inclusiveUpper, reverse, Some(fromPrefix), Some(toPrefix), Some(prefixOrd), ord)), Duration.Inf)
 
           } else {
             dlist = tdata.filter{case (k, _) => range(fromWord, toWord, k, inclusiveLower, inclusiveUpper, None, None, None, ord)}
@@ -235,7 +235,7 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
 
             op = s"range: ${new String(fromWord)} ${if(inclusiveLower) "<=" else "<"} x ${if(inclusiveUpper) "<=" else "<"} ${new String(toWord)}"
 
-            ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveLower, inclusiveUpper, reverse, None, None, None)), Duration.Inf)
+            ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveLower, inclusiveUpper, reverse, None, None, None, ord)), Duration.Inf)
           }
 
         case _ =>

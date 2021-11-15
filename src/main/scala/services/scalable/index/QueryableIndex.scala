@@ -11,9 +11,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
   override val $this = this
 
-  protected def gtr(word: K, inclusive: Boolean, prefix: Option[K], prefixOrd: Option[Ordering[K]]): RichAsyncIterator[K, V] = {
-
-    val order = $this.order
+  protected def gtr(word: K, inclusive: Boolean, prefix: Option[K], prefixOrd: Option[Ordering[K]], order: Ordering[K]): RichAsyncIterator[K, V] = {
 
     new RichAsyncIterator[K, V] {
 
@@ -90,13 +88,11 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
     }
   }
 
-  def gt(word: K, inclusive: Boolean, reverse: Boolean, prefix: Option[K], prefixOrd: Option[Ordering[K]]): RichAsyncIterator[K, V] = {
+  def gt(word: K, inclusive: Boolean, reverse: Boolean, prefix: Option[K], prefixOrd: Option[Ordering[K]], order: Ordering[K]): RichAsyncIterator[K, V] = {
 
     if(reverse){
-      return gtr(word, inclusive, prefix, prefixOrd)
+      return gtr(word, inclusive, prefix, prefixOrd, order)
     }
-
-    val order = $this.order
 
     new RichAsyncIterator[K, V] {
 
@@ -155,11 +151,9 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
     }
   }
 
-  protected def ltr(word: K, inclusive: Boolean, prefix: Option[K], prefixOrd: Option[Ordering[K]]): RichAsyncIterator[K, V] = {
+  protected def ltr(word: K, inclusive: Boolean, prefix: Option[K], prefixOrd: Option[Ordering[K]], order: Ordering[K]): RichAsyncIterator[K, V] = {
 
     new RichAsyncIterator[K, V] {
-
-      val order = $this.order
 
       override def hasNext(): Future[Boolean] = {
         if(!firstTime) return Future.successful(ctx.root.isDefined)
@@ -216,15 +210,13 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
     }
   }
 
-  def lt(word: K, inclusive: Boolean, reverse: Boolean, prefix: Option[K], prefixOrd: Option[Ordering[K]]): RichAsyncIterator[K, V] = {
+  def lt(word: K, inclusive: Boolean, reverse: Boolean, prefix: Option[K], prefixOrd: Option[Ordering[K]], order: Ordering[K]): RichAsyncIterator[K, V] = {
 
     if(reverse){
-      return ltr(word, inclusive, prefix, prefixOrd)
+      return ltr(word, inclusive, prefix, prefixOrd, order)
     }
 
     new RichAsyncIterator[K, V] {
-
-      val order = $this.order
 
       val sord = if(prefix.isDefined) new Ordering[K] {
         override def compare(x: K, y: K): Int = {
@@ -292,11 +284,9 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
   }
 
   def ranger(fromWord: K, toWord: K, inclusiveFrom: Boolean, inclusiveTo: Boolean,
-             fromPrefix: Option[K], toPrefix: Option[K], prefixOrd: Option[Ordering[K]]): RichAsyncIterator[K, V] = {
+             fromPrefix: Option[K], toPrefix: Option[K], prefixOrd: Option[Ordering[K]], order: Ordering[K]): RichAsyncIterator[K, V] = {
 
     new RichAsyncIterator[K, V] {
-
-      val order = $this.order
 
       val sord = if(toPrefix.isDefined) new Ordering[K] {
         override def compare(x: K, y: K): Int = {
@@ -365,21 +355,19 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
   }
 
   def range(fromWord: K, toWord: K, inclusiveFrom: Boolean, inclusiveTo: Boolean, reverse: Boolean,
-            fromPrefix: Option[K], toPrefix: Option[K], prefixOrd: Option[Ordering[K]]): RichAsyncIterator[K, V] = {
+            fromPrefix: Option[K], toPrefix: Option[K], prefixOrd: Option[Ordering[K]], order: Ordering[K]): RichAsyncIterator[K, V] = {
 
     if(reverse){
-      return ranger(fromWord, toWord, inclusiveFrom, inclusiveTo, fromPrefix, toPrefix, prefixOrd)
+      return ranger(fromWord, toWord, inclusiveFrom, inclusiveTo, fromPrefix, toPrefix, prefixOrd, order)
     }
 
     new RichAsyncIterator[K, V] {
 
-      val order = $this.order
-
-      val sord = new Ordering[K] {
+      /*val sord = new Ordering[K] {
         override def compare(x: K, y: K): Int = {
           order.compare(fromWord, y)
         }
-      }
+      }*/
 
       override def hasNext(): Future[Boolean] = {
         if(!firstTime) return Future.successful(ctx.root.isDefined)
@@ -395,7 +383,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
         if(!firstTime){
           firstTime = true
 
-          return findPath(fromWord)(sord).flatMap {
+          return findPath(fromWord)(order).flatMap {
             case None =>
               cur = None
               Future.successful(Seq.empty[Tuple[K, V]])
@@ -417,7 +405,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
           }
         }
 
-        $this.next(cur.map(_.unique_id))(sord).map {
+        $this.next(cur.map(_.unique_id))(order).map {
           case None =>
             cur = None
             Seq.empty[Tuple[K, V]]
