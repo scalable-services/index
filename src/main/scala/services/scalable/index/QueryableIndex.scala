@@ -425,6 +425,30 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
     }
   }
 
+  def gt(word: K, inclusive: Boolean, reverse: Boolean)(order: Ordering[K]): RichAsyncIterator[K, V] = {
+    gt(word, inclusive, reverse, None, None, order)
+  }
+
+  def gt(prefix: K, word: K, inclusive: Boolean, reverse: Boolean)(prefixOrd: Ordering[K], order: Ordering[K]): RichAsyncIterator[K, V] = {
+    gt(word, inclusive, reverse, Some(prefix), Some(prefixOrd), order)
+  }
+
+  def lt(word: K, inclusive: Boolean, reverse: Boolean)(order: Ordering[K]): RichAsyncIterator[K, V] = {
+    lt(word, inclusive, reverse, None, None, order)
+  }
+
+  def lt(prefix: K, word: K, inclusive: Boolean, reverse: Boolean)(prefixOrd: Ordering[K], order: Ordering[K]): RichAsyncIterator[K, V] = {
+    lt(word, inclusive, reverse, Some(prefix), Some(prefixOrd), order)
+  }
+
+  def range(fromWord: K, toWord: K, inclusiveFrom: Boolean, inclusiveTo: Boolean, reverse: Boolean)(order: Ordering[K]): RichAsyncIterator[K, V] = {
+    range(fromWord, toWord, inclusiveFrom, inclusiveTo, reverse, None, None, None, order)
+  }
+
+  def range(fromPrefix: K, fromWord: K, toPrefix: K, toWord: K, inclusiveFrom: Boolean, inclusiveTo: Boolean, reverse: Boolean)(prefixOrd: Ordering[K], order: Ordering[K]): RichAsyncIterator[K, V] = {
+    range(fromWord, toWord, inclusiveFrom, inclusiveTo, reverse, Some(fromPrefix), Some(toPrefix), Some(prefixOrd), order)
+  }
+
   def printDatom(d: Datom, p: String): String = {
     p match {
       case "users/:name" => s"[${d.a},${new String(d.getV.toByteArray)},${d.e},${d.t}]"
