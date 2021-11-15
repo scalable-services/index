@@ -159,6 +159,7 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
     var op = ""
 
     if(!tdata.isEmpty){
+
       val idx = rand.nextInt(0, tdata.length)
       val (fromWord, _) = tdata(idx)
       val fromPrefix = fromWord.slice(0, 3)
@@ -247,6 +248,7 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
       logger.debug(s"${Console.GREEN_B}length: ${ilist.length == dlist.length}${Console.RESET}")
 
       assert(isColEqual(ilist, dlist))
+
     }
   }
 
