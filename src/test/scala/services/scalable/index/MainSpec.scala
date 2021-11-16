@@ -194,7 +194,7 @@ class MainSpec extends AnyFlatSpec with Repeatable {
     val properties = Seq("users/:age", "users/:color", "users/:height")
 
     val from_prefix = properties(rand.nextInt(0, properties.length))
-    val to_prefix = from_prefix//properties(rand.nextInt(0, properties.length))
+    val to_prefix = properties(rand.nextInt(0, properties.length))
 
     val fromPrefix = Datom(a = Some(from_prefix))
     val toPrefix = Datom(a = Some(from_prefix))
@@ -202,7 +202,25 @@ class MainSpec extends AnyFlatSpec with Repeatable {
     var fromWord: Datom = null
     var toWord: Datom = null
 
-    from_prefix match {
+    def generateRandom(prefix: String): Datom = {
+      prefix match {
+        case "users/:age" =>
+          val lv = rand.nextInt(18, 100)
+          Datom(a = Some(prefix), v = Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(lv).flip().array())))
+
+        case "users/:color" =>
+
+          val lv = colors(rand.nextInt(0, colors.length))
+          Datom(Some(prefix), Some(ByteString.copyFrom(lv.getBytes())))
+
+        case "users/:height" =>
+
+          val lv = rand.nextInt(150, 210)
+          Datom(Some(prefix), Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(lv).flip().array())))
+      }
+    }
+
+    /*from_prefix match {
       case "users/:age" =>
 
         val lv = rand.nextInt(18, 100)
@@ -227,21 +245,14 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
         fromWord = Datom(Some(from_prefix), Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(lv).flip().array())))
         toWord = Datom(Some(to_prefix), Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(uv).flip().array())))
-    }
+    }*/
+
+    fromWord = generateRandom(from_prefix)
+    toWord = generateRandom(to_prefix)
 
     val prefixOrd = new Ordering[Datom] {
       override def compare(pre: Datom, prefix: Datom): Int = {
         pre.getA.compareTo(prefix.getA)
-      }
-    }
-
-    val termOrd = new Ordering[Datom] {
-      override def compare(x: Datom, y: Datom): Int = {
-        val r = prefixOrd.compare(x, y)
-
-        if(r != 0) return r
-
-        ord.compare(x.getV.toByteArray, y.getV.toByteArray)
       }
     }
 
@@ -263,9 +274,6 @@ class MainSpec extends AnyFlatSpec with Repeatable {
       ((fromPrefix.isEmpty || prefixOrd.get.equiv(k, fromPrefix.get)) && (inclusiveFrom && order.gteq(k, fromTerm) || !inclusiveFrom && order.gt(k, fromTerm))) &&
         ((toPrefix.isEmpty || prefixOrd.get.equiv(k, toPrefix.get)) && (inclusiveTo && order.lteq(k, toTerm) || !inclusiveTo && order.lt(k, toTerm)))
     }
-
-    //withPrefix = true
-    //reverse = false
 
     rand.nextInt(1, 4) match {
       case 1 =>
