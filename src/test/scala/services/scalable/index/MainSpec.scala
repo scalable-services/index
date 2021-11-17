@@ -281,8 +281,17 @@ class MainSpec extends AnyFlatSpec with Repeatable {
     }
 
     def range(fromWord: Datom, toWord: Datom, inclusiveFrom: Boolean, inclusiveTo: Boolean, fromPrefix: Option[Datom], toPrefix: Option[Datom], prefixOrd: Option[Ordering[Datom]], order: Ordering[Datom]): Seq[(Datom, Bytes)] = {
-      val idx = tdata.indexWhere{case (k, _) => if(inclusiveLower) termOrd.gteq(k, fromWord) else termOrd.gt(k, fromWord) }
-      tdata.slice(idx, tdata.length).takeWhile{case (k, _) => if(inclusiveUpper) termOrd.lteq(k, toWord) else termOrd.lt(k, toWord)}
+
+      def cond: (Datom) => Boolean = (k: Datom) =>
+        (fromPrefix.isEmpty || (inclusiveFrom && prefixOrd.get.gteq(k, fromPrefix.get) || !inclusiveFrom && prefixOrd.get.gt(k, fromPrefix.get))) &&
+          (toPrefix.isEmpty || (inclusiveTo && prefixOrd.get.lteq(k, toPrefix.get) || !inclusiveTo && prefixOrd.get.lt(k, toPrefix.get))) &&
+          (inclusiveFrom && order.gteq(k, fromWord) || !inclusiveFrom && order.gt(k, fromWord)) &&
+          (inclusiveTo && order.lteq(k, toWord) || !inclusiveTo && order.lt(k, toWord))
+
+      /*val idx = tdata.indexWhere{case (k, _) => if(inclusiveFrom) order.gteq(k, fromWord) else order.gt(k, fromWord) }
+      tdata.slice(idx, tdata.length).takeWhile{case (k, _) => if(inclusiveTo) order.lteq(k, toWord) else order.lt(k, toWord)}*/
+
+      tdata.filter{case (k, _) => cond(k)}
     }
 
     rand.nextInt(3, 4) match {
@@ -332,8 +341,8 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
       case 3 =>
 
-        inclusiveLower = false
-        withPrefix = false
+        inclusiveLower = rand.nextBoolean()
+        withPrefix = rand.nextBoolean()
         reverse = false//rand.nextBoolean()
 
         if(withPrefix){

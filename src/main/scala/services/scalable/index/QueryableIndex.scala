@@ -304,8 +304,8 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
       }
 
       def check(k: K): Boolean = {
-        /*(fromPrefix.isDefined && (inclusiveFrom && prefixOrd.get.gteq(k, fromPrefix.get) || !inclusiveFrom && prefixOrd.get.gt(k, fromPrefix.get))) &&
-          (toPrefix.isDefined && (inclusiveTo && prefixOrd.get.lteq(k, toPrefix.get) || !inclusiveTo && prefixOrd.get.lt(k, toPrefix.get))) &&*/
+        (fromPrefix.isEmpty || (inclusiveFrom && prefixOrd.get.gteq(k, fromPrefix.get) || !inclusiveFrom && prefixOrd.get.gt(k, fromPrefix.get))) &&
+          (toPrefix.isEmpty || (inclusiveTo && prefixOrd.get.lteq(k, toPrefix.get) || !inclusiveTo && prefixOrd.get.lt(k, toPrefix.get))) &&
           (inclusiveFrom && order.gteq(k, fromWord) || !inclusiveFrom && order.gt(k, fromWord)) &&
           (inclusiveTo && order.lteq(k, toWord) || !inclusiveTo && order.lt(k, toWord))
       }
@@ -325,8 +325,10 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
               val filtered = b.tuples.filter{case (k, _) => check(k) }.reverse
               //stop = filtered.isEmpty
 
-               println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => k.asInstanceOf[Datom]}.map(d => printDatom(d, d.getA))} filtered: ${filtered.length}${Console.RESET}\n")
-              //println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k.asInstanceOf[Bytes])}} filtered: ${filtered.length}${Console.RESET}\n")
+              if(fromWord.isInstanceOf[Datom])
+                println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => k.asInstanceOf[Datom]}.map(d => printDatom(d, d.getA))} filtered: ${filtered.length}${Console.RESET}\n")
+              else println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k.asInstanceOf[Bytes])}} filtered: ${filtered.length}${Console.RESET}\n")
+
 
               if(filtered.isEmpty){
                 next()
@@ -347,8 +349,9 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
             val filtered = b.tuples.filter{case (k, _) => check(k) }.reverse
             stop = filtered.isEmpty
 
-            println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => k.asInstanceOf[Datom]}.map(d => printDatom(d, d.getA))} filtered: ${filtered.length}${Console.RESET}\n")
-           // println(s"${Console.BLUE_B}${b.tuples.map{case (k, _) => new String(k.asInstanceOf[Bytes])}} filtered: ${filtered.length}${Console.RESET}\n")
+            if(fromWord.isInstanceOf[Datom])
+              println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => k.asInstanceOf[Datom]}.map(d => printDatom(d, d.getA))} filtered: ${filtered.length}${Console.RESET}\n")
+            else println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k.asInstanceOf[Bytes])}} filtered: ${filtered.length}${Console.RESET}\n")
 
             checkCounter(filtered.filter{case (k, v) => filter(k, v) })
         }
@@ -375,7 +378,11 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
         }
       } else new Ordering[K] {
         override def compare(x: K, y: K): Int = {
-          order.compare(fromWord, y)
+          val r = order.compare(fromWord, y)
+
+          if(r != 0) return r
+
+          -1
         }
       }
 
@@ -385,10 +392,9 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
       }
 
       def check(k: K): Boolean = {
-        /*(fromPrefix.isDefined && (inclusiveFrom && prefixOrd.get.gteq(k, fromPrefix.get) || !inclusiveFrom && prefixOrd.get.gt(k, fromPrefix.get))) &&
-          (toPrefix.isDefined && (inclusiveTo && prefixOrd.get.lteq(k, toPrefix.get) || !inclusiveTo && prefixOrd.get.lt(k, toPrefix.get))) &&*/
-
-        (inclusiveFrom && order.gteq(k, fromWord) || !inclusiveFrom && order.gt(k, fromWord)) &&
+        (fromPrefix.isEmpty || (inclusiveFrom && prefixOrd.get.gteq(k, fromPrefix.get) || !inclusiveFrom && prefixOrd.get.gt(k, fromPrefix.get))) &&
+          (toPrefix.isEmpty || (inclusiveTo && prefixOrd.get.lteq(k, toPrefix.get) || !inclusiveTo && prefixOrd.get.lt(k, toPrefix.get))) &&
+          (inclusiveFrom && order.gteq(k, fromWord) || !inclusiveFrom && order.gt(k, fromWord)) &&
           (inclusiveTo && order.lteq(k, toWord) || !inclusiveTo && order.lt(k, toWord))
       }
 
@@ -407,8 +413,9 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
               val filtered = b.tuples.filter{case (k, _) => check(k) }
               //stop = filtered.isEmpty
 
-               println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => k.asInstanceOf[Datom]}.map(d => printDatom(d, d.getA))} filtered: ${filtered.length}${Console.RESET}\n")
-              //println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k.asInstanceOf[Bytes])}} filtered: ${filtered.length}${Console.RESET}\n")
+              if(fromWord.isInstanceOf[Datom])
+              println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => k.asInstanceOf[Datom]}.map(d => printDatom(d, d.getA))} filtered: ${filtered.length}${Console.RESET}\n")
+              else println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k.asInstanceOf[Bytes])}} filtered: ${filtered.length}${Console.RESET}\n")
 
               if(filtered.isEmpty){
                 next()
@@ -429,8 +436,10 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
             val filtered = b.tuples.filter{case (k, _) => check(k) }
             stop = filtered.isEmpty
 
-            println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => k.asInstanceOf[Datom]}.map(d => printDatom(d, d.getA))} filtered: ${filtered.length}${Console.RESET}\n")
-            //println(s"${Console.BLUE_B}${b.tuples.map{case (k, _) => new String(k.asInstanceOf[Bytes])}} filtered: ${filtered.length}${Console.RESET}\n")
+            if(fromWord.isInstanceOf[Datom])
+              println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => k.asInstanceOf[Datom]}.map(d => printDatom(d, d.getA))} filtered: ${filtered.length}${Console.RESET}\n")
+            else println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k.asInstanceOf[Bytes])}} filtered: ${filtered.length}${Console.RESET}\n")
+
 
             checkCounter(filtered.filter{case (k, v) => filter(k, v) })
         }

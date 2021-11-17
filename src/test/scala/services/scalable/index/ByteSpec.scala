@@ -18,7 +18,7 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
 
   val logger = LoggerFactory.getLogger(this.getClass)
 
-  override val times: Int = 10000
+  override val times: Int = 1000
 
   val rand = ThreadLocalRandom.current()
 
@@ -114,7 +114,7 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
     val index = new QueryableIndex[K, V]()
 
     for(i<-0 until iter){
-      rand.nextInt(1, 4) match {
+      rand.nextInt(1, 2) match {
         case 1 => insert(index)
         case 2 => update(index)
         case 3 => remove(index)
@@ -136,7 +136,7 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
 
     if(!tdata.isEmpty){
 
-      val reverse = rand.nextBoolean()
+      var reverse = rand.nextBoolean()
       val withPrefix = rand.nextBoolean()
 
       val inclusiveLower = rand.nextBoolean()
@@ -150,9 +150,20 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
         (prefix.isEmpty || prefixOrd.get.equiv(k, prefix.get)) && (inclusive && order.gteq(k, term) || !inclusive && order.gt(k, term))
       }
 
-      def range(fromTerm: K, toTerm: K, k: K, inclusiveFrom: Boolean, inclusiveTo: Boolean, fromPrefix: Option[K], toPrefix: Option[K], prefixOrd: Option[Ordering[K]], order: Ordering[K]): Boolean = {
+      /*def range(fromTerm: K, toTerm: K, k: K, inclusiveFrom: Boolean, inclusiveTo: Boolean, fromPrefix: Option[K], toPrefix: Option[K], prefixOrd: Option[Ordering[K]], order: Ordering[K]): Boolean = {
         ((fromPrefix.isEmpty || prefixOrd.get.equiv(k, fromPrefix.get)) && (inclusiveFrom && order.gteq(k, fromTerm) || !inclusiveFrom && order.gt(k, fromTerm))) &&
           ((toPrefix.isEmpty || prefixOrd.get.equiv(k, toPrefix.get)) && (inclusiveTo && order.lteq(k, toTerm) || !inclusiveTo && order.lt(k, toTerm)))
+      }*/
+
+      def range(fromWord: K, toWord: K, inclusiveFrom: Boolean, inclusiveTo: Boolean, fromPrefix: Option[K], toPrefix: Option[K], prefixOrd: Option[Ordering[K]], order: Ordering[K]): Seq[(K, V)] = {
+
+        def cond: (K) => Boolean = (k: K) =>
+          (fromPrefix.isEmpty || (inclusiveFrom && prefixOrd.get.gteq(k, fromPrefix.get) || !inclusiveFrom && prefixOrd.get.gt(k, fromPrefix.get))) &&
+            (toPrefix.isEmpty || (inclusiveTo && prefixOrd.get.lteq(k, toPrefix.get) || !inclusiveTo && prefixOrd.get.lt(k, toPrefix.get))) &&
+            (inclusiveFrom && order.gteq(k, fromWord) || !inclusiveFrom && order.gt(k, fromWord)) &&
+            (inclusiveTo && order.lteq(k, toWord) || !inclusiveTo && order.lt(k, toWord))
+
+        tdata.filter{case (k, _) => cond(k)}
       }
 
       var dlist = Seq.empty[(K, V)]
@@ -179,7 +190,7 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
         }
       }
 
-      rand.nextInt(1, 4) match {
+      rand.nextInt(3, 4) match {
         case 1 =>
 
           if(withPrefix){
@@ -220,9 +231,14 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
 
         case 3 =>
 
+          reverse = false
+
           if(withPrefix){
 
-            dlist = tdata.filter{case (k, _) => range(fromWord, toWord, k, inclusiveLower, inclusiveUpper, Some(fromPrefix), Some(toPrefix), Some(prefixOrd), ord)}
+            /*dlist = tdata.filter{case (k, _) => range(fromWord, toWord, k, inclusiveLower, inclusiveUpper, Some(fromPrefix), Some(toPrefix), Some(prefixOrd), ord)}
+            if(reverse) dlist = dlist.reverse*/
+
+            dlist = range(fromWord, toWord, inclusiveLower, inclusiveUpper, Some(fromPrefix), Some(toPrefix), Some(prefixOrd), ord)
             if(reverse) dlist = dlist.reverse
 
             op = s"range: fromPrefix: ${new String(fromPrefix)}-${new String(fromTerm)} ${if(inclusiveLower) "<=" else "<"} x ${if(inclusiveUpper) "<=" else "<"} ${new String(fromPrefix)}-${new String(toTerm)}"
@@ -230,7 +246,10 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
             ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveLower, inclusiveUpper, reverse, Some(fromPrefix), Some(toPrefix), Some(prefixOrd), ord)), Duration.Inf)
 
           } else {
-            dlist = tdata.filter{case (k, _) => range(fromWord, toWord, k, inclusiveLower, inclusiveUpper, None, None, None, ord)}
+            /*dlist = tdata.filter{case (k, _) => range(fromWord, toWord, k, inclusiveLower, inclusiveUpper, None, None, None, ord)}
+            if(reverse) dlist = dlist.reverse*/
+
+            dlist = range(fromWord, toWord, inclusiveLower, inclusiveUpper, None, None, None, ord)
             if(reverse) dlist = dlist.reverse
 
             op = s"range: ${new String(fromWord)} ${if(inclusiveLower) "<=" else "<"} x ${if(inclusiveUpper) "<=" else "<"} ${new String(toWord)}"
