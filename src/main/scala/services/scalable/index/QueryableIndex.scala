@@ -20,7 +20,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
         override def compare(x: K, y: K): Int = {
           val r = order.compare(fromWord, y)
 
-          if(r != 0) return r
+          if(r < 0) return r
 
           1
         }

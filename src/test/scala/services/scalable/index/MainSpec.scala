@@ -8,7 +8,7 @@ import org.slf4j.LoggerFactory
 import services.scalable.index.grpc.Datom
 import services.scalable.index.impl._
 
-import java.util.UUID
+import java.util.{Comparator, UUID}
 import java.util.concurrent.ThreadLocalRandom
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.Await
@@ -16,6 +16,8 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 import scala.language.postfixOps
 import com.google.protobuf.any.Any
+
+import java.util
 
 class MainSpec extends AnyFlatSpec with Repeatable {
 
@@ -304,7 +306,7 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
     reverse = false
     withPrefix = false
-    inclusiveFrom = rand.nextBoolean()
+    inclusiveFrom = false//rand.nextBoolean()
     inclusiveTo = rand.nextBoolean()
 
     fromWord = x._1
@@ -336,6 +338,20 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
       def cond: Datom => Boolean = k => ((inclusiveFrom && termOrd.gteq(k, fromWord)) || (!inclusiveFrom && termOrd.gt(k, fromWord))) &&
         ((inclusiveTo && termOrd.lteq(k, toWord)) || (!inclusiveTo && termOrd.lt(k, toWord)))
+
+      /*val idx = tdata.indexWhere{case (k, _) => cond(k)}
+      dlist = tdata.slice(idx, tdata.length).takeWhile{case (k, _) => cond(k)}
+      if(reverse) dlist = dlist.reverse*/
+
+      /*val idx = if(!inclusiveFrom) util.Arrays.binarySearch(tdata.map(_._1).toArray, 0, tdata.length, fromWord, new Comparator[Datom]{
+        override def compare(x: Datom, y: Datom): Int = {
+          val r = termOrd.compare(y, fromWord)
+
+          if(r < 0) return r
+
+          1
+        }
+      })*/
 
       val idx = tdata.indexWhere{case (k, _) => cond(k)}
       dlist = tdata.slice(idx, tdata.length).takeWhile{case (k, _) => cond(k)}
