@@ -373,26 +373,40 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
     }
   }
 
-  /*def lt(fromWord: K, inclusiveFrom: Boolean, reverse: Boolean,
+  def lt(fromWord: K, inclusiveFrom: Boolean, reverse: Boolean,
          fromPrefix: Option[K], prefixOrd: Option[Ordering[K]], order: Ordering[K]): RichAsyncIterator[K, V] = {
+
+    /*if(reverse){
+      return gtr(fromWord, inclusiveFrom, fromPrefix, prefixOrd, order)
+    }*/
 
     new RichAsyncIterator[K, V] {
 
-      val sord = if(!inclusiveFrom) new Ordering[K] {
-        override def compare(x: K, y: K): Int = {
-          val r = -order.compare(y, fromWord)
+      var sord: Ordering[K] = null
 
-          if(r < 0) return r
+      if(fromPrefix.isDefined){
+        sord = if(!inclusiveFrom) new Ordering[K] {
+          override def compare(x: K, y: K): Int = {
+            val r = -prefixOrd.get.compare(y, fromPrefix.get)
 
-          1
+            if(r > 0) return r
+
+            -1
+          }
+        } else new Ordering[K] {
+          override def compare(x: K, y: K): Int = {
+            val r = -prefixOrd.get.compare(y, fromPrefix.get)
+
+            if(r != 0) return r
+
+            -1
+          }
         }
-      } else new Ordering[K] {
-        override def compare(x: K, y: K): Int = {
-          val r = -order.compare(y, fromWord)
-
-          if(r != 0) return r
-
-          -1
+      } else {
+        sord = new Ordering[K] {
+          override def compare(x: K, y: K): Int = {
+            -1
+          }
         }
       }
 
@@ -402,7 +416,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
       }
 
       def check(k: K): Boolean = {
-        (inclusiveFrom && order.gteq(k, fromWord)) || (!inclusiveFrom && order.gt(k, fromWord))
+        (fromPrefix.isEmpty || prefixOrd.get.equiv(k, fromPrefix.get)) && (inclusiveFrom && order.lteq(k, fromWord) || !inclusiveFrom && order.lt(k, fromWord))
       }
 
       override def next(): Future[Seq[Tuple[K, V]]] = {
@@ -452,7 +466,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
         }
       }
     }
-  }*/
+  }
 
   def printDatom(d: Datom, p: String): String = {
     p match {

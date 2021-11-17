@@ -312,7 +312,7 @@ class MainSpec extends AnyFlatSpec with Repeatable {
       toWord = y._3
     }*/
 
-    rand.nextInt(1, 2) match {
+    rand.nextInt(1, 3) match {
       case 1 =>
 
         reverse = rand.nextBoolean()
@@ -331,6 +331,21 @@ class MainSpec extends AnyFlatSpec with Repeatable {
         ilist = Await.result(TestHelper.all(index.gt(fromWord, inclusiveFrom, reverse, fp, fpo, termOrd)), Duration.Inf)
 
       case 2 =>
+
+        reverse = false//rand.nextBoolean()
+        withPrefix = rand.nextBoolean()
+        inclusiveFrom = rand.nextBoolean()
+
+        val fp = if(withPrefix) Some(fromPrefix) else None
+        val fpo = if(withPrefix) Some(prefixOrd) else None
+
+        val idx = tdata.indexWhere{case (k, _) => lt(fromWord, k, inclusiveFrom, fp, fpo, termOrd)}
+        dlist = tdata.slice(idx, tdata.length).takeWhile{case (k, _) => lt(fromWord, k, inclusiveFrom, fp, fpo, termOrd)}
+        if(reverse) dlist = dlist.reverse
+
+        op = s"${if(inclusiveFrom) "<=" else "<"} ${printDatom(fromWord, fromWord.getA)}"
+
+        ilist = Await.result(TestHelper.all(index.lt(fromWord, inclusiveFrom, reverse, fp, fpo, termOrd)), Duration.Inf)
 
       case 3 =>
 

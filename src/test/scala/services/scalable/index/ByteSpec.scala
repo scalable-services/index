@@ -206,12 +206,27 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
 
         case 2 =>
 
+          reverse = false//rand.nextBoolean()
+          withPrefix = rand.nextBoolean()
+          inclusiveFrom = rand.nextBoolean()
+
+          val fp = if(withPrefix) Some(fromPrefix) else None
+          val fpo = if(withPrefix) Some(prefixOrd) else None
+
+          val idx = tdata.indexWhere{case (k, _) => lt(fromWord, k, inclusiveFrom, fp, fpo, ord)}
+          dlist = tdata.slice(idx, tdata.length).takeWhile{case (k, _) => lt(fromWord, k, inclusiveFrom, fp, fpo, ord)}
+          if(reverse) dlist = dlist.reverse
+
+          op = s"${if(inclusiveFrom) "<=" else "<"} ${new String(fromWord)}"
+
+          ilist = Await.result(TestHelper.all(index.lt(fromWord, inclusiveFrom, reverse, fp, fpo, ord)), Duration.Inf)
+
         case 3 =>
 
           def cond: K => Boolean = k => ((inclusiveFrom && ord.gteq(k, fromWord)) || (!inclusiveFrom && ord.gt(k, fromWord))) &&
             ((inclusiveTo && ord.lteq(k, toWord)) || (!inclusiveTo && ord.lt(k, toWord)))
 
-          val idx = tdata.indexWhere{case (k, _) => /*termOrd.gt(k, fromWord)*/cond(k)}
+          val idx = tdata.indexWhere{case (k, _) => cond(k)}
           dlist = tdata.slice(idx, tdata.length).takeWhile{case (k, _) => cond(k)}
           if(reverse) dlist = dlist.reverse
 
