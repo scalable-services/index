@@ -137,10 +137,10 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
     if(!tdata.isEmpty){
 
       var reverse = rand.nextBoolean()
-      val withPrefix = rand.nextBoolean()
+      var withPrefix = rand.nextBoolean()
 
-      val inclusiveLower = rand.nextBoolean()
-      val inclusiveUpper = rand.nextBoolean()
+      var inclusiveFrom = rand.nextBoolean()
+      var inclusiveTo = rand.nextBoolean()
 
       def lt(term: K, k: K, inclusive: Boolean, prefix: Option[K], prefixOrd: Option[Ordering[K]], order: Ordering[K]): Boolean = {
         (prefix.isEmpty || prefixOrd.get.equiv(k, prefix.get)) && (inclusive && order.lteq(k, term) || !inclusive && order.lt(k, term))
@@ -150,20 +150,11 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
         (prefix.isEmpty || prefixOrd.get.equiv(k, prefix.get)) && (inclusive && order.gteq(k, term) || !inclusive && order.gt(k, term))
       }
 
-      /*def range(fromTerm: K, toTerm: K, k: K, inclusiveFrom: Boolean, inclusiveTo: Boolean, fromPrefix: Option[K], toPrefix: Option[K], prefixOrd: Option[Ordering[K]], order: Ordering[K]): Boolean = {
-        ((fromPrefix.isEmpty || prefixOrd.get.equiv(k, fromPrefix.get)) && (inclusiveFrom && order.gteq(k, fromTerm) || !inclusiveFrom && order.gt(k, fromTerm))) &&
-          ((toPrefix.isEmpty || prefixOrd.get.equiv(k, toPrefix.get)) && (inclusiveTo && order.lteq(k, toTerm) || !inclusiveTo && order.lt(k, toTerm)))
-      }*/
-
-      def range(fromWord: K, toWord: K, inclusiveFrom: Boolean, inclusiveTo: Boolean, fromPrefix: Option[K], toPrefix: Option[K], prefixOrd: Option[Ordering[K]], order: Ordering[K]): Seq[(K, V)] = {
-
-        def cond: (K) => Boolean = (k: K) =>
-          (fromPrefix.isEmpty || (inclusiveFrom && prefixOrd.get.gteq(k, fromPrefix.get) || !inclusiveFrom && prefixOrd.get.gt(k, fromPrefix.get))) &&
-            (toPrefix.isEmpty || (inclusiveTo && prefixOrd.get.lteq(k, toPrefix.get) || !inclusiveTo && prefixOrd.get.lt(k, toPrefix.get))) &&
-            (inclusiveFrom && order.gteq(k, fromWord) || !inclusiveFrom && order.gt(k, fromWord)) &&
-            (inclusiveTo && order.lteq(k, toWord) || !inclusiveTo && order.lt(k, toWord))
-
-        tdata.filter{case (k, _) => cond(k)}
+      def range(k: K, fromWord: K, toWord: K, inclusiveFrom: Boolean, inclusiveTo: Boolean, fromPrefix: Option[K], toPrefix: Option[K], prefixOrd: Option[Ordering[K]], order: Ordering[K]): Boolean = {
+        (fromPrefix.isEmpty || ((inclusiveFrom && prefixOrd.get.gteq(k, fromPrefix.get)) || (!inclusiveFrom && prefixOrd.get.gt(k, fromPrefix.get)))) &&
+          (toPrefix.isEmpty || ((inclusiveTo && prefixOrd.get.lteq(k, toPrefix.get)) || (!inclusiveTo && prefixOrd.get.lt(k, toPrefix.get)))) &&
+          ((inclusiveFrom && order.gteq(k, fromWord)) || (!inclusiveFrom && order.gt(k, fromWord))) &&
+          ((inclusiveTo && order.lteq(k, toWord)) || (!inclusiveTo && order.lt(k, toWord)))
       }
 
       var dlist = Seq.empty[(K, V)]
@@ -190,78 +181,37 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
         }
       }
 
-      rand.nextInt(3, 4) match {
-        case 1 =>
+      reverse = false
+      withPrefix = false
+      inclusiveFrom = rand.nextBoolean()
+      inclusiveTo = rand.nextBoolean()
 
-          if(withPrefix){
-            dlist = tdata.filter{case (k, _) => gt(fromWord, k, inclusiveLower, Some(fromPrefix), Some(prefixOrd), ord)}
-            if(reverse) dlist = dlist.reverse
+      if(withPrefix){
 
-            op = s"${if(inclusiveLower) ">=" else ">"} prefix: ${new String(fromPrefix)} term: ${new String(fromTerm)} word: ${new String(fromWord)}"
+        dlist = tdata.filter{case (k, _) => range(k, fromWord, toWord, inclusiveFrom, inclusiveTo, None, None, None, ord)}
+        if(reverse) dlist = dlist.reverse
 
-            ilist = Await.result(TestHelper.all(index.gt(fromWord, inclusiveLower, reverse, Some(fromPrefix), Some(prefixOrd), ord)), Duration.Inf)
-          } else {
+        op = s"range: fromPrefix: ${new String(fromPrefix)}-${new String(fromTerm)} ${if(inclusiveFrom) "<=" else "<"} x ${if(inclusiveTo) "<=" else "<"} ${new String(fromPrefix)}-${new String(toTerm)}"
 
-            dlist = tdata.filter{case (k, _) => gt(fromWord, k, inclusiveLower, None, None, ord)}
-            if(reverse) dlist = dlist.reverse
+        ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveFrom, inclusiveTo, reverse, Some(fromPrefix), Some(toPrefix), Some(prefixOrd), ord)), Duration.Inf)
 
-            op = s"${if(inclusiveLower) ">=" else ">"} word: ${new String(fromWord)}"
+      } else {
+        /*dlist = tdata.filter{case (k, _) => range(k, fromWord, toWord, inclusiveFrom, inclusiveTo, Some(fromPrefix), Some(toPrefix), Some(prefixOrd), ord)}
+        if(reverse) dlist = dlist.reverse*/
 
-            ilist = Await.result(TestHelper.all(index.gt(fromWord, inclusiveLower, reverse, None, None, ord)), Duration.Inf)
-          }
+        def cond: K => Boolean = k => (inclusiveFrom && ord.gteq(k, fromWord) || !inclusiveFrom && ord.gt(k, fromWord)) &&
+          (inclusiveTo && ord.lteq(k, toWord) || !inclusiveTo && ord.lt(k, toWord))
 
-        case 2 =>
+        val idx = tdata.indexWhere{case (k, _) => cond(k)}
+        dlist = tdata.slice(idx, tdata.length).takeWhile{case (k, _) => cond(k)}
+        if(reverse) dlist = dlist.reverse
 
-          if(withPrefix){
-            dlist = tdata.filter{case (k, _) => lt(fromWord, k, inclusiveLower, Some(fromPrefix), Some(prefixOrd), ord)}
-            if(reverse) dlist = dlist.reverse
+        op = s"range: ${new String(fromWord)} ${if(inclusiveFrom) "<=" else "<"} x ${if(inclusiveTo) "<=" else "<"} ${new String(toWord)}"
 
-            op = s"${if(inclusiveLower) "<=" else "<"} prefix: ${new String(fromPrefix)} term: ${new String(fromTerm)}"
-
-            ilist = Await.result(TestHelper.all(index.lt(fromWord, inclusiveLower, reverse, Some(fromPrefix), Some(prefixOrd), ord)), Duration.Inf)
-          } else {
-
-            dlist = tdata.filter{case (k, _) => lt(fromWord, k, inclusiveLower, None, None, ord)}
-            if(reverse) dlist = dlist.reverse
-
-            op = s"${if(inclusiveLower) "<=" else "<"} word: ${new String(fromWord)}"
-
-            ilist = Await.result(TestHelper.all(index.lt(fromWord, inclusiveLower, reverse, None, None, ord)), Duration.Inf)
-          }
-
-        case 3 =>
-
-          reverse = false
-
-          if(withPrefix){
-
-            /*dlist = tdata.filter{case (k, _) => range(fromWord, toWord, k, inclusiveLower, inclusiveUpper, Some(fromPrefix), Some(toPrefix), Some(prefixOrd), ord)}
-            if(reverse) dlist = dlist.reverse*/
-
-            dlist = range(fromWord, toWord, inclusiveLower, inclusiveUpper, Some(fromPrefix), Some(toPrefix), Some(prefixOrd), ord)
-            if(reverse) dlist = dlist.reverse
-
-            op = s"range: fromPrefix: ${new String(fromPrefix)}-${new String(fromTerm)} ${if(inclusiveLower) "<=" else "<"} x ${if(inclusiveUpper) "<=" else "<"} ${new String(fromPrefix)}-${new String(toTerm)}"
-
-            ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveLower, inclusiveUpper, reverse, Some(fromPrefix), Some(toPrefix), Some(prefixOrd), ord)), Duration.Inf)
-
-          } else {
-            /*dlist = tdata.filter{case (k, _) => range(fromWord, toWord, k, inclusiveLower, inclusiveUpper, None, None, None, ord)}
-            if(reverse) dlist = dlist.reverse*/
-
-            dlist = range(fromWord, toWord, inclusiveLower, inclusiveUpper, None, None, None, ord)
-            if(reverse) dlist = dlist.reverse
-
-            op = s"range: ${new String(fromWord)} ${if(inclusiveLower) "<=" else "<"} x ${if(inclusiveUpper) "<=" else "<"} ${new String(toWord)}"
-
-            ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveLower, inclusiveUpper, reverse, None, None, None, ord)), Duration.Inf)
-          }
-
-        case _ =>
-
+        ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveFrom, inclusiveTo, reverse, None, None, None, ord)), Duration.Inf)
       }
 
-      logger.debug(s"${Console.BLUE_B}withPrefix: ${withPrefix} inclusiveLower: ${inclusiveLower} inclusiveUpper: ${inclusiveUpper} reverse: ${reverse}${Console.RESET}\n")
+      logger.debug(s"${Console.BLUE_B}withPrefix: ${withPrefix} inclusiveLower: ${inclusiveFrom} inclusiveUpper: ${inclusiveTo} reverse: ${reverse}${Console.RESET}\n")
       logger.debug(s"${Console.MAGENTA_B}${op} dlist: ${dlist.map{case (k, v) => new String(k) /*-> new String(v)*/}}${Console.RESET}\n")
       logger.debug(s"${Console.BLUE_B}${op} ilist: ${ilist.map{case (k, v) => new String(k) /*-> new String(v)*/}}\n${Console.RESET}")
       logger.debug(s"${Console.GREEN_B}length: ${ilist.length == dlist.length}${Console.RESET}")
