@@ -66,7 +66,7 @@ class MainSpec extends AnyFlatSpec with Repeatable {
     implicit val ctx = new DefaultContext[Datom, Bytes](indexId, None, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
 
     var data = Seq.empty[Tuple[Datom, Bytes]]
-    val iter = rand.nextInt(1, 100)
+    val iter = rand.nextInt(1, 30)
 
     val colors = Seq("red", "green", "blue", "yellow", "orange", "black", "white", "magenta", "gold", "brown", "pink", "cyan", "purple")
 
@@ -185,11 +185,11 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
     println()
 
-    var reverse = false//rand.nextBoolean()
+    var reverse = rand.nextBoolean()
 
     var inclusiveLower = rand.nextBoolean()
     var withPrefix = rand.nextBoolean()
-    var inclusiveUpper = rand.nextBoolean()
+    val inclusiveUpper = rand.nextBoolean()
 
     val properties = Seq("users/:age", "users/:color", "users/:height")
 
@@ -197,7 +197,7 @@ class MainSpec extends AnyFlatSpec with Repeatable {
     val to_prefix = properties(rand.nextInt(0, properties.length))
 
     val fromPrefix = Datom(a = Some(from_prefix))
-    val toPrefix = Datom(a = Some(from_prefix))
+    val toPrefix = Datom(a = Some(to_prefix))
 
     var fromWord: Datom = null
     var toWord: Datom = null
@@ -251,8 +251,19 @@ class MainSpec extends AnyFlatSpec with Repeatable {
     toWord = generateRandom(to_prefix)
 
     val prefixOrd = new Ordering[Datom] {
-      override def compare(pre: Datom, prefix: Datom): Int = {
-        pre.getA.compareTo(prefix.getA)
+      override def compare(k: Datom, prefix: Datom): Int = {
+        //k.getA.compareTo(prefix.getA)
+        ord.compare(k.getA.getBytes(), prefix.getA.getBytes())
+      }
+    }
+
+    val termOrd = new Ordering[Datom] {
+      override def compare(x: Datom, y: Datom): Int = {
+        var r = x.getA.compareTo(y.getA)
+
+        if(r != 0) return r
+
+        ord.compare(x.getV.toByteArray, y.getV.toByteArray)
       }
     }
 
@@ -260,7 +271,6 @@ class MainSpec extends AnyFlatSpec with Repeatable {
     var ilist = Seq.empty[(Datom, Bytes)]
 
     var op = ""
-    var opCode = 0
 
     def lt(term: Datom, k: Datom, inclusive: Boolean, prefix: Option[Datom], prefixOrd: Option[Ordering[Datom]], order: Ordering[Datom]): Boolean = {
       (prefix.isEmpty || prefixOrd.get.equiv(k, prefix.get)) && (inclusive && order.lteq(k, term) || !inclusive && order.lt(k, term))
@@ -270,31 +280,31 @@ class MainSpec extends AnyFlatSpec with Repeatable {
       (prefix.isEmpty || prefixOrd.get.equiv(k, prefix.get)) && (inclusive && order.gteq(k, term) || !inclusive && order.gt(k, term))
     }
 
-    def range(fromTerm: Datom, toTerm: Datom, k: Datom, inclusiveFrom: Boolean, inclusiveTo: Boolean, fromPrefix: Option[Datom], toPrefix: Option[Datom], prefixOrd: Option[Ordering[Datom]], order: Ordering[Datom]): Boolean = {
-      ((fromPrefix.isEmpty || prefixOrd.get.equiv(k, fromPrefix.get)) && (inclusiveFrom && order.gteq(k, fromTerm) || !inclusiveFrom && order.gt(k, fromTerm))) &&
-        ((toPrefix.isEmpty || prefixOrd.get.equiv(k, toPrefix.get)) && (inclusiveTo && order.lteq(k, toTerm) || !inclusiveTo && order.lt(k, toTerm)))
+    def range(fromWord: Datom, toWord: Datom, inclusiveFrom: Boolean, inclusiveTo: Boolean, fromPrefix: Option[Datom], toPrefix: Option[Datom], prefixOrd: Option[Ordering[Datom]], order: Ordering[Datom]): Seq[(Datom, Bytes)] = {
+      val idx = tdata.indexWhere{case (k, _) => if(inclusiveLower) termOrd.gteq(k, fromWord) else termOrd.gt(k, fromWord) }
+      tdata.slice(idx, tdata.length).takeWhile{case (k, _) => if(inclusiveUpper) termOrd.lteq(k, toWord) else termOrd.lt(k, toWord)}
     }
 
-    rand.nextInt(1, 4) match {
+    rand.nextInt(3, 4) match {
       case 1 =>
 
         if(withPrefix){
 
-          dlist = tdata.filter{case (k, _) => gt(fromWord, k, inclusiveLower, Some(fromPrefix), Some(prefixOrd), avetOrd)}
+          dlist = tdata.filter{case (k, _) => gt(fromWord, k, inclusiveLower, Some(fromPrefix), Some(prefixOrd), termOrd)}
           if(reverse) dlist = dlist.reverse
 
           op = s"${if(inclusiveLower) ">=" else ">"} word: ${printDatom(fromWord, fromWord.getA)}"
 
-          ilist = Await.result(TestHelper.all(index.gt(fromPrefix, fromWord, inclusiveLower, reverse)(prefixOrd, avetOrd)), Duration.Inf)
+          ilist = Await.result(TestHelper.all(index.gt(fromPrefix, fromWord, inclusiveLower, reverse)(prefixOrd, termOrd)), Duration.Inf)
 
         } else {
 
-          dlist = tdata.filter{case (k, _) => gt(fromWord, k, inclusiveLower, None, None, avetOrd)}
+          dlist = tdata.filter{case (k, _) => gt(fromWord, k, inclusiveLower, None, None, termOrd)}
           if(reverse) dlist = dlist.reverse
 
           op = s"${if(inclusiveLower) ">=" else ">"} word: ${printDatom(fromWord, fromWord.getA)}"
 
-          ilist = Await.result(TestHelper.all(index.gt(fromWord, inclusiveLower, reverse)(avetOrd)), Duration.Inf)
+          ilist = Await.result(TestHelper.all(index.gt(fromWord, inclusiveLower, reverse)(termOrd)), Duration.Inf)
 
         }
 
@@ -322,22 +332,30 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
       case 3 =>
 
+        inclusiveLower = false
+        withPrefix = false
+        reverse = false//rand.nextBoolean()
+
         if(withPrefix){
 
-          dlist = tdata.filter{case (k, _) => range(fromWord, toWord, k, inclusiveLower, inclusiveUpper, Some(fromPrefix), Some(toPrefix), Some(prefixOrd), avetOrd)}
+          dlist = range(fromWord, toWord, inclusiveLower, inclusiveUpper, Some(fromPrefix), Some(toPrefix), Some(prefixOrd), termOrd)
           if(reverse) dlist = dlist.reverse
 
           op = s"range: fromPrefix: ${from_prefix}-${printDatom(fromWord, fromWord.getA)} ${if(inclusiveLower) "<=" else "<"} x ${if(inclusiveUpper) "<=" else "<"} ${to_prefix}-${printDatom(toWord, toWord.getA)}"
 
-          ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveLower, inclusiveUpper, reverse, Some(fromPrefix), Some(toPrefix), Some(prefixOrd), avetOrd)), Duration.Inf)
+          ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveLower, inclusiveUpper, reverse, Some(fromPrefix), Some(toPrefix), Some(prefixOrd), termOrd)), Duration.Inf)
 
         } else {
-          dlist = tdata.filter{case (k, _) => range(fromWord, toWord, k, inclusiveLower, inclusiveUpper, None, None, None, avetOrd)}
+
+          //dlist = tdata.filter{case (k, _) => range(fromWord, toWord, k, inclusiveLower, inclusiveUpper, None, None, None, termOrd)}
+
+          dlist = range(fromWord, toWord, inclusiveLower, inclusiveUpper, None, None, None, termOrd)
           if(reverse) dlist = dlist.reverse
 
           op = s"range: ${printDatom(fromWord, fromWord.getA)} ${if(inclusiveLower) "<=" else "<"} x ${if(inclusiveUpper) "<=" else "<"} ${printDatom(toWord, toWord.getA)}"
 
-          ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveLower, inclusiveUpper, reverse, None, None, None, avetOrd)), Duration.Inf)
+          ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveLower, inclusiveUpper, reverse, None, None, None, termOrd)), Duration.Inf)
+
         }
 
       case _ =>
@@ -348,8 +366,19 @@ class MainSpec extends AnyFlatSpec with Repeatable {
     logger.debug(s"${Console.BLUE_B}ilist ${op}: ${ilist.map{case (k, v) => printDatom(k, k.getA) -> new String(v)}}\n${Console.RESET}")
     logger.debug(s"${Console.GREEN_B}length: ${ilist.length == dlist.length}${Console.RESET}")
 
-    assert(isColEqual(ilist, dlist)(avetOrd, ord))
+    assert(isColEqual(dlist, ilist)(termOrd, ord))
 
+    /*val fp = Datom(a = Some("users/:color"))
+    val tp = Datom(a = Some("users/:height"))
+    val fw = Datom(a = Some("users/:color"), v = Some(ByteString.copyFrom("red".getBytes())))
+    val tw = Datom(a = Some("users/:height"), v = Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(172).flip().array())))
+
+    val k = Datom(a = Some("users/:height"), v = Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(171).flip().array())),
+      e = Some("f7d31a65-f5c4-401e-b479-792c1db60d8e"), t = Some(1637089710797L), Some(true))
+
+    range(fw, tw, k, true, true, Some(fp), Some(tp), Some(prefixOrd), avetOrd)(true)
+
+    assert(false)*/
   }
 
 }

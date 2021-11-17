@@ -288,13 +288,13 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
     new RichAsyncIterator[K, V] {
 
-      val sord = if(toPrefix.isDefined) new Ordering[K] {
+      val sord = new Ordering[K] {
         override def compare(x: K, y: K): Int = {
-          order.compare(toWord, y)
-        }
-      } else new Ordering[K] {
-        override def compare(x: K, y: K): Int = {
-          order.compare(toWord, y)
+          val r = order.compare(toWord, y)
+
+          if(!inclusiveTo && r < 0 || inclusiveTo && r == 0) return 0
+
+          r
         }
       }
 
@@ -304,15 +304,17 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
       }
 
       def check(k: K): Boolean = {
-        ((fromPrefix.isEmpty || prefixOrd.get.equiv(k, fromPrefix.get)) && (inclusiveFrom && order.gteq(k, fromWord) || !inclusiveFrom && order.gt(k, fromWord))) &&
-          ((toPrefix.isEmpty || prefixOrd.get.equiv(k, toPrefix.get)) && (inclusiveTo && order.lteq(k, toWord) || !inclusiveTo && order.lt(k, toWord)))
+        /*(fromPrefix.isDefined && (inclusiveFrom && prefixOrd.get.gteq(k, fromPrefix.get) || !inclusiveFrom && prefixOrd.get.gt(k, fromPrefix.get))) &&
+          (toPrefix.isDefined && (inclusiveTo && prefixOrd.get.lteq(k, toPrefix.get) || !inclusiveTo && prefixOrd.get.lt(k, toPrefix.get))) &&*/
+          (inclusiveFrom && order.gteq(k, fromWord) || !inclusiveFrom && order.gt(k, fromWord)) &&
+          (inclusiveTo && order.lteq(k, toWord) || !inclusiveTo && order.lt(k, toWord))
       }
 
       override def next(): Future[Seq[Tuple[K, V]]] = {
         if(!firstTime){
           firstTime = true
 
-          return findPath(fromWord)(sord).flatMap {
+          return findPath(toWord)(sord).flatMap {
             case None =>
               cur = None
               Future.successful(Seq.empty[Tuple[K, V]])
@@ -363,11 +365,19 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
     new RichAsyncIterator[K, V] {
 
-      /*val sord = new Ordering[K] {
+      val sord = if(!inclusiveFrom) new Ordering[K] {
+        override def compare(x: K, y: K): Int = {
+          val r = order.compare(fromWord, y)
+
+          if(r != 0) return r
+
+          1
+        }
+      } else new Ordering[K] {
         override def compare(x: K, y: K): Int = {
           order.compare(fromWord, y)
         }
-      }*/
+      }
 
       override def hasNext(): Future[Boolean] = {
         if(!firstTime) return Future.successful(ctx.root.isDefined)
@@ -375,15 +385,18 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
       }
 
       def check(k: K): Boolean = {
-        ((fromPrefix.isEmpty || prefixOrd.get.equiv(k, fromPrefix.get)) && (inclusiveFrom && order.gteq(k, fromWord) || !inclusiveFrom && order.gt(k, fromWord))) &&
-          ((toPrefix.isEmpty || prefixOrd.get.equiv(k, toPrefix.get)) && (inclusiveTo && order.lteq(k, toWord) || !inclusiveTo && order.lt(k, toWord)))
+        /*(fromPrefix.isDefined && (inclusiveFrom && prefixOrd.get.gteq(k, fromPrefix.get) || !inclusiveFrom && prefixOrd.get.gt(k, fromPrefix.get))) &&
+          (toPrefix.isDefined && (inclusiveTo && prefixOrd.get.lteq(k, toPrefix.get) || !inclusiveTo && prefixOrd.get.lt(k, toPrefix.get))) &&*/
+
+        (inclusiveFrom && order.gteq(k, fromWord) || !inclusiveFrom && order.gt(k, fromWord)) &&
+          (inclusiveTo && order.lteq(k, toWord) || !inclusiveTo && order.lt(k, toWord))
       }
 
       override def next(): Future[Seq[Tuple[K, V]]] = {
         if(!firstTime){
           firstTime = true
 
-          return findPath(fromWord)(order).flatMap {
+          return findPath(fromWord)(sord).flatMap {
             case None =>
               cur = None
               Future.successful(Seq.empty[Tuple[K, V]])
@@ -405,7 +418,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
           }
         }
 
-        $this.next(cur.map(_.unique_id))(order).map {
+        $this.next(cur.map(_.unique_id))(sord).map {
           case None =>
             cur = None
             Seq.empty[Tuple[K, V]]
