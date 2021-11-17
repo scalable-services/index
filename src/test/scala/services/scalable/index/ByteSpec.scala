@@ -186,29 +186,40 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
       inclusiveFrom = rand.nextBoolean()
       inclusiveTo = rand.nextBoolean()
 
-      if(withPrefix){
+      rand.nextInt(1, 2) match {
+        case 1 =>
 
-        dlist = tdata.filter{case (k, _) => range(k, fromWord, toWord, inclusiveFrom, inclusiveTo, None, None, None, ord)}
-        if(reverse) dlist = dlist.reverse
+          reverse = rand.nextBoolean()
+          withPrefix = rand.nextBoolean()
+          inclusiveFrom = rand.nextBoolean()
 
-        op = s"range: fromPrefix: ${new String(fromPrefix)}-${new String(fromTerm)} ${if(inclusiveFrom) "<=" else "<"} x ${if(inclusiveTo) "<=" else "<"} ${new String(fromPrefix)}-${new String(toTerm)}"
+          val fp = if(withPrefix) Some(fromPrefix) else None
+          val fpo = if(withPrefix) Some(prefixOrd) else None
 
-        ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveFrom, inclusiveTo, reverse, Some(fromPrefix), Some(toPrefix), Some(prefixOrd), ord)), Duration.Inf)
+          val idx = tdata.indexWhere{case (k, _) => gt(fromWord, k, inclusiveFrom, fp, fpo, ord)}
+          dlist = tdata.slice(idx, tdata.length).takeWhile{case (k, _) => gt(fromWord, k, inclusiveFrom, fp, fpo, ord)}
+          if(reverse) dlist = dlist.reverse
 
-      } else {
-        /*dlist = tdata.filter{case (k, _) => range(k, fromWord, toWord, inclusiveFrom, inclusiveTo, Some(fromPrefix), Some(toPrefix), Some(prefixOrd), ord)}
-        if(reverse) dlist = dlist.reverse*/
+          op = s"${if(inclusiveFrom) ">=" else ">"} ${new String(fromWord)}"
 
-        def cond: K => Boolean = k => (inclusiveFrom && ord.gteq(k, fromWord) || !inclusiveFrom && ord.gt(k, fromWord)) &&
-          (inclusiveTo && ord.lteq(k, toWord) || !inclusiveTo && ord.lt(k, toWord))
+          ilist = Await.result(TestHelper.all(index.gt(fromWord, inclusiveFrom, reverse, fp, fpo, ord)), Duration.Inf)
 
-        val idx = tdata.indexWhere{case (k, _) => cond(k)}
-        dlist = tdata.slice(idx, tdata.length).takeWhile{case (k, _) => cond(k)}
-        if(reverse) dlist = dlist.reverse
+        case 2 =>
 
-        op = s"range: ${new String(fromWord)} ${if(inclusiveFrom) "<=" else "<"} x ${if(inclusiveTo) "<=" else "<"} ${new String(toWord)}"
+        case 3 =>
 
-        ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveFrom, inclusiveTo, reverse, None, None, None, ord)), Duration.Inf)
+          def cond: K => Boolean = k => ((inclusiveFrom && ord.gteq(k, fromWord)) || (!inclusiveFrom && ord.gt(k, fromWord))) &&
+            ((inclusiveTo && ord.lteq(k, toWord)) || (!inclusiveTo && ord.lt(k, toWord)))
+
+          val idx = tdata.indexWhere{case (k, _) => /*termOrd.gt(k, fromWord)*/cond(k)}
+          dlist = tdata.slice(idx, tdata.length).takeWhile{case (k, _) => cond(k)}
+          if(reverse) dlist = dlist.reverse
+
+          op = s"range: ${new String(fromWord)} ${if(inclusiveFrom) "<=" else "<"} x ${if(inclusiveTo) "<=" else "<"} ${new String(toWord)}"
+
+          ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveFrom, inclusiveTo, reverse, None, None, None, ord)), Duration.Inf)
+
+        case _ =>
       }
 
       logger.debug(s"${Console.BLUE_B}withPrefix: ${withPrefix} inclusiveLower: ${inclusiveFrom} inclusiveUpper: ${inclusiveTo} reverse: ${reverse}${Console.RESET}\n")
