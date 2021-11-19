@@ -190,7 +190,7 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
         case 1 =>
 
           reverse = rand.nextBoolean()
-          withPrefix = false//rand.nextBoolean()
+          withPrefix =  rand.nextBoolean()
           inclusiveFrom = rand.nextBoolean()
 
           val fp = if(withPrefix) Some(fromPrefix) else None

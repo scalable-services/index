@@ -16,15 +16,20 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
     new RichAsyncIterator[K, V] {
 
-      val sord: Ordering[K] = if(inclusiveFrom){
+      val sord: Ordering[K] = if(fromPrefix.isEmpty){
         new Ordering[K]{
           override def compare(x: K, y: K): Int = {
-            -1
+            1
           }
         }
       } else {
         new Ordering[K]{
           override def compare(x: K, y: K): Int = {
+
+            val r = -prefixOrd.get.compare(y, fromPrefix.get)
+
+            if(r != 0) return r
+
             1
           }
         }
