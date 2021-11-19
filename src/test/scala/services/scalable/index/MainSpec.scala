@@ -36,32 +36,21 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
     implicit val avetOrd = new Ordering[Datom] {
       override def compare(x: Datom, y: Datom): Int = {
-
-        //if(x.a.isEmpty) return -1
-
         var r = x.getA.compareTo(y.getA)
 
         if(r != 0) return r
-
-       // if(x.v.isEmpty) return -1
 
         r = ord.compare(x.getV.toByteArray, y.getV.toByteArray)
 
         if(r != 0) return r
 
-       // if(x.e.isEmpty) return -1
-
         r = x.getE.compareTo(y.getE)
 
         if(r != 0) return r
 
-       // if(x.t.isEmpty) return -1
-
         r = x.getT.compareTo(y.getT)
 
         if(r != 0) return r
-
-       // if(x.op.isEmpty) return -1
 
         x.getOp.compareTo(y.getOp)
       }
@@ -274,7 +263,7 @@ class MainSpec extends AnyFlatSpec with Repeatable {
       (prefix.isEmpty || prefixOrd.get.equiv(k, prefix.get)) && (inclusive && order.lteq(k, word) || !inclusive && order.lt(k, word))
     }
 
-    def gt(k: Datom, word: Datom, inclusive: Boolean, prefix: Option[Datom], prefixOrd: Option[Ordering[Datom]], order: Ordering[Datom]): Boolean = {
+    def gt(word: Datom, k: Datom, inclusive: Boolean, prefix: Option[Datom], prefixOrd: Option[Ordering[Datom]], order: Ordering[Datom]): Boolean = {
       (prefix.isEmpty || prefixOrd.get.equiv(k, prefix.get)) && (inclusive && order.gteq(k, word) || !inclusive && order.gt(k, word))
     }
 
@@ -290,76 +279,29 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
     if(!inclusiveFrom){
       fromWord = x._2
-    }
+    }*/
 
-    if(!inclusiveTo){
+    /*if(!inclusiveTo){
       toWord = y._3
     }*/
 
     rand.nextInt(1, 2) match {
       case 1 =>
 
-        reverse = false//rand.nextBoolean()
-        withPrefix = false//rand.nextBoolean()
-        inclusiveFrom = false//rand.nextBoolean()
+        reverse = rand.nextBoolean()
+        withPrefix =  false//rand.nextBoolean()
+        inclusiveFrom = rand.nextBoolean()
 
         val fp = if(withPrefix) Some(fromPrefix) else None
         val fpo = if(withPrefix) Some(prefixOrd) else None
 
-        /*val finder = if(inclusiveFrom) new Ordering[Datom]{
-          override def compare(x: Datom, y: Datom): Int = {
-            val r = termOrd.compare(fromWord, y)
-
-            logger.debug(s"1. ${printDatom(y, y.getA)}, ${printDatom(fromWord, fromWord.getA) } = $r")
-
-            if(r != 0) return r
-
-            -1
-          }
-        } else new Ordering[Datom]{
-          override def compare(x: Datom, y: Datom): Int = {
-            var r = termOrd.compare(fromWord, y)
-
-            logger.debug(s"2. ${printDatom(y, y.getA)}, ${printDatom(fromWord, fromWord.getA) } = $r")
-
-            if(r >= 0) return 1
-
-            r
-          }
-        }*/
-
-        termOrd = avetOrd
-
-        if(!inclusiveFrom){
-          fromWord = x._2
-        }
-
-        val finder = if(inclusiveFrom) new Ordering[Datom]{
-          override def compare(x: Datom, y: Datom): Int = {
-            val r = termOrd.compare(fromWord, y)
-
-            if(r < 0) return r
-
-            1
-          }
-        } else new Ordering[Datom]{
-          override def compare(x: Datom, y: Datom): Int = {
-            val r = termOrd.compare(fromWord, y)
-
-            if(r <= 0) return r
-
-            1
-          }
-        }
-
-        /*val idx = tdata.indexWhere{case (k, _) => gt(fromWord, k, inclusiveFrom, fp, fpo, termOrd)}
-        dlist = tdata.slice(idx, tdata.length).takeWhile{case (k, _) => gt(fromWord, k, inclusiveFrom, fp, fpo, termOrd)}*/
-        dlist = tdata.filter{case (k, _) => gt(k, fromWord, inclusiveFrom, fp, fpo, termOrd)}
+        val idx = tdata.indexWhere{case (k, _) => gt(fromWord, k, inclusiveFrom, fp, fpo, termOrd)}
+        dlist = tdata.slice(idx, tdata.length).takeWhile{case (k, _) => gt(fromWord, k, inclusiveFrom, fp, fpo, termOrd)}
         if(reverse) dlist = dlist.reverse
 
         op = s"${if(inclusiveFrom) ">=" else ">"} ${printDatom(fromWord, fromWord.getA)}"
 
-        ilist = Await.result(TestHelper.all(index.gt(fromWord, inclusiveFrom, reverse, fp, fpo, termOrd)(finder)), Duration.Inf)
+        ilist = Await.result(TestHelper.all(index.gt(fromWord, inclusiveFrom, reverse, fp, fpo, termOrd)), Duration.Inf)
 
       case 2 =>
 
