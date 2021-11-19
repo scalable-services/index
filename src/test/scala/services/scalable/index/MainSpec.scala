@@ -267,6 +267,22 @@ class MainSpec extends AnyFlatSpec with Repeatable {
       (prefix.isEmpty || prefixOrd.get.equiv(k, prefix.get)) && (inclusive && order.gteq(k, word) || !inclusive && order.gt(k, word))
     }
 
+    def range(k: Datom, fromWord: Datom, toWord: Datom, inclusiveFrom: Boolean, inclusiveTo: Boolean, fromPrefix: Option[Datom], toPrefix: Option[Datom],
+              prefixOrd: Option[Ordering[Datom]], order: Ordering[Datom]): Boolean = {
+      if(fromPrefix.isDefined){
+        return (
+          (inclusiveFrom && prefixOrd.get.gteq(k, fromPrefix.get) || !inclusiveFrom && prefixOrd.get.gt(k, fromPrefix.get)) &&
+            (inclusiveTo && prefixOrd.get.lteq(k, toPrefix.get) || !inclusiveTo && prefixOrd.get.lt(k, toPrefix.get)) &&
+
+            (inclusiveFrom && order.gteq(k, fromWord) || !inclusiveFrom && order.gt(k, fromWord)) &&
+            (inclusiveTo && order.lteq(k, toWord) || !inclusiveTo && order.lt(k, toWord))
+        )
+      }
+
+      (inclusiveFrom && order.gteq(k, fromWord) || !inclusiveFrom && order.gt(k, fromWord)) &&
+        (inclusiveTo && order.lteq(k, toWord) || !inclusiveTo && order.lt(k, toWord))
+    }
+
     reverse = rand.nextBoolean()
     withPrefix = rand.nextBoolean()
     inclusiveFrom = rand.nextBoolean()
@@ -285,7 +301,7 @@ class MainSpec extends AnyFlatSpec with Repeatable {
       toWord = y._3
     }*/
 
-    rand.nextInt(1, 2) match {
+    rand.nextInt(3, 4) match {
       case 1 =>
 
         reverse = rand.nextBoolean()
@@ -305,7 +321,7 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
       case 2 =>
 
-        /*reverse = false//rand.nextBoolean()
+        reverse = rand.nextBoolean()
         withPrefix = rand.nextBoolean()
         inclusiveFrom = rand.nextBoolean()
 
@@ -318,21 +334,26 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
         op = s"${if(inclusiveFrom) "<=" else "<"} ${printDatom(fromWord, fromWord.getA)}"
 
-        ilist = Await.result(TestHelper.all(index.lt(fromWord, inclusiveFrom, reverse, fp, fpo, termOrd)), Duration.Inf)*/
+        ilist = Await.result(TestHelper.all(index.lt(fromWord, inclusiveFrom, reverse, fp, fpo, termOrd)), Duration.Inf)
 
       case 3 =>
 
-        /*def cond: Datom => Boolean = k => ((inclusiveFrom && termOrd.gteq(k, fromWord)) || (!inclusiveFrom && termOrd.gt(k, fromWord))) &&
-          ((inclusiveTo && termOrd.lteq(k, toWord)) || (!inclusiveTo && termOrd.lt(k, toWord)))
+        reverse = false//rand.nextBoolean()
+        withPrefix = false//rand.nextBoolean()
+        inclusiveFrom = rand.nextBoolean()
 
-        val idx = tdata.indexWhere{case (k, _) => /*termOrd.gt(k, fromWord)*/cond(k)}
-        dlist = tdata.slice(idx, tdata.length).takeWhile{case (k, _) => cond(k)}
+        val fp = if(withPrefix) Some(fromPrefix) else None
+        val po = if(withPrefix) Some(prefixOrd) else None
+
+        val tp = if(withPrefix) Some(toPrefix) else None
+
+        dlist = tdata.filter{case (k, _) => range(k, fromWord, toWord, inclusiveFrom, inclusiveTo, fp, tp, po, termOrd)}
         if(reverse) dlist = dlist.reverse
 
         op = s"range: ${printDatom(fromWord, fromWord.getA)} ${if(inclusiveFrom) "<=" else "<"} x ${if(inclusiveTo) "<=" else "<"} ${printDatom(toWord, toWord.getA)}"
 
-        ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveFrom, inclusiveTo, reverse, None, None, None, termOrd)), Duration.Inf)
-*/
+        ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveFrom, inclusiveTo, reverse, fp, tp, po, termOrd)), Duration.Inf)
+
       case _ =>
     }
 

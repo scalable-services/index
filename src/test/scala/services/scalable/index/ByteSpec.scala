@@ -150,11 +150,12 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
         (prefix.isEmpty || prefixOrd.get.equiv(k, prefix.get)) && (inclusive && order.gteq(k, term) || !inclusive && order.gt(k, term))
       }
 
-      def range(k: K, fromWord: K, toWord: K, inclusiveFrom: Boolean, inclusiveTo: Boolean, fromPrefix: Option[K], toPrefix: Option[K], prefixOrd: Option[Ordering[K]], order: Ordering[K]): Boolean = {
-        (fromPrefix.isEmpty || ((inclusiveFrom && prefixOrd.get.gteq(k, fromPrefix.get)) || (!inclusiveFrom && prefixOrd.get.gt(k, fromPrefix.get)))) &&
-          (toPrefix.isEmpty || ((inclusiveTo && prefixOrd.get.lteq(k, toPrefix.get)) || (!inclusiveTo && prefixOrd.get.lt(k, toPrefix.get)))) &&
-          ((inclusiveFrom && order.gteq(k, fromWord)) || (!inclusiveFrom && order.gt(k, fromWord))) &&
-          ((inclusiveTo && order.lteq(k, toWord)) || (!inclusiveTo && order.lt(k, toWord)))
+      def range(k: K, fromWord: K, toWord: K, inclusiveFrom: Boolean, inclusiveTo: Boolean, fromPrefix: Option[K], toPrefix: Option[K],
+                prefixOrd: Option[Ordering[K]], order: Ordering[K]): Boolean = {
+        /*(fromPrefix.isEmpty || ((inclusiveFrom && prefixOrd.get.gteq(k, fromPrefix.get)) || (!inclusiveFrom && prefixOrd.get.gt(k, fromPrefix.get)))) &&
+          (toPrefix.isEmpty || ((inclusiveTo && prefixOrd.get.lteq(k, toPrefix.get)) || (!inclusiveTo && prefixOrd.get.lt(k, toPrefix.get)))) &&*/
+          (inclusiveFrom && order.gteq(k, fromWord) || !inclusiveFrom && order.gt(k, fromWord)) &&
+          (inclusiveTo && order.lteq(k, toWord) || !inclusiveTo && order.lt(k, toWord))
       }
 
       var dlist = Seq.empty[(K, V)]
@@ -186,7 +187,7 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
       inclusiveFrom = rand.nextBoolean()
       inclusiveTo = rand.nextBoolean()
 
-      rand.nextInt(1, 2) match {
+      rand.nextInt(3, 4) match {
         case 1 =>
 
           reverse = rand.nextBoolean()
@@ -206,7 +207,7 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
 
         case 2 =>
 
-          /*reverse = false//rand.nextBoolean()
+          reverse = rand.nextBoolean()
           withPrefix = rand.nextBoolean()
           inclusiveFrom = rand.nextBoolean()
 
@@ -220,20 +221,24 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
           op = s"${if(inclusiveFrom) "<=" else "<"} ${new String(fromWord)}"
 
           ilist = Await.result(TestHelper.all(index.lt(fromWord, inclusiveFrom, reverse, fp, fpo, ord)), Duration.Inf)
-*/
+
         case 3 =>
 
-          /*def cond: K => Boolean = k => ((inclusiveFrom && ord.gteq(k, fromWord)) || (!inclusiveFrom && ord.gt(k, fromWord))) &&
-            ((inclusiveTo && ord.lteq(k, toWord)) || (!inclusiveTo && ord.lt(k, toWord)))
+          reverse = false//rand.nextBoolean()
+          withPrefix = rand.nextBoolean()
+          inclusiveFrom = rand.nextBoolean()
 
-          val idx = tdata.indexWhere{case (k, _) => cond(k)}
-          dlist = tdata.slice(idx, tdata.length).takeWhile{case (k, _) => cond(k)}
+          val fp = if(withPrefix) Some(fromPrefix) else None
+          val tp = if(withPrefix) Some(toPrefix) else None
+          val po = if(withPrefix) Some(prefixOrd) else None
+
+          dlist = tdata.filter{case (k, _) => range(k, fromWord, toWord, inclusiveFrom, inclusiveTo, fp, tp, po, ord)}
           if(reverse) dlist = dlist.reverse
 
           op = s"range: ${new String(fromWord)} ${if(inclusiveFrom) "<=" else "<"} x ${if(inclusiveTo) "<=" else "<"} ${new String(toWord)}"
 
-          ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveFrom, inclusiveTo, reverse, None, None, None, ord)), Duration.Inf)
-*/
+          ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveFrom, inclusiveTo, reverse, fp, tp, po, ord)), Duration.Inf)
+
         case _ =>
       }
 
