@@ -167,7 +167,7 @@ class MainSpec extends AnyFlatSpec with Repeatable {
     val index = new QueryableIndex[Datom, Bytes]()
 
     for(i<-0 until iter){
-      rand.nextInt(1, 2) match {
+      rand.nextInt(1, 4) match {
         case 1 => insert(index)
         case 2 => update(index)
         case 3 => remove(index)
