@@ -269,7 +269,7 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
     def range(k: Datom, fromWord: Datom, toWord: Datom, inclusiveFrom: Boolean, inclusiveTo: Boolean, fromPrefix: Option[Datom], toPrefix: Option[Datom],
               prefixOrd: Option[Ordering[Datom]], order: Ordering[Datom]): Boolean = {
-      if(fromPrefix.isDefined){
+      /*if(fromPrefix.isDefined){
         return (
           (inclusiveFrom && prefixOrd.get.gteq(k, fromPrefix.get) || !inclusiveFrom && prefixOrd.get.gt(k, fromPrefix.get)) &&
             (inclusiveTo && prefixOrd.get.lteq(k, toPrefix.get) || !inclusiveTo && prefixOrd.get.lt(k, toPrefix.get)) &&
@@ -277,7 +277,7 @@ class MainSpec extends AnyFlatSpec with Repeatable {
             (inclusiveFrom && order.gteq(k, fromWord) || !inclusiveFrom && order.gt(k, fromWord)) &&
             (inclusiveTo && order.lteq(k, toWord) || !inclusiveTo && order.lt(k, toWord))
         )
-      }
+      }*/
 
       (inclusiveFrom && order.gteq(k, fromWord) || !inclusiveFrom && order.gt(k, fromWord)) &&
         (inclusiveTo && order.lteq(k, toWord) || !inclusiveTo && order.lt(k, toWord))
@@ -301,7 +301,7 @@ class MainSpec extends AnyFlatSpec with Repeatable {
       toWord = y._3
     }*/
 
-    rand.nextInt(3, 4) match {
+    rand.nextInt(1, 4) match {
       case 1 =>
 
         reverse = rand.nextBoolean()
@@ -338,9 +338,10 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
       case 3 =>
 
-        reverse = false//rand.nextBoolean()
-        withPrefix = false//rand.nextBoolean()
+        reverse = rand.nextBoolean()
+        withPrefix = rand.nextBoolean()
         inclusiveFrom = rand.nextBoolean()
+        inclusiveTo = rand.nextBoolean()
 
         val fp = if(withPrefix) Some(fromPrefix) else None
         val po = if(withPrefix) Some(prefixOrd) else None

@@ -187,7 +187,7 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
       inclusiveFrom = rand.nextBoolean()
       inclusiveTo = rand.nextBoolean()
 
-      rand.nextInt(3, 4) match {
+      rand.nextInt(1, 4) match {
         case 1 =>
 
           reverse = rand.nextBoolean()
@@ -224,9 +224,10 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
 
         case 3 =>
 
-          reverse = false//rand.nextBoolean()
+          reverse = rand.nextBoolean()
           withPrefix = rand.nextBoolean()
           inclusiveFrom = rand.nextBoolean()
+          inclusiveTo = rand.nextBoolean()
 
           val fp = if(withPrefix) Some(fromPrefix) else None
           val tp = if(withPrefix) Some(toPrefix) else None
