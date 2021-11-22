@@ -238,7 +238,7 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
 
           op = s"range: ${new String(fromWord)} ${if(inclusiveFrom) "<=" else "<"} x ${if(inclusiveTo) "<=" else "<"} ${new String(toWord)}"
 
-          ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveFrom, inclusiveTo, reverse, fp, tp, po, ord)), Duration.Inf)
+          ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveFrom, inclusiveTo, reverse)(ord)), Duration.Inf)
 
         case _ =>
       }

@@ -353,7 +353,7 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
         op = s"range: ${printDatom(fromWord, fromWord.getA)} ${if(inclusiveFrom) "<=" else "<"} x ${if(inclusiveTo) "<=" else "<"} ${printDatom(toWord, toWord.getA)}"
 
-        ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveFrom, inclusiveTo, reverse, fp, tp, po, termOrd)), Duration.Inf)
+        ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveFrom, inclusiveTo, reverse)(termOrd)), Duration.Inf)
 
       case _ =>
     }

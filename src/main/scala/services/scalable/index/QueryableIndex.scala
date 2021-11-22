@@ -443,7 +443,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
     }
   }
 
-  def range(fromWord: K, toWord: K, inclusiveFrom: Boolean, inclusiveTo: Boolean, reverse: Boolean, fromPrefix: Option[K], toPrefix: Option[K],
+  protected def range(fromWord: K, toWord: K, inclusiveFrom: Boolean, inclusiveTo: Boolean, reverse: Boolean, fromPrefix: Option[K], toPrefix: Option[K],
             prefixOrd: Option[Ordering[K]], order: Ordering[K]): RichAsyncIterator[K, V] = {
 
     if(reverse){
@@ -540,6 +540,26 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
         }
       }
     }
+  }
+
+  def lt(prefix: K, word: K, inclusive: Boolean, reverse: Boolean)(prefixOrd: Ordering[K], order: Ordering[K]): RichAsyncIterator[K, V] = {
+    lt(word, inclusive, reverse, Some(prefix), Some(prefixOrd), order)
+  }
+
+  def lt(word: K, inclusive: Boolean, reverse: Boolean)(order: Ordering[K]): RichAsyncIterator[K, V] = {
+    lt(word, inclusive, reverse, None, None, order)
+  }
+
+  def gt(prefix: K, word: K, inclusive: Boolean, reverse: Boolean)(prefixOrd: Ordering[K], order: Ordering[K]): RichAsyncIterator[K, V] = {
+    gt(word, inclusive, reverse, Some(prefix), Some(prefixOrd), order)
+  }
+
+  def gt(word: K, inclusive: Boolean, reverse: Boolean)(order: Ordering[K]): RichAsyncIterator[K, V] = {
+    gt(word, inclusive, reverse, None, None, order)
+  }
+
+  def range(from: K, to: K, inclusiveFrom: Boolean, inclusiveTo: Boolean, reverse: Boolean)(order: Ordering[K]): RichAsyncIterator[K, V] = {
+    range(from, to, inclusiveFrom, inclusiveTo, reverse, None, None, None, order)
   }
 
   def printDatom(d: Datom, p: String): String = {
