@@ -621,7 +621,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
     new RichAsyncIterator[K, V] {
 
-      val sord: Ordering[K] = order/*new Ordering[K] {
+      val sord: Ordering[K] = new Ordering[K] {
         override def compare(x: K, y: K): Int = {
           val r = order.compare(fromWord, y)
 
@@ -629,7 +629,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
           -1
         }
-      }*/
+      }
 
       override def hasNext(): Future[Boolean] = {
         if(!firstTime) return Future.successful(ctx.root.isDefined)
