@@ -23,7 +23,7 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
   val logger = LoggerFactory.getLogger(this.getClass)
 
-  override val times: Int = 1000
+  override val times: Int = 10000
 
   val rand = ThreadLocalRandom.current()
 
@@ -56,8 +56,8 @@ class MainSpec extends AnyFlatSpec with Repeatable {
       }
     }
 
-    val NUM_LEAF_ENTRIES = 5
-    val NUM_META_ENTRIES = 5
+    val NUM_LEAF_ENTRIES = rand.nextInt(5, 64)
+    val NUM_META_ENTRIES = rand.nextInt(5, 64)
 
     val indexId = "test_index"
 
@@ -244,9 +244,9 @@ class MainSpec extends AnyFlatSpec with Repeatable {
       }
     }
 
-    var termOrd = new Ordering[Datom] {
+    val termOrd = new Ordering[Datom] {
       override def compare(x: Datom, y: Datom): Int = {
-        var r = x.getA.compareTo(y.getA)
+        val r = x.getA.compareTo(y.getA)
 
         if(r != 0) return r
 
@@ -283,6 +283,10 @@ class MainSpec extends AnyFlatSpec with Repeatable {
         (inclusiveTo && order.lteq(k, toWord) || !inclusiveTo && order.lt(k, toWord))
     }
 
+    def find(word: Datom, k: Datom, order: Ordering[Datom]): Boolean = {
+      order.equiv(k, word)
+    }
+
     reverse = rand.nextBoolean()
     withPrefix = rand.nextBoolean()
     inclusiveFrom = rand.nextBoolean()
@@ -301,7 +305,7 @@ class MainSpec extends AnyFlatSpec with Repeatable {
       toWord = y._3
     }*/
 
-    rand.nextInt(1, 4) match {
+    rand.nextInt(1, 5) match {
       case 1 =>
 
         reverse = rand.nextBoolean()
@@ -354,6 +358,19 @@ class MainSpec extends AnyFlatSpec with Repeatable {
         op = s"range: ${printDatom(fromWord, fromWord.getA)} ${if(inclusiveFrom) "<=" else "<"} x ${if(inclusiveTo) "<=" else "<"} ${printDatom(toWord, toWord.getA)}"
 
         ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveFrom, inclusiveTo, reverse)(termOrd)), Duration.Inf)
+
+      case 4 =>
+
+        reverse = rand.nextBoolean()
+        withPrefix = rand.nextBoolean()
+        inclusiveFrom = rand.nextBoolean()
+
+        dlist = tdata.filter{case (k, _) => find(k, fromWord, termOrd)}
+        if(reverse) dlist = dlist.reverse
+
+        op = s"find: ${printDatom(fromWord, fromWord.getA)}"
+
+        ilist = Await.result(TestHelper.all(index.find(fromWord, reverse, termOrd)), Duration.Inf)
 
       case _ =>
     }

@@ -18,7 +18,7 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
 
   val logger = LoggerFactory.getLogger(this.getClass)
 
-  override val times: Int = 1000
+  override val times: Int = 10000
 
   val rand = ThreadLocalRandom.current()
 
@@ -29,8 +29,8 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
     import DefaultComparators._
     import DefaultIdGenerators._
 
-    val NUM_LEAF_ENTRIES = 5//rand.nextInt(4, 20)
-    val NUM_META_ENTRIES = 5//rand.nextInt(4, if(NUM_LEAF_ENTRIES == 4) 5 else NUM_LEAF_ENTRIES)
+    val NUM_LEAF_ENTRIES = rand.nextInt(5, 64)
+    val NUM_META_ENTRIES = rand.nextInt(5, 64)
 
     val indexId = "test_index"
 
@@ -158,6 +158,10 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
           (inclusiveTo && order.lteq(k, toWord) || !inclusiveTo && order.lt(k, toWord))
       }
 
+      def find(word: K, k: K, order: Ordering[K]): Boolean = {
+        order.equiv(k, word)
+      }
+
       var dlist = Seq.empty[(K, V)]
       var ilist = Seq.empty[(K, V)]
 
@@ -187,7 +191,7 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
       inclusiveFrom = rand.nextBoolean()
       inclusiveTo = rand.nextBoolean()
 
-      rand.nextInt(1, 4) match {
+      rand.nextInt(1, 5) match {
         case 1 =>
 
           reverse = rand.nextBoolean()
@@ -239,6 +243,19 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
           op = s"range: ${new String(fromWord)} ${if(inclusiveFrom) "<=" else "<"} x ${if(inclusiveTo) "<=" else "<"} ${new String(toWord)}"
 
           ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveFrom, inclusiveTo, reverse)(ord)), Duration.Inf)
+
+        case 4 =>
+
+          reverse = rand.nextBoolean()
+          withPrefix = rand.nextBoolean()
+          inclusiveFrom = rand.nextBoolean()
+
+          dlist = tdata.filter{case (k, _) => find(k, fromWord, ord)}
+          if(reverse) dlist = dlist.reverse
+
+          op = s"find: ${new String(fromWord)}"
+
+          ilist = Await.result(TestHelper.all(index.find(fromWord, reverse, ord)), Duration.Inf)
 
         case _ =>
       }
