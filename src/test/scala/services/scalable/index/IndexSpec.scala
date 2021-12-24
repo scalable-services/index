@@ -1,6 +1,5 @@
 package services.scalable.index
 
-import com.google.common.base.Charsets
 import com.google.protobuf.ByteString
 import org.apache.commons.lang3.RandomStringUtils
 import org.scalatest.flatspec.AnyFlatSpec
@@ -8,18 +7,14 @@ import org.slf4j.LoggerFactory
 import services.scalable.index.grpc.Datom
 import services.scalable.index.impl._
 
-import java.util.{Comparator, UUID}
+import java.util.UUID
 import java.util.concurrent.ThreadLocalRandom
-import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.Await
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 import scala.language.postfixOps
-import com.google.protobuf.any.Any
 
-import java.util
-
-class MainSpec extends AnyFlatSpec with Repeatable {
+class IndexSpec extends AnyFlatSpec with Repeatable {
 
   val logger = LoggerFactory.getLogger(this.getClass)
 
@@ -36,11 +31,11 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
     implicit val avetOrd = new Ordering[Datom] {
       override def compare(x: Datom, y: Datom): Int = {
-        var r = x.getA.compareTo(y.getA)
+        var r = ord.compare(x.getV.toByteArray, y.getV.toByteArray)
 
         if(r != 0) return r
 
-        r = ord.compare(x.getV.toByteArray, y.getV.toByteArray)
+        r = x.getA.compareTo(y.getA)
 
         if(r != 0) return r
 
@@ -195,8 +190,8 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
     val properties = Seq("users/:age", "users/:color", "users/:height")
 
-    val from_prefix = properties(rand.nextInt(0, properties.length))
-    val to_prefix = properties(rand.nextInt(0, properties.length))
+    val from_prefix = "users/:age"//properties(rand.nextInt(0, properties.length))
+    val to_prefix = "users/:age"//properties(rand.nextInt(0, properties.length))
 
     val fromPrefix = Datom(a = Some(from_prefix))
     val toPrefix = Datom(a = Some(to_prefix))
@@ -240,11 +235,11 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
     val termOrd = new Ordering[Datom] {
       override def compare(x: Datom, y: Datom): Int = {
-        var r = x.getA.compareTo(y.getA)
+        var r = ord.compare(x.getV.toByteArray, y.getV.toByteArray)
 
         if(r != 0) return r
 
-        r = ord.compare(x.getV.toByteArray, y.getV.toByteArray)
+        r = x.getA.compareTo(y.getA)
 
         if(r != 0) return r
 
@@ -254,7 +249,11 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
     val prefixOrd = new Ordering[Datom] {
       override def compare(k: Datom, prefix: Datom): Int = {
-        ord.compare(k.getA.getBytes(), prefix.getA.getBytes())
+        var r = ord.compare(k.getV.toByteArray, prefix.getV.toByteArray)
+
+        if(r != 0) return r
+
+        k.getA.compareTo(prefix.getA)
       }
     }
 
