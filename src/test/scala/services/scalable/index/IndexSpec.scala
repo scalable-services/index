@@ -353,6 +353,7 @@ class IndexSpec extends AnyFlatSpec with Repeatable {
         val fp = if(withPrefix) Some(fromPrefix) else None
         val po = if(withPrefix) Some(prefixOrd) else None
 
+
         val tp = if(withPrefix) Some(toPrefix) else None
 
         dlist = tdata.filter{case (k, _) => range(k, fromWord, toWord, inclusiveFrom, inclusiveTo, fp, tp, po, termOrd)}
