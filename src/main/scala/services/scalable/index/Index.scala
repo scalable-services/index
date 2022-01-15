@@ -62,6 +62,8 @@ class Index[K, V]()(implicit val ec: ExecutionContext, val ctx: Context[K,V]){
           val c = p.pointers(0)._2
           ctx.root = Some(c)
 
+          ctx.levels -= 1
+
           ctx.setParent(c, 0, None)
 
           true
@@ -107,7 +109,11 @@ class Index[K, V]()(implicit val ec: ExecutionContext, val ctx: Context[K,V]){
     val leaf = ctx.createLeaf()
 
     leaf.insert(data, upsert) match {
-      case success: Success[Int] => recursiveCopy(leaf).map(_ => success.value)
+      case success: Success[Int] =>
+
+        ctx.levels += 1
+
+        recursiveCopy(leaf).map(_ => success.value)
       case failure: Failure[Int] => Future.failed(failure.exception)
     }
   }
@@ -253,7 +259,7 @@ class Index[K, V]()(implicit val ec: ExecutionContext, val ctx: Context[K,V]){
   protected def merge(left: Block[K, V], lpos: Int, right: Block[K, V], rpos: Int, parent: Meta[K,V])
                                  (implicit ord: Ordering[K]): Future[Boolean] = {
 
-    ctx.levels -= 1
+    //ctx.levels -= 1
 
     left.merge(right)
 
@@ -342,6 +348,9 @@ class Index[K, V]()(implicit val ec: ExecutionContext, val ctx: Context[K,V]){
 
     // One parent with one child node
     if(left.isEmpty && right.isEmpty){
+
+     // ctx.levels -= 1
+
       logger.debug(s"[remove] ONE LEVEL LESS...")
       return recursiveCopy(target)
     }
@@ -370,6 +379,9 @@ class Index[K, V]()(implicit val ec: ExecutionContext, val ctx: Context[K,V]){
     if(p.isEmpty){
 
       if(target.isEmpty()){
+
+        ctx.levels -= 1
+
         logger.debug(s"${Console.RED_B}[remove] TREE IS EMPTY${Console.RESET}")
 
         ctx.root = None
@@ -788,6 +800,50 @@ class Index[K, V]()(implicit val ec: ExecutionContext, val ctx: Context[K,V]){
     logger.info("END BTREE\n")
 
     levels.size -> num_data_blocks
+  }
+
+  protected[index] def getNumLevels(root: Option[String] = ctx.root, timeout: Duration = Duration.Inf): Int = {
+
+    val levels = scala.collection.mutable.Map[Int, scala.collection.mutable.ArrayBuffer[Block[K,V]]]()
+    var num_data_blocks = 0
+
+    def inOrder(start: Block[K,V], level: Int): Unit = {
+
+      val opt = levels.get(level)
+      var l: scala.collection.mutable.ArrayBuffer[Block[K,V]] = null
+
+      if(opt.isEmpty){
+        l = scala.collection.mutable.ArrayBuffer[Block[K,V]]()
+        levels  += level -> l
+      } else {
+        l = opt.get
+      }
+
+      start match {
+        case data: Leaf[K,V] =>
+          num_data_blocks += 1
+          l += data
+
+        case meta: Meta[K,V] =>
+
+          l += meta
+
+          val length = meta.pointers.length
+          val pointers = meta.pointers
+
+          for(i<-0 until length){
+            inOrder(Await.result(ctx.get(pointers(i)._2), timeout), level + 1)
+          }
+
+      }
+    }
+
+    root match {
+      case Some(id) => inOrder(Await.result(ctx.get(id), timeout), 0)
+      case _ =>
+    }
+
+    levels.size
   }
 
 }

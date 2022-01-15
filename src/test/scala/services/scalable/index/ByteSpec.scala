@@ -18,7 +18,7 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
 
   val logger = LoggerFactory.getLogger(this.getClass)
 
-  override val times: Int = 10000
+  override val times: Int = 1000
 
   val rand = ThreadLocalRandom.current()
 
@@ -69,6 +69,9 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
       logger.debug(s"insertion result n: $m")
 
       data = data ++ list.slice(0, m)
+
+      assert(data.length == index.ctx.num_elements)
+      assert(index.ctx.levels == index.getNumLevels())
     }
 
     def remove(index: Index[K, V]): Unit = {
@@ -81,6 +84,9 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
 
       logger.debug(s"removal result m: $m")
       data = data.filterNot{case (k, _) => list.exists{k1 => ord.equiv(k, k1)}}
+
+      assert(data.length == index.ctx.num_elements)
+      assert(index.ctx.levels == index.getNumLevels())
     }
 
     def update(index: Index[K, V]): Unit = {
@@ -96,6 +102,9 @@ class ByteSpec extends AnyFlatSpec with Repeatable {
 
       val notin = data.filterNot{case (k1, _) => list.exists{case (k, _) => ord.equiv(k, k1)}}
       data = (notin ++ list).sortBy(_._1)
+
+      assert(data.length == index.ctx.num_elements)
+      assert(index.ctx.levels == index.getNumLevels())
     }
 
     def printDatom(d: Datom, p: String): String = {
