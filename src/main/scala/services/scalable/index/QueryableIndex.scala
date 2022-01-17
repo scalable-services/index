@@ -546,7 +546,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
     new RichAsyncIterator[K, V] {
 
-      val sord: Ordering[K] = new Ordering[K] {
+      /*val sord: Ordering[K] = new Ordering[K] {
         override def compare(x: K, y: K): Int = {
           val r = order.compare(fromWord, y)
 
@@ -554,7 +554,9 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
           1
         }
-      }
+      }*/
+
+      val sord = order
 
       override def hasNext(): Future[Boolean] = {
         if(!firstTime) return Future.successful(ctx.root.isDefined)
@@ -613,17 +615,18 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
     }
   }
 
-  def find(fromWord: K, reverse: Boolean, order: Ordering[K]): RichAsyncIterator[K, V] = {
+  def find(word: K, reverse: Boolean, prefix: Option[K],
+           prefixOrd: Option[Ordering[K]], order: Ordering[K]): RichAsyncIterator[K, V] = {
 
-    if(reverse){
+    /*if(reverse){
       return findr(fromWord, order)
-    }
+    }*/
 
     new RichAsyncIterator[K, V] {
 
       val sord: Ordering[K] = new Ordering[K] {
         override def compare(x: K, y: K): Int = {
-          val r = order.compare(fromWord, y)
+          val r = order.compare(word, y)
 
           if(r != 0) return r
 
@@ -637,14 +640,14 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
       }
 
       def check(k: K): Boolean = {
-        order.equiv(k, fromWord)
+        (prefix.isEmpty && order.equiv(k, word)) || (prefixOrd.get.equiv(k, prefix.get) && order.equiv(k, word))
       }
 
       override def next(): Future[Seq[Tuple[K, V]]] = {
         if(!firstTime){
           firstTime = true
 
-          return findPath(fromWord)(sord).flatMap {
+          return findPath(word)(sord).flatMap {
             case None =>
               cur = None
               Future.successful(Seq.empty[Tuple[K, V]])

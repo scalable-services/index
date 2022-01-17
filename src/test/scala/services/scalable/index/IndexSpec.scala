@@ -29,7 +29,7 @@ class IndexSpec extends AnyFlatSpec with Repeatable {
     import DefaultComparators._
     import DefaultIdGenerators._
 
-    implicit val avetOrd = new Ordering[Datom] {
+    implicit val vaetOrd = new Ordering[Datom] {
       override def compare(x: Datom, y: Datom): Int = {
         var r = ord.compare(x.getV.toByteArray, y.getV.toByteArray)
 
@@ -69,6 +69,8 @@ class IndexSpec extends AnyFlatSpec with Repeatable {
 
     var nOfH = 0
 
+    val tx = UUID.randomUUID().toString
+
     def insert(index: Index[Datom, Bytes]): Unit = {
 
       val n = rand.nextInt(10, 50)
@@ -76,7 +78,6 @@ class IndexSpec extends AnyFlatSpec with Repeatable {
       var list = Seq.empty[Tuple[Datom, Bytes]]
 
       for(i<-0 until n){
-        val now = System.currentTimeMillis()
         val id = UUID.randomUUID.toString.getBytes()
         val name = RandomStringUtils.randomAlphanumeric(5, 10).getBytes()
         val age = java.nio.ByteBuffer.allocate(4).putInt(rand.nextInt(18, 100)).flip().array()
@@ -92,10 +93,10 @@ class IndexSpec extends AnyFlatSpec with Repeatable {
 
         //AVET
         val datoms = Seq(
-          Datom(Some("users/:name"), Some(ByteString.copyFrom(name)), Some(id), Some(now), Some(true)),
-          Datom(Some("users/:age"), Some(ByteString.copyFrom(age)), Some(id), Some(now), Some(true)),
-          Datom(Some("users/:color"), Some(ByteString.copyFrom(color)), Some(id), Some(now), Some(true)),
-          Datom(Some("users/:height"), Some(ByteString.copyFrom(height)), Some(id), Some(now), Some(true))
+          Datom(Some("users/:name"), Some(ByteString.copyFrom(name)), Some(id), Some(tx), Some(true)),
+          Datom(Some("users/:age"), Some(ByteString.copyFrom(age)), Some(id), Some(tx), Some(true)),
+          Datom(Some("users/:color"), Some(ByteString.copyFrom(color)), Some(id), Some(tx), Some(true)),
+          Datom(Some("users/:height"), Some(ByteString.copyFrom(height)), Some(id), Some(tx), Some(true))
         )
 
         /*val pairs = datoms.map { d =>
@@ -128,7 +129,7 @@ class IndexSpec extends AnyFlatSpec with Repeatable {
       val m = Await.result(index.remove(list), Duration.Inf)
 
       logger.debug(s"removal result m: $m")
-      data = data.filterNot{case (k, _) => list.exists{k1 => avetOrd.equiv(k, k1)}}
+      data = data.filterNot{case (k, _) => list.exists{k1 => vaetOrd.equiv(k, k1)}}
     }
 
     def update(index: Index[Datom, Bytes]): Unit = {
@@ -142,7 +143,7 @@ class IndexSpec extends AnyFlatSpec with Repeatable {
 
       logger.debug(s"update result m: $m")
 
-      val notin = data.filterNot{case (k1, _) => list.exists{case (k, _) => avetOrd.equiv(k, k1)}}
+      val notin = data.filterNot{case (k1, _) => list.exists{case (k, _) => vaetOrd.equiv(k, k1)}}
       data = (notin ++ list).sortBy(_._1)
     }
 
@@ -205,24 +206,24 @@ class IndexSpec extends AnyFlatSpec with Repeatable {
           val lv = rand.nextInt(18, 100)
           (Datom(a = Some(prefix), v = Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(lv).flip().array()))),
             Datom(a = Some(prefix), v = Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(lv).flip().array())),
-            e = Some("ffffffffffffffffffffffffffffffff"), t = Some(Long.MaxValue), op = Some(true)),
+            e = Some("ffffffffffffffffffffffffffffffff"), t = Some("ffffffffffffffffffffffffffffffff"), op = Some(true)),
             Datom(a = Some(prefix), v = Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(lv).flip().array())),
-              e = Some("00000000000000000000000000000000"), t = Some(Long.MinValue), op = Some(true)))
+              e = Some("00000000000000000000000000000000"), t = Some("00000000000000000000000000000000"), op = Some(true)))
 
         case "users/:color" =>
 
           val lv = colors(rand.nextInt(0, colors.length))
           (Datom(Some(prefix), Some(ByteString.copyFrom(lv.getBytes()))),
-            Datom(Some(prefix), Some(ByteString.copyFrom(lv.getBytes())), e = Some("ffffffffffffffffffffffffffffffff"), t = Some(Long.MaxValue), op = Some(true)),
-            Datom(Some(prefix), Some(ByteString.copyFrom(lv.getBytes())), e = Some("00000000000000000000000000000000"), t = Some(Long.MinValue), op = Some(true)),
+            Datom(Some(prefix), Some(ByteString.copyFrom(lv.getBytes())), e = Some("ffffffffffffffffffffffffffffffff"), t = Some("ffffffffffffffffffffffffffffffff"), op = Some(true)),
+            Datom(Some(prefix), Some(ByteString.copyFrom(lv.getBytes())), e = Some("00000000000000000000000000000000"), t = Some("00000000000000000000000000000000"), op = Some(true)),
           )
 
         case "users/:height" =>
 
           val lv = rand.nextInt(150, 210)
           (Datom(Some(prefix), Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(lv).flip().array()))),
-            Datom(Some(prefix), Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(lv).flip().array())), e = Some("ffffffffffffffffffffffffffffffff"), t = Some(Long.MaxValue), op = Some(true)),
-            Datom(Some(prefix), Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(lv).flip().array())), e = Some("00000000000000000000000000000000"), t = Some(Long.MinValue), op = Some(true))
+            Datom(Some(prefix), Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(lv).flip().array())), e = Some("ffffffffffffffffffffffffffffffff"), t = Some("ffffffffffffffffffffffffffffffff"), op = Some(true)),
+            Datom(Some(prefix), Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(lv).flip().array())), e = Some("00000000000000000000000000000000"), t = Some("00000000000000000000000000000000"), op = Some(true))
           )
       }
     }
@@ -298,7 +299,7 @@ class IndexSpec extends AnyFlatSpec with Repeatable {
     fromWord = x._1
     toWord = y._1
 
-    /*termOrd = avetOrd
+    /*termOrd = vaetOrd
 
     if(!inclusiveFrom){
       fromWord = x._2
