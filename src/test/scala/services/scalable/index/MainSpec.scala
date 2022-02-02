@@ -138,7 +138,7 @@ class MainSpec extends Repeatable {
 
     if(data.length > 2){
 
-      var reverse = rand.nextBoolean()
+      val reverse = rand.nextBoolean()
       val inclusiveFrom = rand.nextBoolean()
       val inclusiveTo = rand.nextBoolean()
 
