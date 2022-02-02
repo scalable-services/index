@@ -2,129 +2,73 @@ package services.scalable.index
 
 import com.google.common.base.Charsets
 import com.google.protobuf.ByteString
+import io.netty.util.internal.ThreadLocalRandom
 import org.apache.commons.lang3.RandomStringUtils
-import org.scalatest.flatspec.AnyFlatSpec
 import org.slf4j.LoggerFactory
 import services.scalable.index.grpc.Datom
-import services.scalable.index.impl._
+import services.scalable.index.impl.{DefaultCache, DefaultContext, MemoryStorage}
 
-import java.util.{Comparator, UUID}
-import java.util.concurrent.ThreadLocalRandom
-import scala.collection.mutable.ArrayBuffer
+import java.nio.ByteBuffer
+import java.util.UUID
 import scala.concurrent.Await
-import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.duration._
-import scala.language.postfixOps
-import com.google.protobuf.any.Any
+import scala.concurrent.duration.Duration
 
-import java.util
-
-class MainSpec extends AnyFlatSpec with Repeatable {
-
-  val logger = LoggerFactory.getLogger(this.getClass)
+class MainSpec extends Repeatable {
 
   override val times: Int = 1000
 
-  val rand = ThreadLocalRandom.current()
+  "datom operations" should " run successfully" in {
 
-  "index data " must "be equal to test data" in {
+    type T = services.scalable.index.QueryableIndex[K, V]
+    val logger = LoggerFactory.getLogger(this.getClass)
+    
+    val rand = ThreadLocalRandom.current()
+    import scala.concurrent.ExecutionContext.Implicits.global
 
-    implicit def xf(k: Bytes): String = new String(k)
+    type K = Bytes
+    type V = Bytes
 
-    import DefaultComparators._
-    import DefaultIdGenerators._
+    import services.scalable.index.DefaultComparators._
 
-    implicit val avetOrd = new Ordering[Datom] {
-      override def compare(x: Datom, y: Datom): Int = {
-        var r = x.getA.compareTo(y.getA)
+    val NUM_LEAF_ENTRIES = 8
+    val NUM_META_ENTRIES = 8
 
-        if(r != 0) return r
+    val indexId = UUID.randomUUID().toString
 
-        r = ord.compare(x.getV.toByteArray, y.getV.toByteArray)
-
-        if(r != 0) return r
-
-        r = x.getE.compareTo(y.getE)
-
-        if(r != 0) return r
-
-        r = x.getT.compareTo(y.getT)
-
-        if(r != 0) return r
-
-        x.getOp.compareTo(y.getOp)
-      }
-    }
-
-    val NUM_LEAF_ENTRIES = rand.nextInt(5, 64)
-    val NUM_META_ENTRIES = rand.nextInt(5, 64)
-
-    val indexId = "test_index"
-
-    implicit val cache = new DefaultCache[Datom, Bytes](MAX_PARENT_ENTRIES = 80000)
+    implicit val cache = new DefaultCache[K, V](MAX_PARENT_ENTRIES = 80000)
     //implicit val storage = new CassandraStorage[Bytes, Bytes](TestConfig.KEYSPACE, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, truncate = true)
-    implicit val storage = new MemoryStorage[Datom, Bytes](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+    implicit val storage = new MemoryStorage[K, V](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
 
-    implicit val ctx = new DefaultContext[Datom, Bytes](indexId, None, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+    implicit val ctx = new DefaultContext[K, V](indexId, None, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
 
-    var data = Seq.empty[Tuple[Datom, Bytes]]
-    val iter = rand.nextInt(1, 30)
+    val index = new QueryableIndex[K, V]()
 
-    val colors = Seq("red", "green", "blue", "yellow", "orange", "black", "white", "magenta", "gold", "brown", "pink", "cyan", "purple")
+    var data = Seq.empty[(K, V)]
 
-    var nOfH = 0
+    val prefixes = (0 until 10).map{_ => RandomStringUtils.randomAlphanumeric(4)}.distinct
 
-    def insert(index: Index[Datom, Bytes]): Unit = {
-
-      val n = rand.nextInt(10, 50)
-
-      var list = Seq.empty[Tuple[Datom, Bytes]]
+    def insert(): Unit = {
+      val n = rand.nextInt(1, 100)
+      var list = Seq.empty[Tuple[K, V]]
 
       for(i<-0 until n){
-        val now = System.currentTimeMillis()
-        val id = UUID.randomUUID.toString.getBytes()
-        val name = RandomStringUtils.randomAlphanumeric(5, 10).getBytes()
-        val age = java.nio.ByteBuffer.allocate(4).putInt(rand.nextInt(18, 100)).flip().array()
-        val color = colors(rand.nextInt(0, colors.length)).getBytes()
+        val prefix = prefixes(rand.nextInt(0, prefixes.length)).getBytes(Charsets.UTF_8)
+        val k = prefix ++ RandomStringUtils.randomAlphanumeric(5, 10).getBytes(Charsets.UTF_8)
+        val v = RandomStringUtils.randomAlphanumeric(5).getBytes(Charsets.UTF_8)
 
-        val h = if(nOfH < 30) 150 else rand.nextInt(150, 210)
-
-        val height = java.nio.ByteBuffer.allocate(4).putInt(h).flip().array()
-
-        if(h == 150){
-          nOfH += 1
+        if(!data.exists{case (k1, _) => ord.equiv(k, k1)}){
+          list = list :+ (k -> v)
         }
-
-        //AVET
-        val datoms = Seq(
-          Datom(Some("users/:name"), Some(ByteString.copyFrom(name)), Some(id), Some(now), Some(true)),
-          Datom(Some("users/:age"), Some(ByteString.copyFrom(age)), Some(id), Some(now), Some(true)),
-          Datom(Some("users/:color"), Some(ByteString.copyFrom(color)), Some(id), Some(now), Some(true)),
-          Datom(Some("users/:height"), Some(ByteString.copyFrom(height)), Some(id), Some(now), Some(true))
-        )
-
-        /*val pairs = datoms.map { d =>
-          Any.pack(d).toByteArray
-        }*/
-
-        for(d <- datoms){
-          list = list :+ d -> Array.empty[Byte]
-        }
-
-        /*if(!list.exists{case (k1, _) => ord.equiv(k, k1)} && !data.exists{ case (k1, _) =>
-          ord.equiv(k1, k)}){
-          list = list :+ k -> v
-        }*/
       }
 
-      val m = Await.result(index.insert(list), Duration.Inf)
+      val result = Await.result(index.insert(list), Duration.Inf)
 
-      logger.debug(s"insertion result n: $m")
-
-      data = data ++ list.slice(0, m)
+      if(result > 0){
+        data = data ++ list.slice(0, result)
+      }
     }
 
-    def remove(index: Index[Datom, Bytes]): Unit = {
+    def remove(): Unit = {
       if(data.isEmpty) return
 
       val bound = if(data.length == 1) 1 else rand.nextInt(1, data.length)
@@ -133,10 +77,10 @@ class MainSpec extends AnyFlatSpec with Repeatable {
       val m = Await.result(index.remove(list), Duration.Inf)
 
       logger.debug(s"removal result m: $m")
-      data = data.filterNot{case (k, _) => list.exists{k1 => avetOrd.equiv(k, k1)}}
+      data = data.filterNot{case (k, _) => list.exists{k1 => ord.equiv(k, k1)}}
     }
 
-    def update(index: Index[Datom, Bytes]): Unit = {
+    def update(): Unit = {
       if(data.isEmpty) return
 
       val bound = if(data.length == 1) 1 else rand.nextInt(1, data.length)
@@ -147,30 +91,18 @@ class MainSpec extends AnyFlatSpec with Repeatable {
 
       logger.debug(s"update result m: $m")
 
-      val notin = data.filterNot{case (k1, _) => list.exists{case (k, _) => avetOrd.equiv(k, k1)}}
+      val notin = data.filterNot{case (k1, _) => list.exists{case (k, _) => ord.equiv(k, k1)}}
       data = (notin ++ list).sortBy(_._1)
     }
 
-    def printDatom(d: Datom, p: String): String = {
-      p match {
-        case "users/:name" => s"[${d.a},${new String(d.getV.toByteArray)},${d.e},${d.t}]"
-        case "users/:age" => s"[${d.a},${java.nio.ByteBuffer.allocate(4).put(d.getV.toByteArray).flip().getInt()},${d.e},${d.t}]"
-        case "users/:color" => s"[${d.a},${new String(d.getV.toByteArray)},${d.e},${d.t}]"
-        case "users/:height" => s"[${d.a},${java.nio.ByteBuffer.allocate(4).put(d.getV.toByteArray).flip().getInt()},${d.e},${d.t}]"
-        //case "users/:height" => s"[${java.nio.ByteBuffer.allocate(4).put(d.getV.toByteArray).flip().getInt()}]"
-        case _ => ""
-      }
-    }
-
-    // implicit val storage = new CassandraStorage(NUM_LEAF_ENTRIES, NUM_META_ENTRIES, "indexes")
-
-    val index = new QueryableIndex[Datom, Bytes]()
+    val iter = rand.nextInt(1, 100)
 
     for(i<-0 until iter){
+
       rand.nextInt(1, 4) match {
-        case 1 => insert(index)
-        case 2 => update(index)
-        case 3 => remove(index)
+        case 1 => insert()
+        case 2 => remove()
+        case 3 => update()
         case _ =>
       }
 
@@ -180,211 +112,102 @@ class MainSpec extends AnyFlatSpec with Repeatable {
     val tdata = data.sortBy(_._1)
     val idata = Await.result(TestHelper.all(index.inOrder()), Duration.Inf)
 
-    logger.debug(s"tdata: ${tdata.map{case (k, v) => printDatom(k, k.getA) -> new String(v)}}\n")
-    logger.debug(s"idata: ${idata.map{case (k, v) => printDatom(k, k.getA) -> new String(v)}}")
+    logger.debug(s"${Console.GREEN_B}tdata: ${tdata.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
+    logger.debug(s"${Console.MAGENTA_B}idata: ${idata.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
 
-    assert(isColEqual(idata, tdata))
+    assert(idata == tdata)
 
     println()
 
-    var reverse = false//rand.nextBoolean()
-
-    var inclusiveFrom = rand.nextBoolean()
-    var withPrefix = rand.nextBoolean()
-    var inclusiveTo = rand.nextBoolean()
-
-    val properties = Seq("users/:age", "users/:color", "users/:height")
-
-    val from_prefix = properties(rand.nextInt(0, properties.length))
-    val to_prefix = properties(rand.nextInt(0, properties.length))
-
-    val fromPrefix = Datom(a = Some(from_prefix))
-    val toPrefix = Datom(a = Some(to_prefix))
-
-    var fromWord: Datom = null
-    var toWord: Datom = null
-
-    def generateRandom(prefix: String): (Datom, Datom, Datom) = {
-      prefix match {
-        case "users/:age" =>
-          val lv = rand.nextInt(18, 100)
-          (Datom(a = Some(prefix), v = Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(lv).flip().array()))),
-            Datom(a = Some(prefix), v = Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(lv).flip().array())),
-            e = Some("ffffffffffffffffffffffffffffffff"), t = Some(Long.MaxValue), op = Some(true)),
-            Datom(a = Some(prefix), v = Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(lv).flip().array())),
-              e = Some("00000000000000000000000000000000"), t = Some(Long.MinValue), op = Some(true)))
-
-        case "users/:color" =>
-
-          val lv = colors(rand.nextInt(0, colors.length))
-          (Datom(Some(prefix), Some(ByteString.copyFrom(lv.getBytes()))),
-            Datom(Some(prefix), Some(ByteString.copyFrom(lv.getBytes())), e = Some("ffffffffffffffffffffffffffffffff"), t = Some(Long.MaxValue), op = Some(true)),
-            Datom(Some(prefix), Some(ByteString.copyFrom(lv.getBytes())), e = Some("00000000000000000000000000000000"), t = Some(Long.MinValue), op = Some(true)),
-          )
-
-        case "users/:height" =>
-
-          val lv = rand.nextInt(150, 210)
-          (Datom(Some(prefix), Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(lv).flip().array()))),
-            Datom(Some(prefix), Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(lv).flip().array())), e = Some("ffffffffffffffffffffffffffffffff"), t = Some(Long.MaxValue), op = Some(true)),
-            Datom(Some(prefix), Some(ByteString.copyFrom(java.nio.ByteBuffer.allocate(4).putInt(lv).flip().array())), e = Some("00000000000000000000000000000000"), t = Some(Long.MinValue), op = Some(true))
-          )
-      }
+    def lt(k: K, fromPrefix: Option[K], fromWord: K, inclusiveFrom: Boolean, order: Ordering[K]): Boolean = {
+      (fromPrefix.isEmpty || order.equiv(k, fromPrefix.get)) && (inclusiveFrom && order.lteq(k, fromWord) || !inclusiveFrom && order.lt(k, fromWord))
     }
 
-    val x = generateRandom(from_prefix)
-    val y = generateRandom(to_prefix)
-
-    fromWord = x._1
-    toWord = y._1
-
-    val termOrd = new Ordering[Datom] {
-      override def compare(x: Datom, y: Datom): Int = {
-        var r = x.getA.compareTo(y.getA)
-
-        if(r != 0) return r
-
-        r = ord.compare(x.getV.toByteArray, y.getV.toByteArray)
-
-        if(r != 0) return r
-
-        x.getE.compareTo(y.getE)
-      }
+    def gt(k: K, fromPrefix: Option[K], fromWord: K, inclusiveFrom: Boolean, order: Ordering[K]): Boolean = {
+      (fromPrefix.isEmpty || order.equiv(k, fromPrefix.get)) && (inclusiveFrom && order.gteq(k, fromWord) || !inclusiveFrom && order.gt(k, fromWord))
     }
 
-    val prefixOrd = new Ordering[Datom] {
-      override def compare(k: Datom, prefix: Datom): Int = {
-        ord.compare(k.getA.getBytes(), prefix.getA.getBytes())
-      }
+    def range(k: K, from: K, to: K, inclusiveFrom: Boolean, inclusiveTo: Boolean, order: Ordering[K]): Boolean = {
+      (inclusiveFrom && order.gteq(k, from) || order.gt(k, from)) &&
+        (inclusiveTo && order.lteq(k, to) || order.lt(k, to))
     }
 
-    var dlist = Seq.empty[(Datom, Bytes)]
-    var ilist = Seq.empty[(Datom, Bytes)]
-
-    var op = ""
-
-    def lt(word: Datom, k: Datom, inclusive: Boolean, prefix: Option[Datom], prefixOrd: Option[Ordering[Datom]], order: Ordering[Datom]): Boolean = {
-      (prefix.isEmpty || prefixOrd.get.equiv(k, prefix.get)) && (inclusive && order.lteq(k, word) || !inclusive && order.lt(k, word))
-    }
-
-    def gt(word: Datom, k: Datom, inclusive: Boolean, prefix: Option[Datom], prefixOrd: Option[Ordering[Datom]], order: Ordering[Datom]): Boolean = {
-      (prefix.isEmpty || prefixOrd.get.equiv(k, prefix.get)) && (inclusive && order.gteq(k, word) || !inclusive && order.gt(k, word))
-    }
-
-    def range(k: Datom, fromWord: Datom, toWord: Datom, inclusiveFrom: Boolean, inclusiveTo: Boolean, fromPrefix: Option[Datom], toPrefix: Option[Datom],
-              prefixOrd: Option[Ordering[Datom]], order: Ordering[Datom]): Boolean = {
-      /*if(fromPrefix.isDefined){
-        return (
-          (inclusiveFrom && prefixOrd.get.gteq(k, fromPrefix.get) || !inclusiveFrom && prefixOrd.get.gt(k, fromPrefix.get)) &&
-            (inclusiveTo && prefixOrd.get.lteq(k, toPrefix.get) || !inclusiveTo && prefixOrd.get.lt(k, toPrefix.get)) &&
-
-            (inclusiveFrom && order.gteq(k, fromWord) || !inclusiveFrom && order.gt(k, fromWord)) &&
-            (inclusiveTo && order.lteq(k, toWord) || !inclusiveTo && order.lt(k, toWord))
-        )
-      }*/
-
-      (inclusiveFrom && order.gteq(k, fromWord) || !inclusiveFrom && order.gt(k, fromWord)) &&
-        (inclusiveTo && order.lteq(k, toWord) || !inclusiveTo && order.lt(k, toWord))
-    }
-
-    def find(word: Datom, k: Datom, order: Ordering[Datom]): Boolean = {
+    def find(k: K, word: K, order: Ordering[K]): Boolean = {
       order.equiv(k, word)
     }
 
-    reverse = rand.nextBoolean()
-    withPrefix = rand.nextBoolean()
-    inclusiveFrom = rand.nextBoolean()
-    inclusiveTo = rand.nextBoolean()
+    if(data.length > 2){
 
-    fromWord = x._1
-    toWord = y._1
+      val reverse = rand.nextBoolean()
+      val inclusiveFrom = rand.nextBoolean()
+      val inclusiveTo = rand.nextBoolean()
 
-    /*termOrd = avetOrd
+      var dlist = Seq.empty[Tuple2[K, V]]
+      var it: RichAsyncIterator[K, V] = null
 
-    if(!inclusiveFrom){
-      fromWord = x._2
-    }*/
+      val idx0 = rand.nextInt(0, data.length)
+      val idx1 = rand.nextInt(idx0, data.length)
 
-    /*if(!inclusiveTo){
-      toWord = y._3
-    }*/
+      val fromTerm = data(idx0)._1
+      val toTerm = data(idx1)._1
 
-    rand.nextInt(1, 5) match {
-      case 1 =>
+      val fromPrefix = fromTerm.slice(0, 4)
+      var op = ""
 
-        reverse = rand.nextBoolean()
-        withPrefix =  rand.nextBoolean()
-        inclusiveFrom = rand.nextBoolean()
+      rand.nextInt(1, 5) match {
+        case 1 =>
 
-        val fp = if(withPrefix) Some(fromPrefix) else None
-        val fpo = if(withPrefix) Some(prefixOrd) else None
+          op = ">"
 
-        val idx = tdata.indexWhere{case (k, _) => gt(fromWord, k, inclusiveFrom, fp, fpo, termOrd)}
-        dlist = tdata.slice(idx, tdata.length).takeWhile{case (k, _) => gt(fromWord, k, inclusiveFrom, fp, fpo, termOrd)}
-        if(reverse) dlist = dlist.reverse
+          dlist = tdata.filter{case (k, _) => gt(k, Some(fromPrefix), fromTerm, inclusiveFrom, ord)}
+          dlist = if(reverse) dlist.reverse else dlist
+          it = index.gt(Some(fromPrefix), fromTerm, inclusiveFrom, reverse)(ord)
 
-        op = s"${if(inclusiveFrom) ">=" else ">"} ${printDatom(fromWord, fromWord.getA)}"
+        case 2 =>
 
-        ilist = Await.result(TestHelper.all(index.gt(fromWord, inclusiveFrom, reverse, fp, fpo, termOrd)), Duration.Inf)
+          op = "<"
 
-      case 2 =>
+          dlist = tdata.filter{case (k, _) => lt(k, Some(fromPrefix), fromTerm, inclusiveFrom, ord)}
+          dlist = if(reverse) dlist.reverse else dlist
+          it = index.lt(Some(fromPrefix), fromTerm, inclusiveFrom, reverse)(ord)
 
-        reverse = rand.nextBoolean()
-        withPrefix = rand.nextBoolean()
-        inclusiveFrom = rand.nextBoolean()
+        case 3 =>
 
-        val fp = if(withPrefix) Some(fromPrefix) else None
-        val fpo = if(withPrefix) Some(prefixOrd) else None
+          op = "range"
 
-        val idx = tdata.indexWhere{case (k, _) => lt(fromWord, k, inclusiveFrom, fp, fpo, termOrd)}
-        dlist = tdata.slice(idx, tdata.length).takeWhile{case (k, _) => lt(fromWord, k, inclusiveFrom, fp, fpo, termOrd)}
-        if(reverse) dlist = dlist.reverse
+          dlist = tdata.filter{case (k, _) => range(k, fromTerm, toTerm, inclusiveFrom, inclusiveTo, ord)}
+          dlist = if(reverse) dlist.reverse else dlist
+          it = index.range(fromTerm, toTerm, inclusiveFrom, inclusiveTo, reverse)(ord)
 
-        op = s"${if(inclusiveFrom) "<=" else "<"} ${printDatom(fromWord, fromWord.getA)}"
+        case 4 =>
 
-        ilist = Await.result(TestHelper.all(index.lt(fromWord, inclusiveFrom, reverse, fp, fpo, termOrd)), Duration.Inf)
+          op = "find"
 
-      case 3 =>
+          val prefixFinder = new Ordering[K] {
+            override def compare(x: K, fromPrefix: K): Int = {
+              if(x.length < fromPrefix.length) return ord.compare(x, fromPrefix)
 
-        reverse = rand.nextBoolean()
-        withPrefix = rand.nextBoolean()
-        inclusiveFrom = rand.nextBoolean()
-        inclusiveTo = rand.nextBoolean()
+              val pre = x.slice(0, fromPrefix.length)
 
-        val fp = if(withPrefix) Some(fromPrefix) else None
-        val po = if(withPrefix) Some(prefixOrd) else None
+              ord.compare(pre, fromPrefix)
+            }
+          }
 
-        val tp = if(withPrefix) Some(toPrefix) else None
+          dlist = tdata.filter{case (k, _) => find(k, fromPrefix, prefixFinder)}
+          dlist = if(reverse) dlist.reverse else dlist
+          it = index.find(fromPrefix, reverse)(prefixFinder)
 
-        dlist = tdata.filter{case (k, _) => range(k, fromWord, toWord, inclusiveFrom, inclusiveTo, fp, tp, po, termOrd)}
-        if(reverse) dlist = dlist.reverse
+        case _ =>
+      }
 
-        op = s"range: ${printDatom(fromWord, fromWord.getA)} ${if(inclusiveFrom) "<=" else "<"} x ${if(inclusiveTo) "<=" else "<"} ${printDatom(toWord, toWord.getA)}"
+      val ilist = Await.result(TestHelper.all(it), Duration.Inf)
 
-        ilist = Await.result(TestHelper.all(index.range(fromWord, toWord, inclusiveFrom, inclusiveTo, reverse)(termOrd)), Duration.Inf)
+      logger.debug(s"${Console.GREEN_B} op: ${op} fromPrefix: ${new String(fromPrefix, Charsets.UTF_8)} from: ${new String(fromTerm)} to: ${new String(toTerm)} reverse: ${reverse} tdata: ${dlist.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
+      logger.debug(s"${Console.MAGENTA_B}idata: ${ilist.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
 
-      case 4 =>
+      assert(dlist == ilist)
 
-        reverse = rand.nextBoolean()
-        withPrefix = rand.nextBoolean()
-        inclusiveFrom = rand.nextBoolean()
-
-        dlist = tdata.filter{case (k, _) => find(k, fromWord, termOrd)}
-        if(reverse) dlist = dlist.reverse
-
-        op = s"find: ${printDatom(fromWord, fromWord.getA)}"
-
-        ilist = Await.result(TestHelper.all(index.find(fromWord, reverse, termOrd)), Duration.Inf)
-
-      case _ =>
     }
-
-    logger.debug(s"${Console.BLUE_B}withPrefix: ${withPrefix} inclusiveLower: ${inclusiveFrom} inclusiveUpper: ${inclusiveTo} reverse: ${reverse}${Console.RESET}\n")
-    logger.debug(s"${Console.MAGENTA_B}dlist ${op}: ${dlist.map{case (k, v) => printDatom(k, k.getA) -> new String(v)}}${Console.RESET}\n")
-    logger.debug(s"${Console.BLUE_B}ilist ${op}: ${ilist.map{case (k, v) => printDatom(k, k.getA) -> new String(v)}}\n${Console.RESET}")
-    logger.debug(s"${Console.GREEN_B}length: ${ilist.length == dlist.length}${Console.RESET}")
-
-    assert(isColEqual(dlist, ilist)(termOrd, ord))
 
   }
 
