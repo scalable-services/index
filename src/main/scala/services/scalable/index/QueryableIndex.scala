@@ -4,8 +4,8 @@ import services.scalable.index.grpc.Datom
 import scala.concurrent.{ExecutionContext, Future}
 
 /**
- * All 'term' parameters in the functions should be provided with the prefix.
- * If the prefix is important, it should be explicitly provided with the optional parameter, i.e.,
+ * All 'term' parameters in the functions should be provided along the prefix.
+ * If the prefix is important in the searching, it should be explicitly provided with the optional parameter, i.e.,
  * fromPrefix.
  */
 class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, override val ctx: Context[K, V],
