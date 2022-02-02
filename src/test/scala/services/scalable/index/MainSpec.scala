@@ -30,8 +30,8 @@ class MainSpec extends Repeatable {
 
     import services.scalable.index.DefaultComparators._
 
-    val NUM_LEAF_ENTRIES = 8
-    val NUM_META_ENTRIES = 8
+    val NUM_LEAF_ENTRIES = rand.nextInt(5, 64)
+    val NUM_META_ENTRIES = NUM_LEAF_ENTRIES
 
     val indexId = UUID.randomUUID().toString
 
@@ -95,7 +95,7 @@ class MainSpec extends Repeatable {
       data = (notin ++ list).sortBy(_._1)
     }
 
-    val iter = rand.nextInt(1, 100)
+    val iter = rand.nextInt(10, 100)
 
     for(i<-0 until iter){
 
@@ -138,7 +138,7 @@ class MainSpec extends Repeatable {
 
     if(data.length > 2){
 
-      val reverse = rand.nextBoolean()
+      var reverse = rand.nextBoolean()
       val inclusiveFrom = rand.nextBoolean()
       val inclusiveTo = rand.nextBoolean()
 
@@ -151,47 +151,55 @@ class MainSpec extends Repeatable {
       val fromTerm = data(idx0)._1
       val toTerm = data(idx1)._1
 
-      val fromPrefix = fromTerm.slice(0, 4)
+      val fromPrefix: Option[Bytes] = if(rand.nextBoolean()) Some(fromTerm.slice(0, 4)) else None
       var op = ""
+
+      val prefixFinder = new Ordering[K] {
+        override def compare(x: K, fromPrefix: K): Int = {
+          if(x.length < fromPrefix.length) return ord.compare(x, fromPrefix)
+
+          val pre = x.slice(0, fromPrefix.length)
+
+          val r = ord.compare(pre, fromPrefix)
+
+          if(r == 0) return r
+
+          ord.compare(x, fromPrefix)
+        }
+      }
+
+     // reverse = false
 
       rand.nextInt(1, 5) match {
         case 1 =>
 
-          op = ">"
+          op = "<"
 
-          dlist = tdata.filter{case (k, _) => gt(k, Some(fromPrefix), fromTerm, inclusiveFrom, ord)}
+          dlist = tdata.filter{ case (k, _) => lt(k, fromPrefix, fromTerm, inclusiveFrom, prefixFinder)}
           dlist = if(reverse) dlist.reverse else dlist
-          it = index.gt(Some(fromPrefix), fromTerm, inclusiveFrom, reverse)(ord)
+          it = index.lt(fromPrefix, fromTerm, inclusiveFrom, reverse)(prefixFinder)
 
         case 2 =>
 
-          op = "<"
+          op = ">"
 
-          dlist = tdata.filter{case (k, _) => lt(k, Some(fromPrefix), fromTerm, inclusiveFrom, ord)}
+          dlist = tdata.filter{case (k, _) => gt(k, fromPrefix, fromTerm, inclusiveFrom, prefixFinder)}
           dlist = if(reverse) dlist.reverse else dlist
-          it = index.lt(Some(fromPrefix), fromTerm, inclusiveFrom, reverse)(ord)
+          it = index.gt(fromPrefix, fromTerm, inclusiveFrom, reverse)(prefixFinder)
 
         case 3 =>
 
           op = "range"
 
-          dlist = tdata.filter{case (k, _) => range(k, fromTerm, toTerm, inclusiveFrom, inclusiveTo, ord)}
+          dlist = tdata.filter{case (k, _) => range(k, fromTerm, toTerm, inclusiveFrom, inclusiveTo, prefixFinder)}
           dlist = if(reverse) dlist.reverse else dlist
-          it = index.range(fromTerm, toTerm, inclusiveFrom, inclusiveTo, reverse)(ord)
+          it = index.range(fromTerm, toTerm, inclusiveFrom, inclusiveTo, reverse)(prefixFinder)
 
         case 4 =>
 
           op = "find"
 
-          val prefixFinder = new Ordering[K] {
-            override def compare(x: K, fromPrefix: K): Int = {
-              if(x.length < fromPrefix.length) return ord.compare(x, fromPrefix)
-
-              val pre = x.slice(0, fromPrefix.length)
-
-              ord.compare(pre, fromPrefix)
-            }
-          }
+          val fromPrefix = fromTerm.slice(0, 4)
 
           dlist = tdata.filter{case (k, _) => find(k, fromPrefix, prefixFinder)}
           dlist = if(reverse) dlist.reverse else dlist
@@ -202,7 +210,7 @@ class MainSpec extends Repeatable {
 
       val ilist = Await.result(TestHelper.all(it), Duration.Inf)
 
-      logger.debug(s"${Console.GREEN_B} op: ${op} fromPrefix: ${new String(fromPrefix, Charsets.UTF_8)} from: ${new String(fromTerm)} to: ${new String(toTerm)} reverse: ${reverse} tdata: ${dlist.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
+      logger.debug(s"${Console.GREEN_B} op: ${op} fromPrefix: ${fromPrefix.map(s => new String(s, Charsets.UTF_8))} from: ${new String(fromTerm)} to: ${new String(toTerm)} reverse: ${reverse} tdata: ${dlist.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
       logger.debug(s"${Console.MAGENTA_B}idata: ${ilist.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
 
       assert(dlist == ilist)

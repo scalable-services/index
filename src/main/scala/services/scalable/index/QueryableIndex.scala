@@ -18,7 +18,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
       val sord: Ordering[K] = if(inclusiveFrom){
         new Ordering[K]{
           override def compare(x: K, y: K): Int = {
-            val r = order.compare(fromWord, y)
+            val r = -order.compare(y, fromWord)
 
             if(r != 0) return r
 
@@ -28,11 +28,12 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
       } else {
         new Ordering[K]{
           override def compare(x: K, y: K): Int = {
-            val r = order.compare(fromWord, y)
+            val r = -order.compare(y, fromWord)
 
-            if(r > 0) return r
+            if(r != 0) return r
 
-            -1
+            //-1
+            0
           }
         }
       }
@@ -104,7 +105,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
       val sord: Ordering[K] = if(fromPrefix.isDefined){
         new Ordering[K]{
-          override def compare(x: K, y: K): Int = {
+          override def compare(term: K, y: K): Int = {
             val r = -order.compare(y, fromPrefix.get)
 
             if(r != 0) return r
@@ -114,7 +115,7 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
         }
       } else {
         new Ordering[K]{
-          override def compare(x: K, y: K): Int = {
+          override def compare(term: K, y: K): Int = {
             -1
           }
         }
@@ -266,25 +267,23 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
     new RichAsyncIterator[K, V] {
 
-      val sord: Ordering[K] = if(inclusiveFrom){
-        new Ordering[K]{
-          override def compare(x: K, y: K): Int = {
-            val r = order.compare(fromWord, y)
+      val sord = if(inclusiveFrom) new Ordering[K]{
+        override def compare(term: K, y: K): Int = {
+          val r = -order.compare(y, term)
 
-            if(r != 0) return r
+          if(r != 0) return r
 
-            -1
-          }
+          //-1
+          0
         }
-      } else {
+      } else
         new Ordering[K]{
-          override def compare(x: K, y: K): Int = {
-            val r = order.compare(fromWord, y)
+        override def compare(term: K, y: K): Int = {
+          val r = -order.compare(y, term)
 
-            if(r < 0) return r
+          if(r != 0) return r
 
-            1
-          }
+          1
         }
       }
 
@@ -354,22 +353,21 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
       val sord: Ordering[K] = if(inclusiveTo){
         new Ordering[K]{
           override def compare(x: K, y: K): Int = {
-            val r = order.compare(toWord, y)
+            val r = -order.compare(y, toWord)
 
             if(r != 0) return r
 
             1
           }
         }
-      } else {
-        new Ordering[K]{
-          override def compare(x: K, y: K): Int = {
-            val r = order.compare(toWord, y)
+      } else new Ordering[K]{
+        override def compare(x: K, y: K): Int = {
+          val r = -order.compare(y, toWord)
 
-            if(r > 0) return r
+          if(r != 0) return r
 
-            -1
-          }
+          //-1
+          0
         }
       }
 
@@ -439,27 +437,25 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
     new RichAsyncIterator[K, V] {
 
-      val sord: Ordering[K] = if(inclusiveFrom){
+      val sord = if(inclusiveFrom) new Ordering[K]{
+        override def compare(term: K, y: K): Int = {
+          val r = -order.compare(y, fromWord)
+
+          if(r != 0) return r
+
+          //-1
+          0
+        }
+      } else
         new Ordering[K]{
-          override def compare(x: K, y: K): Int = {
-            val r = order.compare(fromWord, y)
+          override def compare(term: K, y: K): Int = {
+            val r = -order.compare(y, fromWord)
 
             if(r != 0) return r
-
-            -1
-          }
-        }
-      } else {
-        new Ordering[K]{
-          override def compare(x: K, y: K): Int = {
-            val r = order.compare(fromWord, y)
-
-            if(r < 0) return r
 
             1
           }
         }
-      }
 
       override def hasNext(): Future[Boolean] = {
         if(!firstTime) return Future.successful(ctx.root.isDefined)

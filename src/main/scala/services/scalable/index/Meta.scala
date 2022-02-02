@@ -77,16 +77,6 @@ class Meta[K, V](override val id: String,
     pointers(if(pos < pointers.length) pos else pos - 1)._2
   }
 
-  def findPathGt(k: K, inclusive: Boolean)(implicit ord: Ordering[K]): String = {
-    val (_, pos) = binSearchGt(k, 0, pointers.length - 1, inclusive)
-    pointers(if(pos < pointers.length) pos else pos - 1)._2
-  }
-
-  def findPathLt(k: K, inclusive: Boolean)(implicit ord: Ordering[K]): String = {
-    val (_, pos) = binSearchLt(k, 0, pointers.length - 1, inclusive)
-    pointers(if(pos < pointers.length) pos else pos - 1)._2
-  }
-
   def insert(data: Seq[Pointer[K]])(implicit ctx: Context[K,V], ord: Ordering[K]): Try[Int] = {
     if(isFull()) return Failure(Errors.META_BLOCK_FULL)
 
