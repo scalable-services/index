@@ -150,7 +150,7 @@ class MainSpec extends Repeatable {
       val fromTerm = data(idx0)._1
       val toTerm = data(idx1)._1
 
-      val fromPrefix: Option[Bytes] = if(rand.nextBoolean()) Some(prefixes(rand.nextInt(0, prefixes.length))) else None
+      val fromPrefix: Option[Bytes] = if(rand.nextBoolean()) Some(prefixes(rand.nextInt(0, prefixes.length)).getBytes(Charsets.UTF_8)) else None
       var op = ""
 
       val prefixFinder = new Ordering[K] {
