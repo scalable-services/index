@@ -45,13 +45,14 @@ class MainSpec extends Repeatable {
     var data = Seq.empty[(K, V)]
 
     val prefixes = (0 until 10).map{_ => RandomStringUtils.randomAlphanumeric(4)}.distinct
+      .map(_.getBytes(Charsets.UTF_8))
 
     def insert(): Unit = {
       val n = rand.nextInt(1, 100)
       var list = Seq.empty[Tuple[K, V]]
 
       for(i<-0 until n){
-        val prefix = prefixes(rand.nextInt(0, prefixes.length)).getBytes(Charsets.UTF_8)
+        val prefix = prefixes(rand.nextInt(0, prefixes.length))
         val k = prefix ++ RandomStringUtils.randomAlphanumeric(5, 10).getBytes(Charsets.UTF_8)
         val v = RandomStringUtils.randomAlphanumeric(5).getBytes(Charsets.UTF_8)
 
@@ -150,7 +151,7 @@ class MainSpec extends Repeatable {
       val fromTerm = data(idx0)._1
       val toTerm = data(idx1)._1
 
-      val fromPrefix: Option[Bytes] = if(rand.nextBoolean()) Some(prefixes(rand.nextInt(0, prefixes.length)).getBytes(Charsets.UTF_8)) else None
+      val fromPrefix = if(rand.nextBoolean()) Some(prefixes(rand.nextInt(0, prefixes.length))) else None
       var op = ""
 
       val prefixFinder = new Ordering[K] {
@@ -198,7 +199,7 @@ class MainSpec extends Repeatable {
 
           op = "find"
 
-          val fromPrefix = fromTerm.slice(0, 4)
+          val fromPrefix = prefixes(rand.nextInt(0, prefixes.length))
 
           dlist = tdata.filter{case (k, _) => find(k, fromPrefix, prefixFinder)}
           dlist = if(reverse) dlist.reverse else dlist
