@@ -1,6 +1,5 @@
 package services.scalable.index
 
-import services.scalable.index.grpc.Datom
 import scala.concurrent.{ExecutionContext, Future}
 
 /**
@@ -312,10 +311,6 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
               val filtered = b.tuples.filter{case (k, _) => check(k) }
               stop = filtered.isEmpty
-
-              if(fromWord.isInstanceOf[Datom])
-                println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => k.asInstanceOf[Datom]}.map(d => printDatom(d, d.getA))} filtered: ${filtered.length}${Console.RESET}\n")
-              else println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k.asInstanceOf[Bytes])}} filtered: ${filtered.length}${Console.RESET}\n")
 
               /*if(filtered.isEmpty){
                 next()
@@ -668,17 +663,6 @@ class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, overrid
 
   def gt(word: K, inclusive: Boolean, reverse: Boolean)(order: Ordering[K]): RichAsyncIterator[K, V] = {
     gt(None, word, inclusive, reverse)(order)
-  }
-
-  def printDatom(d: Datom, p: String): String = {
-    p match {
-      case "users/:name" => s"[${d.a},${new String(d.getV.toByteArray)},${d.e},${d.t}]"
-      case "users/:age" => s"[${d.a},${java.nio.ByteBuffer.allocate(4).put(d.getV.toByteArray).flip().getInt()},${d.e},${d.t}]"
-      case "users/:color" => s"[${d.a},${new String(d.getV.toByteArray)},${d.e},${d.t}]"
-      case "users/:height" => s"[${d.a},${java.nio.ByteBuffer.allocate(4).put(d.getV.toByteArray).flip().getInt()},${d.e},${d.t}]"
-      //case "users/:height" => s"[${java.nio.ByteBuffer.allocate(4).put(d.getV.toByteArray).flip().getInt()}]"
-      case _ => ""
-    }
   }
 
 }

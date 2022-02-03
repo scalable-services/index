@@ -5,7 +5,6 @@ import com.google.protobuf.ByteString
 import io.netty.util.internal.ThreadLocalRandom
 import org.apache.commons.lang3.RandomStringUtils
 import org.slf4j.LoggerFactory
-import services.scalable.index.grpc.Datom
 import services.scalable.index.impl.{DefaultCache, DefaultContext, MemoryStorage}
 
 import java.nio.ByteBuffer
@@ -151,7 +150,7 @@ class MainSpec extends Repeatable {
       val fromTerm = data(idx0)._1
       val toTerm = data(idx1)._1
 
-      val fromPrefix: Option[Bytes] = if(rand.nextBoolean()) Some(fromTerm.slice(0, 4)) else None
+      val fromPrefix: Option[Bytes] = if(rand.nextBoolean()) Some(prefixes(rand.nextInt(0, prefixes.length))) else None
       var op = ""
 
       val prefixFinder = new Ordering[K] {

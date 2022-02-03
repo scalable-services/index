@@ -51,10 +51,11 @@ message MetaBlock {
   }
 }
 
+/*
 message Datom {
   optional string a = 1;
   optional bytes v = 2;
   optional string e = 3;
   optional string t = 4;
   optional bool op = 5;
-}
+}*/
