@@ -119,17 +119,17 @@ class MainSpec extends Repeatable {
 
     println()
 
-    def lt(k: K, fromPrefix: Option[K], fromWord: K, inclusiveFrom: Boolean, order: Ordering[K]): Boolean = {
-      (fromPrefix.isEmpty || order.equiv(k, fromPrefix.get)) && (inclusiveFrom && order.lteq(k, fromWord) || !inclusiveFrom && order.lt(k, fromWord))
+    def lt(k: K, fromPrefix: Option[K], fromWord: K, inclusiveFrom: Boolean, prefixOrder: Ordering[K]): Boolean = {
+      (fromPrefix.isEmpty || prefixOrder.equiv(k, fromPrefix.get)) && (inclusiveFrom && ord.lteq(k, fromWord) || !inclusiveFrom && ord.lt(k, fromWord))
     }
 
-    def gt(k: K, fromPrefix: Option[K], fromWord: K, inclusiveFrom: Boolean, order: Ordering[K]): Boolean = {
-      (fromPrefix.isEmpty || order.equiv(k, fromPrefix.get)) && (inclusiveFrom && order.gteq(k, fromWord) || !inclusiveFrom && order.gt(k, fromWord))
+    def gt(k: K, fromPrefix: Option[K], fromWord: K, inclusiveFrom: Boolean, prefixOrder: Ordering[K]): Boolean = {
+      (fromPrefix.isEmpty || prefixOrder.equiv(k, fromPrefix.get)) && (inclusiveFrom && ord.gteq(k, fromWord) || !inclusiveFrom && ord.gt(k, fromWord))
     }
 
-    def range(k: K, from: K, to: K, inclusiveFrom: Boolean, inclusiveTo: Boolean, order: Ordering[K]): Boolean = {
-      (inclusiveFrom && order.gteq(k, from) || order.gt(k, from)) &&
-        (inclusiveTo && order.lteq(k, to) || order.lt(k, to))
+    def range(k: K, from: K, to: K, inclusiveFrom: Boolean, inclusiveTo: Boolean): Boolean = {
+      (inclusiveFrom && ord.gteq(k, from) || ord.gt(k, from)) &&
+        (inclusiveTo && ord.lteq(k, to) || ord.lt(k, to))
     }
 
     def find(k: K, word: K, order: Ordering[K]): Boolean = {
@@ -138,9 +138,9 @@ class MainSpec extends Repeatable {
 
     if(data.length > 2){
 
-      val reverse = rand.nextBoolean()
-      val inclusiveFrom = rand.nextBoolean()
-      val inclusiveTo = rand.nextBoolean()
+      var reverse = rand.nextBoolean()
+      var inclusiveFrom = rand.nextBoolean()
+      var inclusiveTo = rand.nextBoolean()
 
       var dlist = Seq.empty[Tuple2[K, V]]
       var it: RichAsyncIterator[K, V] = null
@@ -151,49 +151,45 @@ class MainSpec extends Repeatable {
       val fromTerm = data(idx0)._1
       val toTerm = data(idx1)._1
 
-      val fromPrefix = if(rand.nextBoolean()) Some(prefixes(rand.nextInt(0, prefixes.length))) else None
+      val fromPrefix = if(rand.nextBoolean()) Some(fromTerm.slice(0, 4)) else None
       var op = ""
 
-      val prefixFinder = new Ordering[K] {
+      val prefixOrd = new Ordering[K] {
         override def compare(x: K, fromPrefix: K): Int = {
           if(x.length < fromPrefix.length) return ord.compare(x, fromPrefix)
 
           val pre = x.slice(0, fromPrefix.length)
 
-          val r = ord.compare(pre, fromPrefix)
-
-          if(r == 0) return r
-
-          ord.compare(x, fromPrefix)
+          ord.compare(pre, fromPrefix)
         }
       }
 
-     // reverse = false
+     // reverse = true
 
       rand.nextInt(1, 5) match {
         case 1 =>
 
           op = "<"
 
-          dlist = tdata.filter{ case (k, _) => lt(k, fromPrefix, fromTerm, inclusiveFrom, prefixFinder)}
+          dlist = tdata.filter{ case (k, _) => lt(k, fromPrefix, fromTerm, inclusiveFrom, prefixOrd)}
           dlist = if(reverse) dlist.reverse else dlist
-          it = index.lt(fromPrefix, fromTerm, inclusiveFrom, reverse)(prefixFinder)
+          it = index.lt(fromPrefix, fromTerm, inclusiveFrom, reverse)(Some(prefixOrd), ord)
 
         case 2 =>
 
           op = ">"
 
-          dlist = tdata.filter{case (k, _) => gt(k, fromPrefix, fromTerm, inclusiveFrom, prefixFinder)}
+          dlist = tdata.filter{case (k, _) => gt(k, fromPrefix, fromTerm, inclusiveFrom, prefixOrd)}
           dlist = if(reverse) dlist.reverse else dlist
-          it = index.gt(fromPrefix, fromTerm, inclusiveFrom, reverse)(prefixFinder)
+          it = index.gt(fromPrefix, fromTerm, inclusiveFrom, reverse)(Some(prefixOrd), ord)
 
         case 3 =>
 
           op = "range"
 
-          dlist = tdata.filter{case (k, _) => range(k, fromTerm, toTerm, inclusiveFrom, inclusiveTo, prefixFinder)}
+          dlist = tdata.filter{case (k, _) => range(k, fromTerm, toTerm, inclusiveFrom, inclusiveTo)}
           dlist = if(reverse) dlist.reverse else dlist
-          it = index.range(fromTerm, toTerm, inclusiveFrom, inclusiveTo, reverse)(prefixFinder)
+          it = index.range(fromTerm, toTerm, inclusiveFrom, inclusiveTo, reverse)(prefixOrd)
 
         case 4 =>
 
@@ -201,9 +197,9 @@ class MainSpec extends Repeatable {
 
           val fromPrefix = prefixes(rand.nextInt(0, prefixes.length))
 
-          dlist = tdata.filter{case (k, _) => find(k, fromPrefix, prefixFinder)}
+          dlist = tdata.filter{case (k, _) => find(k, fromPrefix, prefixOrd)}
           dlist = if(reverse) dlist.reverse else dlist
-          it = index.find(fromPrefix, reverse)(prefixFinder)
+          it = index.find(fromPrefix, reverse)(prefixOrd)
 
         case _ =>
       }
