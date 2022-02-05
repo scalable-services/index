@@ -138,9 +138,9 @@ class MainSpec extends Repeatable {
 
     if(data.length > 2){
 
-      var reverse = rand.nextBoolean()
-      var inclusiveFrom = rand.nextBoolean()
-      var inclusiveTo = rand.nextBoolean()
+      val reverse = rand.nextBoolean()
+      val inclusiveFrom = rand.nextBoolean()
+      val inclusiveTo = rand.nextBoolean()
 
       var dlist = Seq.empty[Tuple2[K, V]]
       var it: RichAsyncIterator[K, V] = null
