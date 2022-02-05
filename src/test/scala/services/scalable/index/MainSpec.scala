@@ -206,7 +206,13 @@ class MainSpec extends Repeatable {
 
       val ilist = Await.result(TestHelper.all(it), Duration.Inf)
 
-      logger.debug(s"${Console.GREEN_B} op: ${op} fromPrefix: ${fromPrefix.map(s => new String(s, Charsets.UTF_8))} from: ${new String(fromTerm)} to: ${new String(toTerm)} reverse: ${reverse} tdata: ${dlist.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
+      if(op.compareTo("range") == 0) {
+        logger.debug(s"${Console.CYAN_B} op: ${op} fromPrefix: ${fromPrefix.map(s => new String(s, Charsets.UTF_8))} from: ${new String(fromTerm)} to: ${new String(toTerm)} reverse: ${reverse} includeFrom: ${inclusiveFrom} includeTo: ${inclusiveTo}${Console.RESET}\n")
+      } else {
+        logger.debug(s"${Console.CYAN_B} op: ${op} fromPrefix: ${fromPrefix.map(s => new String(s, Charsets.UTF_8))} from: ${new String(fromTerm)} includeFrom: ${inclusiveFrom}${Console.RESET}\n")
+      }
+
+      logger.debug(s"${Console.GREEN_B}tdata: ${dlist.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
       logger.debug(s"${Console.MAGENTA_B}idata: ${ilist.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
 
       assert(dlist == ilist)
