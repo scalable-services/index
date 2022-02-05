@@ -1,13 +1,11 @@
 package services.scalable.index
 
 import com.google.common.base.Charsets
-import com.google.protobuf.ByteString
 import io.netty.util.internal.ThreadLocalRandom
 import org.apache.commons.lang3.RandomStringUtils
 import org.slf4j.LoggerFactory
 import services.scalable.index.impl.{DefaultCache, DefaultContext, MemoryStorage}
 
-import java.nio.ByteBuffer
 import java.util.UUID
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
