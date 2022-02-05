@@ -30,7 +30,7 @@ class MainSpec extends Repeatable {
     import services.scalable.index.DefaultComparators._
 
     val NUM_LEAF_ENTRIES = rand.nextInt(5, 64)
-    val NUM_META_ENTRIES = NUM_LEAF_ENTRIES
+    val NUM_META_ENTRIES = rand.nextInt(5, 64)
 
     val indexId = UUID.randomUUID().toString
 
