@@ -19,7 +19,7 @@ libraryDependencies ++= Seq(
 
   "com.github.ben-manes.caffeine" % "caffeine" % "2.8.8",
 
-  "com.datastax.oss" % "java-driver-core" % "4.11.1",
+  "com.datastax.oss" % "java-driver-core" % "4.13.0",
 
   "org.scala-lang.modules" %% "scala-collection-compat" % "2.1.6"
 )

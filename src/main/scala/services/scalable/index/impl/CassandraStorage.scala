@@ -41,7 +41,9 @@ class CassandraStorage[K, V](val KEYSPACE: String,
   override def createIndex(indexId: String): Future[Context[K,V]] = {
     val ctx = new DefaultContext[K,V](indexId, None, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)(ec, this, cache, ord)
 
-    session.executeAsync(INSERT_META.bind().setString(0, ctx.indexId).setString(1, null)
+    session.executeAsync(INSERT_META.bind()
+      .setString(0, ctx.indexId)
+      .setString(1, indexId)
       .setInt(2, ctx.NUM_LEAF_ENTRIES)
       .setInt(3, ctx.NUM_META_ENTRIES)).flatMap {
       case r if r.wasApplied() => Future.successful(ctx)
@@ -108,7 +110,8 @@ class CassandraStorage[K, V](val KEYSPACE: String,
         case _ =>
       }
 
-      stm.addStatement(INSERT.bind().setString(0, b.unique_id)
+      stm.addStatement(INSERT.bind()
+        .setString(0, b.unique_id)
         .setByteBuffer(1, ByteBuffer.wrap(bin))
         .setBoolean(2, b.isInstanceOf[Leaf[K,V]])
         .setInt(3, bin.length)

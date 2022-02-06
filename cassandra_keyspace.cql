@@ -12,6 +12,6 @@ CREATE TABLE indexes.blocks (
     id text PRIMARY KEY,
     bin blob,
     leaf boolean,
-    size bigint
+    size int
 ) WITH default_time_to_live = 0
     AND transactions = {'enabled': 'false'};

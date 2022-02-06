@@ -4,7 +4,7 @@ import com.google.common.base.Charsets
 import io.netty.util.internal.ThreadLocalRandom
 import org.apache.commons.lang3.RandomStringUtils
 import org.slf4j.LoggerFactory
-import services.scalable.index.impl.{DefaultCache, DefaultContext, MemoryStorage}
+import services.scalable.index.impl.{CassandraStorage, DefaultCache, DefaultContext, GrpcByteSerializer, MemoryStorage}
 
 import java.util.UUID
 import scala.concurrent.Await
@@ -14,7 +14,7 @@ class MainSpec extends Repeatable {
 
   override val times: Int = 1000
 
-  "datom operations" should " run successfully" in {
+  "operations" should " run successfully" in {
 
     type T = services.scalable.index.QueryableIndex[K, V]
     val logger = LoggerFactory.getLogger(this.getClass)
@@ -33,9 +33,7 @@ class MainSpec extends Repeatable {
     val indexId = UUID.randomUUID().toString
 
     implicit val cache = new DefaultCache[K, V](MAX_PARENT_ENTRIES = 80000)
-    //implicit val storage = new CassandraStorage[Bytes, Bytes](TestConfig.KEYSPACE, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, truncate = true)
     implicit val storage = new MemoryStorage[K, V](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
-
     implicit val ctx = new DefaultContext[K, V](indexId, None, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
 
     val index = new QueryableIndex[K, V]()
@@ -104,8 +102,10 @@ class MainSpec extends Repeatable {
         case _ =>
       }
 
-      Await.ready(ctx.save(), Duration.Inf)
+      //Await.ready(ctx.save(), Duration.Inf)
     }
+
+    Await.ready(ctx.save(), Duration.Inf)
 
     val tdata = data.sortBy(_._1)
     val idata = Await.result(TestHelper.all(index.inOrder()), Duration.Inf)
@@ -213,7 +213,7 @@ class MainSpec extends Repeatable {
       logger.debug(s"${Console.GREEN_B}tdata: ${dlist.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
       logger.debug(s"${Console.MAGENTA_B}idata: ${ilist.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
 
-      assert(dlist == ilist)
+      isColEqual(dlist, ilist)
 
     }
 

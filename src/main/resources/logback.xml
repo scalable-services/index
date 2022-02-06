@@ -24,10 +24,6 @@
         <appender-ref ref="STDOUT" />
     </appender>
 
-    <root level="INFO">
-        <appender-ref ref="CONSOLE"/>
-    </root>
-
     <root level="DEBUG">
         <appender-ref ref="CONSOLE"/>
     </root>
