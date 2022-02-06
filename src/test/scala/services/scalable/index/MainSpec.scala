@@ -94,15 +94,12 @@ class MainSpec extends Repeatable {
     val iter = rand.nextInt(10, 100)
 
     for(i<-0 until iter){
-
       rand.nextInt(1, 4) match {
         case 1 => insert()
         case 2 => remove()
         case 3 => update()
         case _ =>
       }
-
-      //Await.ready(ctx.save(), Duration.Inf)
     }
 
     Await.ready(ctx.save(), Duration.Inf)
@@ -113,7 +110,9 @@ class MainSpec extends Repeatable {
     logger.debug(s"${Console.GREEN_B}tdata: ${tdata.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
     logger.debug(s"${Console.MAGENTA_B}idata: ${idata.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
 
-    assert(idata == tdata)
+    isColEqual(idata, tdata)
+    assert(Await.result(index.getNumLevels(), Duration.Inf) == ctx.levels)
+    assert(ctx.num_elements == idata.length)
 
     println()
 

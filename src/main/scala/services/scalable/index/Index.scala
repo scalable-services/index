@@ -2,6 +2,8 @@ package services.scalable.index
 
 import org.slf4j.LoggerFactory
 
+import java.util.concurrent.atomic.AtomicInteger
+import scala.collection.concurrent.TrieMap
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.{Failure, Success}
@@ -109,12 +111,12 @@ class Index[K, V]()(implicit val ec: ExecutionContext, val ctx: Context[K,V]){
     val leaf = ctx.createLeaf()
 
     leaf.insert(data, upsert) match {
-      case success: Success[Int] =>
+      case Success(n) =>
 
         ctx.levels += 1
 
-        recursiveCopy(leaf).map(_ => success.value)
-      case failure: Failure[Int] => Future.failed(failure.exception)
+        recursiveCopy(leaf).map(_ => n)
+      case Failure(ex) => Future.failed(ex)
     }
   }
 
@@ -214,8 +216,8 @@ class Index[K, V]()(implicit val ec: ExecutionContext, val ctx: Context[K,V]){
     }
 
     left.insert(data, upsert) match {
-      case success: Success[Int] => recursiveCopy(left).map{_ => success.value}
-      case failure: Failure[Int] => Future.failed(failure.exception)
+      case Success(n) => recursiveCopy(left).map{_ => n}
+      case Failure(ex) => Future.failed(ex)
     }
   }
 
@@ -802,7 +804,7 @@ class Index[K, V]()(implicit val ec: ExecutionContext, val ctx: Context[K,V]){
     levels.size -> num_data_blocks
   }
 
-  protected[index] def getNumLevels(root: Option[String] = ctx.root, timeout: Duration = Duration.Inf): Int = {
+  /*protected[index] def getNumLevels(root: Option[String] = ctx.root, timeout: Duration = Duration.Inf): Int = {
 
     val levels = scala.collection.mutable.Map[Int, scala.collection.mutable.ArrayBuffer[Block[K,V]]]()
     var num_data_blocks = 0
@@ -844,6 +846,53 @@ class Index[K, V]()(implicit val ec: ExecutionContext, val ctx: Context[K,V]){
     }
 
     levels.size
+  }*/
+
+  protected[index] def getNumLevels(root: Option[String] = ctx.root): Future[Int] = {
+
+    val levels = TrieMap.empty[Int, scala.collection.mutable.ArrayBuffer[Block[K,V]]]
+    val num_data_blocks = new AtomicInteger(0)
+
+    def inOrder(start: Block[K,V], level: Int): Future[Unit] = {
+
+      val opt = levels.get(level)
+      var l: scala.collection.mutable.ArrayBuffer[Block[K,V]] = null
+
+      if(opt.isEmpty){
+        l = scala.collection.mutable.ArrayBuffer[Block[K,V]]()
+        levels  += level -> l
+      } else {
+        l = opt.get
+      }
+
+      start match {
+        case data: Leaf[K,V] =>
+          num_data_blocks.incrementAndGet()
+          l += data
+          Future.successful{}
+
+        case meta: Meta[K,V] =>
+
+          l += meta
+
+          val length = meta.pointers.length
+          val pointers = meta.pointers
+
+          var tasks = Seq.empty[Future[Unit]]
+
+          for(i<-0 until length){
+            tasks :+= ctx.get(pointers(i)._2).flatMap(b => inOrder(b, level + 1))
+          }
+
+          Future.sequence(tasks).map(_ => {})
+
+      }
+    }
+
+    root match {
+      case Some(id) => ctx.get(id).flatMap(b => inOrder(b, 0)).map(_ => levels.size)
+      case _ => Future.successful(0)
+    }
   }
 
 }
