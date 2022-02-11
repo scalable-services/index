@@ -1,6 +1,7 @@
 package services.scalable.index
 
 import org.slf4j.LoggerFactory
+import services.scalable.index.impl.DefaultContext
 
 import java.util.concurrent.atomic.AtomicInteger
 import scala.collection.concurrent.TrieMap
@@ -15,10 +16,16 @@ import scala.util.{Failure, Success}
  * This class does not implement query operations like <, > and <=, interval(x,y). To implement
  * such operations, you can use a custom filter to find the first block containing the element being searched. From that
  * you need to use prev(block) and next(block) to iterate!
+ *
+ * This class is meant to be used like a multi operation container. To do a transaction, you create an instance of the class passing
+ * the context. Once you done, the resulting context can be saved and passed to future instances of the class representing another set of
+ * operations.
  */
-class Index[K, V]()(implicit val ec: ExecutionContext, val ctx: Context[K,V]){
+class Index[K, V](val c: DefaultContext[K, V])(implicit val ec: ExecutionContext){
 
   val logger = LoggerFactory.getLogger(this.getClass)
+  implicit val ctx = new DefaultContext[K, V](c.indexId, c.root, c.NUM_LEAF_ENTRIES, c.NUM_META_ENTRIES)(c.ec, c.storage,
+    c.cache, c.ord, c.idGenerator)
 
   val $this = this
 
@@ -222,6 +229,7 @@ class Index[K, V]()(implicit val ec: ExecutionContext, val ctx: Context[K,V]){
   }
 
   def insert(data: Seq[Tuple[K,V]], upsert: Boolean = false)(implicit ord: Ordering[K]): Future[Int] = {
+
     val sorted = data.sortBy(_._1)
 
     if(sorted.exists{case (k, _) => sorted.count{case (k1, _) => ord.equiv(k, k1)} > 1}){

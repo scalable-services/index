@@ -18,8 +18,6 @@ class DefaultContext[K, V](override val indexId: String,
 
   val logger = LoggerFactory.getLogger(this.getClass)
 
-  assert(NUM_LEAF_ENTRIES >= 4 && NUM_META_ENTRIES >= 4, "The number of elements must be equal or greater than 4!")
-
   val LEAF_MAX = NUM_LEAF_ENTRIES
   val LEAF_MIN = LEAF_MAX/2
 

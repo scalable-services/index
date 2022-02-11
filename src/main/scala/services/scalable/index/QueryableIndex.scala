@@ -1,5 +1,7 @@
 package services.scalable.index
 
+import services.scalable.index.impl.DefaultContext
+
 import scala.concurrent.{ExecutionContext, Future}
 
 /**
@@ -9,8 +11,8 @@ import scala.concurrent.{ExecutionContext, Future}
  * order[T].compare(k, term): the first parameter of the compare function is the key being compared. The second one is
  * the pattern to be compared to.
  */
-class QueryableIndex[K, V]()(override implicit val ec: ExecutionContext, override val ctx: Context[K, V],
-                             implicit val order: Ordering[K]) extends Index[K, V]()(ec, ctx) {
+class QueryableIndex[K, V](override val c: DefaultContext[K, V])(override implicit val ec: ExecutionContext)
+  extends Index[K, V](c)(ec) {
 
   override val $this = this
 
