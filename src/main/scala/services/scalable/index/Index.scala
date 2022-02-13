@@ -29,6 +29,10 @@ class Index[K, V](val c: DefaultContext[K, V])(implicit val ec: ExecutionContext
 
   val $this = this
 
+  def save(): Future[Context[K, V]] = {
+    ctx.save().map(_ => ctx)
+  }
+
   def findPath(k: K, start: Block[K,V], limit: Option[Block[K,V]])(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
 
     if(limit.isDefined && limit.get.unique_id.equals(start.unique_id)){

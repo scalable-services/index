@@ -57,7 +57,7 @@ object Main {
 
     val task = for {
       ok <- index.insert(list).map(_ == list.length)
-      result <- if(ok) index.ctx.save() else Future.successful(false)
+      result <- if(ok) index.save().map(_ => true) else Future.successful(false)
     } yield {
       result
     }
