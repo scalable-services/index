@@ -50,11 +50,11 @@ message MetaBlock {
   }
 }
 
-/*
-message Datom {
-  optional string a = 1;
-  optional bytes v = 2;
-  optional string e = 3;
-  optional string t = 4;
-  optional bool op = 5;
-}*/
+message IndexContext {
+  string id = 1;
+  int32 num_leaf_items = 2;
+  int32 num_meta_items = 3;
+  optional string root = 4;
+  int32 levels = 5;
+  int64 num_elements = 6;
+}

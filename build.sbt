@@ -9,7 +9,7 @@ libraryDependencies ++= Seq(
   "org.scalactic" %% "scalactic" % "3.1.0",
   "org.scalatest" %% "scalatest" % "3.1.0" % "test",
 
-  "ch.qos.logback" % "logback-classic" % "1.2.10" % Test,
+  "ch.qos.logback" % "logback-classic" % "1.2.10",
   "org.slf4j" % "slf4j-api" % "1.7.33",
 
   "com.google.guava" % "guava" % "27.1-jre",

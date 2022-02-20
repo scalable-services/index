@@ -37,11 +37,12 @@
       <excludeFolder url="file://$MODULE_DIR$/../../.bloop" />
       <excludeFolder url="file://$MODULE_DIR$/../../.metals" />
       <excludeFolder url="file://$MODULE_DIR$/../../.vscode" />
+      <excludeFolder url="file://$MODULE_DIR$/../../target/bg-jobs" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
-    <orderEntry type="library" scope="TEST" name="sbt: ch.qos.logback:logback-classic:1.2.10:jar" level="project" />
-    <orderEntry type="library" scope="TEST" name="sbt: ch.qos.logback:logback-core:1.2.10:jar" level="project" />
+    <orderEntry type="library" name="sbt: ch.qos.logback:logback-classic:1.2.10:jar" level="project" />
+    <orderEntry type="library" name="sbt: ch.qos.logback:logback-core:1.2.10:jar" level="project" />
     <orderEntry type="library" name="sbt: com.datastax.oss:java-driver-core:4.13.0:jar" level="project" />
     <orderEntry type="library" name="sbt: com.datastax.oss:java-driver-shaded-guava:25.1-jre-graal-sub-1:jar" level="project" />
     <orderEntry type="library" name="sbt: com.datastax.oss:native-protocol:1.5.0:jar" level="project" />

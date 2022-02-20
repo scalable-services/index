@@ -28,4 +28,6 @@ trait Context[K, V] {
 
   def save(): Future[Boolean]
 
+  def duplicate(): Context[K, V]
+
 }

@@ -122,4 +122,9 @@ class DefaultContext[K, V](override val indexId: String,
       r
     }
   }
+
+  override def duplicate(): Context[K, V] = {
+    new DefaultContext[K, V](indexId, root, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)(ec, storage,
+      cache, ord, idGenerator)
+  }
 }

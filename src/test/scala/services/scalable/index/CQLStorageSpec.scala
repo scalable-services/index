@@ -43,7 +43,7 @@ class CQLStorageSpec extends Repeatable {
 
     //implicit val ctx = new DefaultContext[K, V](indexId, None, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
 
-    val index = new QueryableIndex[K, V]()
+    val index = new QueryableIndex[K, V](ctx)
 
     var data = Seq.empty[(K, V)]
 

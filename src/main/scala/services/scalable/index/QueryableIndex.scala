@@ -11,7 +11,7 @@ import scala.concurrent.{ExecutionContext, Future}
  * order[T].compare(k, term): the first parameter of the compare function is the key being compared. The second one is
  * the pattern to be compared to.
  */
-class QueryableIndex[K, V](override val c: DefaultContext[K, V])(override implicit val ec: ExecutionContext)
+class QueryableIndex[K, V](override val c: Context[K, V])(override implicit val ec: ExecutionContext)
   extends Index[K, V](c)(ec) {
 
   override val $this = this

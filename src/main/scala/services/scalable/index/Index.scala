@@ -21,11 +21,10 @@ import scala.util.{Failure, Success}
  * the context. Once you done, the resulting context can be saved and passed to future instances of the class representing another set of
  * operations.
  */
-class Index[K, V](val c: DefaultContext[K, V])(implicit val ec: ExecutionContext){
+class Index[K, V](val c: Context[K, V])(implicit val ec: ExecutionContext){
 
   val logger = LoggerFactory.getLogger(this.getClass)
-  implicit val ctx = new DefaultContext[K, V](c.indexId, c.root, c.NUM_LEAF_ENTRIES, c.NUM_META_ENTRIES)(c.ec, c.storage,
-    c.cache, c.ord, c.idGenerator)
+  implicit val ctx = c.duplicate()
 
   val $this = this
 
