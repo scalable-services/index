@@ -12,7 +12,7 @@ final class GrpcByteSerializer[K, V](implicit val ks: Serializer[K], val vs: Ser
         case leaf: Leaf[K,V] =>
 
           Any.pack(LeafBlock(leaf.id, leaf.partition, leaf.tuples.map { case (k, v) =>
-            Tuple(ByteString.copyFrom(ks.serialize(k)), ByteString.copyFrom(vs.serialize(v)))
+            KVPair(ByteString.copyFrom(ks.serialize(k)), ByteString.copyFrom(vs.serialize(v)))
           }, block.MIN, block.MAX, if(leaf.root.isDefined) LeafBlock.OptionalRoot.Root(leaf.root.get)
           else LeafBlock.OptionalRoot.Empty)).toByteArray
 

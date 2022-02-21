@@ -14,9 +14,10 @@ option (scalapb.options) = {
   single_file: true
   flat_package: true
   preserve_unknown_fields: false
+  //preamble: "trait IndexCommand"
 };
 
-message Tuple {
+message KVPair {
   bytes key = 1;
   bytes value = 2;
 }
@@ -24,7 +25,7 @@ message Tuple {
 message LeafBlock {
   string id = 1;
   string partition = 2;
-  repeated Tuple tuples = 3;
+  repeated KVPair tuples = 3;
   int32 min = 4;
   int32 max = 5;
 
@@ -58,3 +59,8 @@ message IndexContext {
   int32 levels = 5;
   int64 num_elements = 6;
 }
+
+/*
+message InsertCommand {
+  option (scalapb.message).extends = "services.scalable.index.grpc.IndexCommand";
+}*/

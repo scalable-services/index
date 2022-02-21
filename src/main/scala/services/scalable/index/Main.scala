@@ -10,7 +10,7 @@ import java.util.UUID
 import java.util.concurrent.{Executors, ThreadLocalRandom}
 import scala.concurrent.ExecutionContext.Implicits.global
 import services.scalable.index.DefaultComparators._
-import services.scalable.index.grpc.IndexContext
+import services.scalable.index.grpc._
 
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.concurrent.duration.Duration
@@ -21,6 +21,11 @@ object Main {
   val logger = LoggerFactory.getLogger(this.getClass).asInstanceOf[ch.qos.logback.classic.Logger]
 
   logger.setLevel(Level.OFF)
+
+  trait IndexCommand
+  case class InsertCommand[K, V](list: Seq[(K, V)]) extends IndexCommand
+  case class RemoveCommand[K, V](keys: Seq[K]) extends IndexCommand
+  case class UpdateCommand[K, V](list: Seq[(K, V)]) extends IndexCommand
 
   class HIndex[K, V](val indexId: String, val NUM_LEAF_ENTRIES: Int, val NUM_META_ENTRIES: Int)(implicit val ord: Ordering[K]) {
 
@@ -47,13 +52,40 @@ object Main {
       }
     }
 
-    def insert(list: Seq[(K, V)]): Future[Boolean] = {
-      val index = new QueryableIndex[K, V](ctx)
+    def seqFutures[T, U](items: IterableOnce[T])(fn: T => Future[U]): Future[List[U]] = {
+      items.iterator.foldLeft(Future.successful[List[U]](Nil)) {
+        (f, item) => f.flatMap {
+          x => fn(item).map(_ :: x)
+        }
+      } map (_.reverse)
+    }
 
+    def execute(cmds: Seq[IndexCommand]): Future[Boolean] = {
+
+      val index = new QueryableIndex[K, V](ctx)
       val now = System.nanoTime()
 
-      index.insert(list).map(_ == list.length).flatMap{ ok =>
-        if(ok){
+      def process(pos: Int, previous: Boolean): Future[Boolean] = {
+        if(!previous) return Future.successful(false)
+        if(pos == cmds.length) return Future.successful(true)
+
+        val cmd = cmds(pos)
+
+        (cmd match {
+          case cmd: InsertCommand[K, V] => index.insert(cmd.list).map(_ == cmd.list.length)
+          case cmd: RemoveCommand[K, V] => index.remove(cmd.keys).map(_ == cmd.keys.length)
+          case cmd: UpdateCommand[K, V] => index.update(cmd.list).map(_ == cmd.list.length)
+        }).flatMap(ok => process(pos + 1, ok))
+      }
+
+      /*seqFutures(cmds){
+        case cmd: InsertCommand[K, V] => index.insert(cmd.list).map(_ == cmd.list.length)
+        case cmd: RemoveCommand[K, V] => index.remove(cmd.keys).map(_ == cmd.keys.length)
+        case cmd: UpdateCommand[K, V] => index.update(cmd.list).map(_ == cmd.list.length)
+      }*/
+
+      process(0, true).flatMap { ok =>
+        if(/*ok.forall(_ == true)*/ok){
           index.save().flatMap { ctx =>
             this.ctx = ctx
             inserth(List(now -> IndexContext(ctx.indexId, ctx.NUM_LEAF_ENTRIES, ctx.NUM_META_ENTRIES, ctx.root, ctx.levels, ctx.num_elements)))
@@ -97,31 +129,66 @@ object Main {
     val indexId = UUID.randomUUID().toString
 
     val hindex = new HIndex[K, V](indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+    var data = Seq.empty[(K, V)]
 
-    def insert(): Future[Boolean] = {
+    def insert(): IndexCommand = {
       var list = Seq.empty[(K, V)]
 
       for(i<-0 until 20){
         val k = RandomStringUtils.randomAlphanumeric(5).getBytes(Charsets.UTF_8)
-        val v = RandomStringUtils.randomAlphanumeric(5).getBytes(Charsets.UTF_8)
+        val v = k.clone()//RandomStringUtils.randomAlphanumeric(5).getBytes(Charsets.UTF_8)
 
         if(!list.exists{case (k1, _) => ord.equiv(k, k1)}){
           list = list :+ k -> v
         }
       }
 
-      hindex.insert(list)
+      data = data ++ list
+
+      InsertCommand(list)
     }
 
-    var tasks = insert()
+    def remove(): IndexCommand = {
+      val bound = if(data.length == 1) 1 else rand.nextInt(1, data.length)
+      val list = scala.util.Random.shuffle(data.slice(0, bound)).map(_._1)
 
-    for(i<-1 until 10){
-      tasks = tasks.flatMap(_ => insert())
+      data = data.filterNot{case (k, _) => list.exists{k1 => ord.equiv(k, k1)}}
+
+      RemoveCommand(list)
     }
 
-    val hc = Await.result(tasks, Duration.Inf)
+    def update(): IndexCommand = {
+      val bound = if(data.length == 1) 1 else rand.nextInt(1, data.length)
+      val list = scala.util.Random.shuffle(data.slice(0, bound))
+        .map{case (k, _) => k -> RandomStringUtils.randomAlphabetic(5).getBytes("UTF-8")}
+
+      val notin = data.filterNot{case (k1, _) => list.exists{case (k, _) => ord.equiv(k, k1)}}
+      data = (notin ++ list).sortBy(_._1)
+
+      UpdateCommand(list)
+    }
+
+    var cmds = Seq.empty[IndexCommand]
+
+    for(i<-0 until 100){
+      rand.nextInt(1, 4) match {
+        case 1 => cmds = cmds :+ insert()
+        case 2 if !data.isEmpty => cmds = cmds :+ remove()
+        case 3 if !data.isEmpty => cmds = cmds :+ update()
+        case _ =>
+      }
+    }
 
     import hindex._
+
+    val hc = Await.result(hindex.execute(cmds), Duration.Inf)
+
+    val index = new QueryableIndex[K, V](new DefaultContext[K, V](indexId, hindex.ctx.root, NUM_LEAF_ENTRIES, NUM_META_ENTRIES))
+
+    val dlist = data.sortBy(_._1)
+    val ilist = Await.result(all(index.inOrder()), Duration.Inf)
+
+    isColEqual(dlist, ilist)
 
     val t = System.nanoTime()
 
