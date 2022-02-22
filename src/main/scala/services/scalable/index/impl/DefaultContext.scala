@@ -11,8 +11,8 @@ class DefaultContext[K, V](override val indexId: String,
                      override val NUM_LEAF_ENTRIES: Int,
                      override val NUM_META_ENTRIES: Int)
                     (implicit val ec: ExecutionContext,
-                     val storage: Storage[K,V],
-                     val cache: Cache[K,V],
+                     val storage: Storage[K, V],
+                     val cache: Cache[K, V],
                      val ord: Ordering[K],
                      val idGenerator: IdGenerator = DefaultIdGenerators.idGenerator) extends Context[K,V] {
 

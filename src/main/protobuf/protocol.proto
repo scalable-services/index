@@ -14,7 +14,7 @@ option (scalapb.options) = {
   single_file: true
   flat_package: true
   preserve_unknown_fields: false
-  //preamble: "trait IndexCommand"
+  preamble: "trait IndexCommand"
 };
 
 message KVPair {
@@ -60,7 +60,20 @@ message IndexContext {
   int64 num_elements = 6;
 }
 
-/*
 message InsertCommand {
   option (scalapb.message).extends = "services.scalable.index.grpc.IndexCommand";
-}*/
+
+  repeated KVPair list = 1;
+}
+
+message RemoveCommand {
+  option (scalapb.message).extends = "services.scalable.index.grpc.IndexCommand";
+
+  repeated bytes keys = 1;
+}
+
+message UpdateCommand {
+  option (scalapb.message).extends = "services.scalable.index.grpc.IndexCommand";
+
+  repeated KVPair list = 1;
+}

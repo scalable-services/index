@@ -5,7 +5,7 @@ import com.google.protobuf.any.Any
 import services.scalable.index._
 import services.scalable.index.grpc._
 
-final class GrpcByteSerializer[K, V](implicit val ks: Serializer[K], val vs: Serializer[V]) extends Serializer [Block[K,V]] {
+final class GrpcByteSerializer[K, V](implicit val ks: Serializer[K], val vs: Serializer[V]) extends Serializer [Block[K, V]] {
 
     override def serialize(block: Block[K,V]): Bytes = {
       block match {
@@ -25,7 +25,7 @@ final class GrpcByteSerializer[K, V](implicit val ks: Serializer[K], val vs: Ser
       }
     }
 
-    override def deserialize(bytes: Bytes): Block[K,V] = {
+    override def deserialize(bytes: Bytes): Block[K, V] = {
 
       val parsed = Any.parseFrom(bytes)
 

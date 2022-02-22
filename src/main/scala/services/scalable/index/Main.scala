@@ -2,19 +2,22 @@ package services.scalable.index
 
 import ch.qos.logback.classic.Level
 import com.google.common.base.Charsets
+import com.google.protobuf.ByteString
 import org.apache.commons.lang3.RandomStringUtils
 import org.slf4j.LoggerFactory
-import services.scalable.index.impl.{DefaultCache, DefaultContext, MemoryStorage}
+import services.scalable.index.impl.{CassandraStorage, DefaultCache, DefaultContext, GrpcByteSerializer, MemoryStorage}
+import com.google.protobuf.any.Any
 
 import java.util.UUID
 import java.util.concurrent.{Executors, ThreadLocalRandom}
-import scala.concurrent.ExecutionContext.Implicits.global
 import services.scalable.index.DefaultComparators._
 import services.scalable.index.grpc._
 
+import java.nio.ByteBuffer
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.concurrent.duration.Duration
 import scala.util.{Failure, Success, Try}
+import scala.concurrent.ExecutionContext.Implicits.global
 
 object Main {
 
@@ -22,22 +25,31 @@ object Main {
 
   logger.setLevel(Level.OFF)
 
-  trait IndexCommand
+  /*trait IndexCommand
   case class InsertCommand[K, V](list: Seq[(K, V)]) extends IndexCommand
   case class RemoveCommand[K, V](keys: Seq[K]) extends IndexCommand
-  case class UpdateCommand[K, V](list: Seq[(K, V)]) extends IndexCommand
+  case class UpdateCommand[K, V](list: Seq[(K, V)]) extends IndexCommand*/
 
-  class HIndex[K, V](val indexId: String, val NUM_LEAF_ENTRIES: Int, val NUM_META_ENTRIES: Int)(implicit val ord: Ordering[K]) {
+  class HIndex(val indexId: String, val NUM_LEAF_ENTRIES: Int, val NUM_META_ENTRIES: Int)
+              (implicit val ordering: Ordering[Bytes],
+               val storage: Storage[Bytes, Bytes],
+               val cache: Cache[Bytes, Bytes],
+               val hstorage: Storage[Long, IndexContext],
+               val hcache: Cache[Long, IndexContext]) {
+
+    type K = Bytes
+    type V = Bytes
 
     implicit def longToStr(l: Long): String = l.toString
     implicit def optToStr(opt: IndexContext): String = opt.toString
 
-    implicit val cache = new DefaultCache[K, V](MAX_PARENT_ENTRIES = 80000)
-    implicit val storage = new MemoryStorage[K, V](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+    /*implicit val cache = new DefaultCache[K, V](MAX_PARENT_ENTRIES = 80000)
+    implicit val storage = new MemoryStorage[K, V](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)*/
     var ctx: Context[K, V] = new DefaultContext[K, V](indexId, None, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
 
-    implicit val hcache = new DefaultCache[Long, IndexContext]()
-    implicit val hstorage = new MemoryStorage[Long, IndexContext](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+   /* implicit val hcache = new DefaultCache[Long, IndexContext]()
+    implicit val hstorage = new MemoryStorage[Long, IndexContext](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)*/
+    //implicit val hstorage = new CassandraStorage[Long, IndexContext](s"$indexId-time", NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
     var hctx: Context[Long, IndexContext] = new DefaultContext[Long, IndexContext](indexId, None, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
 
     protected def inserth(list: Seq[(Long, IndexContext)]): Future[Boolean] = {
@@ -72,9 +84,9 @@ object Main {
         val cmd = cmds(pos)
 
         (cmd match {
-          case cmd: InsertCommand[K, V] => index.insert(cmd.list).map(_ == cmd.list.length)
-          case cmd: RemoveCommand[K, V] => index.remove(cmd.keys).map(_ == cmd.keys.length)
-          case cmd: UpdateCommand[K, V] => index.update(cmd.list).map(_ == cmd.list.length)
+          case cmd: InsertCommand => index.insert(cmd.list.map{p => p.key.toByteArray -> p.value.toByteArray}).map(_ == cmd.list.length)
+          case cmd: RemoveCommand => index.remove(cmd.keys.map{_.toByteArray}).map(_ == cmd.keys.length)
+          case cmd: UpdateCommand => index.update(cmd.list.map{p => p.key.toByteArray -> p.value.toByteArray}).map(_ == cmd.list.length)
         }).flatMap(ok => process(pos + 1, ok))
       }
 
@@ -97,7 +109,7 @@ object Main {
     }
 
     def findT(t: Long): Future[Option[IndexContext]] = {
-      val history = new QueryableIndex[Long, IndexContext](hctx)
+      val history = new QueryableIndex(hctx)
 
       history.findPath(t).map(_.map { leaf =>
         var pos = leaf.binSearch(t, 0, leaf.tuples.length - 1)._2
@@ -128,7 +140,13 @@ object Main {
 
     val indexId = UUID.randomUUID().toString
 
-    val hindex = new HIndex[K, V](indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+    implicit val cache = new DefaultCache[K, V](MAX_PARENT_ENTRIES = 80000)
+    implicit val storage = new MemoryStorage[K, V](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+
+    implicit val hcache = new DefaultCache[Long, IndexContext]()
+    implicit val hstorage = new MemoryStorage[Long, IndexContext](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+
+    val hindex = new HIndex(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
     var data = Seq.empty[(K, V)]
 
     def insert(): IndexCommand = {
@@ -138,14 +156,14 @@ object Main {
         val k = RandomStringUtils.randomAlphanumeric(5).getBytes(Charsets.UTF_8)
         val v = k.clone()//RandomStringUtils.randomAlphanumeric(5).getBytes(Charsets.UTF_8)
 
-        if(!list.exists{case (k1, _) => ord.equiv(k, k1)}){
+        if(!list.exists{ case (k1, _) => ord.equiv(k, k1)}){
           list = list :+ k -> v
         }
       }
 
       data = data ++ list
 
-      InsertCommand(list)
+      InsertCommand(list.map{ case (k, v) => KVPair(ByteString.copyFrom(k), ByteString.copyFrom(v))})
     }
 
     def remove(): IndexCommand = {
@@ -154,7 +172,7 @@ object Main {
 
       data = data.filterNot{case (k, _) => list.exists{k1 => ord.equiv(k, k1)}}
 
-      RemoveCommand(list)
+      RemoveCommand(list.map{ByteString.copyFrom(_)})
     }
 
     def update(): IndexCommand = {
@@ -165,7 +183,7 @@ object Main {
       val notin = data.filterNot{case (k1, _) => list.exists{case (k, _) => ord.equiv(k, k1)}}
       data = (notin ++ list).sortBy(_._1)
 
-      UpdateCommand(list)
+      UpdateCommand(list.map{case (k, v) => KVPair(ByteString.copyFrom(k), ByteString.copyFrom(v))})
     }
 
     var cmds = Seq.empty[IndexCommand]

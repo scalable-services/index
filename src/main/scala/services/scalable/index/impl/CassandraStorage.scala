@@ -16,7 +16,7 @@ class CassandraStorage[K, V](val KEYSPACE: String,
                                        val truncate: Boolean = true)(implicit val ec: ExecutionContext,
                                                            val ord: Ordering[K],
                                                            val cache: Cache[K,V],
-                                                           val serializer: Serializer[Block[K,V]]) extends Storage[K,V] {
+                                                           val serializer: Serializer[Block[K, V]]) extends Storage[K,V] {
 
   val logger = LoggerFactory.getLogger(this.getClass)
   val parents = TrieMap.empty[String, (Option[String], Int)]
