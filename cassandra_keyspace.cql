@@ -2,9 +2,7 @@ CREATE KEYSPACE indexes WITH replication = {'class': 'SimpleStrategy', 'replicat
 
 CREATE TABLE indexes.meta (
     id text PRIMARY KEY,
-    root text,
-    num_leaf_entries int,
-    num_meta_entries int
+    info blob
 ) WITH default_time_to_live = 0
     AND transactions = {'enabled': 'false'};
 

@@ -25,32 +25,42 @@ object Main {
 
   logger.setLevel(Level.OFF)
 
-  /*trait IndexCommand
-  case class InsertCommand[K, V](list: Seq[(K, V)]) extends IndexCommand
-  case class RemoveCommand[K, V](keys: Seq[K]) extends IndexCommand
-  case class UpdateCommand[K, V](list: Seq[(K, V)]) extends IndexCommand*/
+  trait Command[K, V]
+  case class Insert[K, V](list: Seq[(K, V)]) extends Command[K, V]
+  case class Remove[K, V](keys: Seq[K]) extends Command[K, V]
+  case class Update[K, V](list: Seq[(K, V)]) extends Command[K, V]
 
-  class HIndex(val indexId: String, val NUM_LEAF_ENTRIES: Int, val NUM_META_ENTRIES: Int)
-              (implicit val ordering: Ordering[Bytes],
-               val storage: Storage[Bytes, Bytes],
-               val cache: Cache[Bytes, Bytes],
+  class HIndex[K, V](val indexId: String)
+              (implicit val ordering: Ordering[K],
+               val storage: Storage[K, V],
+               val cache: Cache[K, V],
                val hstorage: Storage[Long, IndexContext],
                val hcache: Cache[Long, IndexContext]) {
 
-    type K = Bytes
-    type V = Bytes
-
-    implicit def longToStr(l: Long): String = l.toString
-    implicit def optToStr(opt: IndexContext): String = opt.toString
+    /*type K = Bytes
+    type V = Bytes*/
 
     /*implicit val cache = new DefaultCache[K, V](MAX_PARENT_ENTRIES = 80000)
     implicit val storage = new MemoryStorage[K, V](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)*/
-    var ctx: Context[K, V] = new DefaultContext[K, V](indexId, None, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+    var ctx: Context[K, V] = null//new DefaultContext[K, V](indexInfo.id, indexInfo.root, indexInfo.numLeafItems, indexInfo.numMetaItems)
 
    /* implicit val hcache = new DefaultCache[Long, IndexContext]()
     implicit val hstorage = new MemoryStorage[Long, IndexContext](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)*/
     //implicit val hstorage = new CassandraStorage[Long, IndexContext](s"$indexId-time", NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
-    var hctx: Context[Long, IndexContext] = new DefaultContext[Long, IndexContext](indexId, None, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+    var hctx: Context[Long, IndexContext] = null//new DefaultContext[Long, IndexContext](indexId, None, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+
+    def loadOrCreate(): Future[Boolean] = {
+      for {
+        ic <- storage.loadOrCreate(indexId)
+        hc <- hstorage.loadOrCreate(s"$indexId-history")
+      } yield {
+
+        this.ctx = ic
+        this.hctx = hc
+
+        true
+      }
+    }
 
     protected def inserth(list: Seq[(Long, IndexContext)]): Future[Boolean] = {
       val index = new QueryableIndex[Long, IndexContext](hctx)
@@ -72,7 +82,9 @@ object Main {
       } map (_.reverse)
     }
 
-    def execute(cmds: Seq[IndexCommand]): Future[Boolean] = {
+    def execute(cmds: Seq[Command[K, V]]): Future[Boolean] = {
+
+      if(ctx == null || hctx == null) return Future.failed(new RuntimeException("You must run loadOrCreate() first!"))
 
       val index = new QueryableIndex[K, V](ctx)
       val now = System.nanoTime()
@@ -84,9 +96,9 @@ object Main {
         val cmd = cmds(pos)
 
         (cmd match {
-          case cmd: InsertCommand => index.insert(cmd.list.map{p => p.key.toByteArray -> p.value.toByteArray}).map(_ == cmd.list.length)
-          case cmd: RemoveCommand => index.remove(cmd.keys.map{_.toByteArray}).map(_ == cmd.keys.length)
-          case cmd: UpdateCommand => index.update(cmd.list.map{p => p.key.toByteArray -> p.value.toByteArray}).map(_ == cmd.list.length)
+          case cmd: Insert[K, V] => index.insert(cmd.list).map(_ == cmd.list.length)
+          case cmd: Remove[K, V] => index.remove(cmd.keys).map(_ == cmd.keys.length)
+          case cmd: Update[K, V] => index.update(cmd.list).map(_ == cmd.list.length)
         }).flatMap(ok => process(pos + 1, ok))
       }
 
@@ -109,6 +121,9 @@ object Main {
     }
 
     def findT(t: Long): Future[Option[IndexContext]] = {
+
+      if(ctx == null || hctx == null) return Future.failed(new RuntimeException("You must run loadOrCreate() first!"))
+
       val history = new QueryableIndex(hctx)
 
       history.findPath(t).map(_.map { leaf =>
@@ -138,18 +153,36 @@ object Main {
     val NUM_LEAF_ENTRIES = 4
     val NUM_META_ENTRIES = 4
 
-    val indexId = UUID.randomUUID().toString
+    val indexId = "myindex"
+
+    import DefaultSerializers._
 
     implicit val cache = new DefaultCache[K, V](MAX_PARENT_ENTRIES = 80000)
-    implicit val storage = new MemoryStorage[K, V](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+    implicit val storage = new CassandraStorage[K, V]("indexes", NUM_LEAF_ENTRIES,
+      NUM_META_ENTRIES, truncate = false)//new MemoryStorage[K, V](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
 
     implicit val hcache = new DefaultCache[Long, IndexContext]()
-    implicit val hstorage = new MemoryStorage[Long, IndexContext](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+    implicit val hstorage = new CassandraStorage[Long, IndexContext]("indexes", NUM_LEAF_ENTRIES,
+      NUM_META_ENTRIES, truncate = false)//new MemoryStorage[Long, IndexContext](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
 
-    val hindex = new HIndex(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+    val hindex = new HIndex(indexId)
     var data = Seq.empty[(K, V)]
 
-    def insert(): IndexCommand = {
+    logger.debug(Await.result(hindex.loadOrCreate(), Duration.Inf).toString)
+
+    implicit def insertGrpcToInsertCommand(cmd: InsertCommand): Command[Bytes, Bytes] = {
+      Insert(cmd.list.map{p => p.key.toByteArray -> p.value.toByteArray})
+    }
+
+    implicit def updateGrpcToInsertCommand(cmd: UpdateCommand): Command[Bytes, Bytes] = {
+      Update(cmd.list.map{p => p.key.toByteArray -> p.value.toByteArray})
+    }
+
+    implicit def removeGrpcToInsertCommand(cmd: RemoveCommand): Command[Bytes, Bytes] = {
+      Remove(cmd.keys.map(_.toByteArray))
+    }
+
+    def insert(): Command[K, V] = {
       var list = Seq.empty[(K, V)]
 
       for(i<-0 until 20){
@@ -166,7 +199,7 @@ object Main {
       InsertCommand(list.map{ case (k, v) => KVPair(ByteString.copyFrom(k), ByteString.copyFrom(v))})
     }
 
-    def remove(): IndexCommand = {
+    def remove(): Command[K, V] = {
       val bound = if(data.length == 1) 1 else rand.nextInt(1, data.length)
       val list = scala.util.Random.shuffle(data.slice(0, bound)).map(_._1)
 
@@ -175,7 +208,7 @@ object Main {
       RemoveCommand(list.map{ByteString.copyFrom(_)})
     }
 
-    def update(): IndexCommand = {
+    def update(): Command[K, V] = {
       val bound = if(data.length == 1) 1 else rand.nextInt(1, data.length)
       val list = scala.util.Random.shuffle(data.slice(0, bound))
         .map{case (k, _) => k -> RandomStringUtils.randomAlphabetic(5).getBytes("UTF-8")}
@@ -186,7 +219,7 @@ object Main {
       UpdateCommand(list.map{case (k, v) => KVPair(ByteString.copyFrom(k), ByteString.copyFrom(v))})
     }
 
-    var cmds = Seq.empty[IndexCommand]
+    var cmds = Seq.empty[Command[K, V]]
 
     for(i<-0 until 100){
       rand.nextInt(1, 4) match {
@@ -197,9 +230,7 @@ object Main {
       }
     }
 
-    import hindex._
-
-    val hc = Await.result(hindex.execute(cmds), Duration.Inf)
+    //val hc = Await.result(hindex.execute(cmds), Duration.Inf)
 
     val index = new QueryableIndex[K, V](new DefaultContext[K, V](indexId, hindex.ctx.root, NUM_LEAF_ENTRIES, NUM_META_ENTRIES))
 
@@ -213,6 +244,9 @@ object Main {
     val history = new QueryableIndex[Long, IndexContext](hindex.hctx)
 
     logger.setLevel(Level.INFO)
+
+    implicit def longToStr(l: Long): String = l.toString
+    implicit def optToStr(opt: IndexContext): String = opt.toString
 
     history.prettyPrint()
 
@@ -232,6 +266,9 @@ object Main {
     println()
     printTree(Some(IndexContext(hindex.ctx.indexId, hindex.ctx.NUM_LEAF_ENTRIES, hindex.ctx.NUM_META_ENTRIES,
       hindex.ctx.root, hindex.ctx.levels, hindex.ctx.num_elements)))
+
+    storage.close()
+    hstorage.close()
   }
 
 }

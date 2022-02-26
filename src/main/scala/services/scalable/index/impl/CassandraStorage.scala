@@ -4,10 +4,12 @@ import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.cql.{BatchStatement, DefaultBatchType}
 import org.slf4j.LoggerFactory
 import services.scalable.index._
+import services.scalable.index.grpc.IndexContext
 
 import java.nio.ByteBuffer
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.{ExecutionContext, Future}
+import com.google.protobuf.any.Any
 import scala.jdk.FutureConverters._
 
 class CassandraStorage[K, V](val KEYSPACE: String,
@@ -28,24 +30,25 @@ class CassandraStorage[K, V](val KEYSPACE: String,
     .build()
 
   val INSERT = session.prepare("insert into blocks(id, bin, leaf, size) values (?, ?, ?, ?);")
-  val SELECT_ROOT = session.prepare("select * from meta where id=?;")
-  val INSERT_META = session.prepare("insert into meta(id, root, num_leaf_entries, num_meta_entries) VALUES(?,?,?,?) IF NOT EXISTS;")
+  val SELECT_ROOT = session.prepare("select info from meta where id=?;")
+  val INSERT_META = session.prepare("insert into meta(id, info) VALUES(?,?) IF NOT EXISTS;")
   val SELECT = session.prepare("select * from blocks where id=?;")
-  val UPDATE_META = session.prepare("update meta set root = ? where id = ? IF EXISTS;")
+  val UPDATE_META = session.prepare("update meta set info=? where id = ? IF EXISTS;")
 
   if(truncate){
-    logger.debug(s"TRUNCATED BLOCKS: ${session.execute("TRUNCATE blocks;").wasApplied()}\n")
-    logger.debug(s"TRUNCATED META: ${session.execute("TRUNCATE meta;").wasApplied()}\n")
+    logger.debug(s"TRUNCATED BLOCKS: ${session.execute("TRUNCATE table blocks;").wasApplied()}\n")
+    logger.debug(s"TRUNCATED META: ${session.execute("TRUNCATE table meta;").wasApplied()}\n")
   }
 
   override def createIndex(indexId: String): Future[Context[K,V]] = {
     val ctx = new DefaultContext[K,V](indexId, None, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)(ec, this, cache, ord)
 
+    val info = IndexContext(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, None, 0, 0)
+    val buf = ByteBuffer.wrap(Any.pack(info).toByteArray)
+
     session.executeAsync(INSERT_META.bind()
       .setString(0, ctx.indexId)
-      .setString(1, indexId)
-      .setInt(2, ctx.NUM_LEAF_ENTRIES)
-      .setInt(3, ctx.NUM_META_ENTRIES)).flatMap {
+      .setByteBuffer(1, buf)).flatMap {
       case r if r.wasApplied() => Future.successful(ctx)
       case _ => Future.failed(Errors.INDEX_ALREADY_EXISTS(indexId))
     }
@@ -65,12 +68,10 @@ class CassandraStorage[K, V](val KEYSPACE: String,
       if(one == null){
         Future.failed(Errors.INDEX_NOT_FOUND(indexId))
       } else {
-        val r = one.getString("root")
-        val NUM_LEAF_ENTRIES = one.getInt("num_leaf_entries")
-        val NUM_META_ENTRIES = one.getInt("num_meta_entries")
+        val r = one.getByteBuffer("info")
+        val info = Any.parseFrom(r.array()).unpack(IndexContext)
 
-        val root: Option[String] = if(r == null) None else Some(r)
-        val ctx = new DefaultContext(indexId, root, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)(ec, this, cache, ord)
+        val ctx = new DefaultContext(info.id, info.root, info.numLeafItems, info.numMetaItems)(ec, this, cache, ord)
 
         Future.successful(ctx)
       }
@@ -85,8 +86,12 @@ class CassandraStorage[K, V](val KEYSPACE: String,
     }
   }
 
-  def updateMeta(ctx: Context[K,V]): Future[Boolean] = {
-    session.executeAsync(UPDATE_META.bind().setString(0, if(ctx.root.isDefined) ctx.root.get else null)
+  def updateMeta(ctx: Context[K, V]): Future[Boolean] = {
+
+    val info = IndexContext(ctx.indexId, ctx.NUM_LEAF_ENTRIES, ctx.NUM_META_ENTRIES, ctx.root, ctx.levels, ctx.num_elements)
+    val buf = ByteBuffer.wrap(Any.pack(info).toByteArray)
+
+    session.executeAsync(UPDATE_META.bind().setByteBuffer(0, buf)
       .setString(1, ctx.indexId)).map(_.wasApplied())
   }
 
