@@ -1,8 +1,8 @@
 CREATE KEYSPACE indexes WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '1'}  AND durable_writes = true;
 
 CREATE TABLE indexes.meta (
-    name text PRIMARY KEY,
-    roots blob,
+    id text PRIMARY KEY,
+    root text,
     num_leaf_entries int,
     num_meta_entries int
 ) WITH default_time_to_live = 0
