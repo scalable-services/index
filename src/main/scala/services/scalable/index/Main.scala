@@ -157,13 +157,15 @@ object Main {
 
     import DefaultSerializers._
 
+    val KEYSPACE = "history"
+
     implicit val cache = new DefaultCache[K, V](MAX_PARENT_ENTRIES = 80000)
-    implicit val storage = new CassandraStorage[K, V]("indexes", NUM_LEAF_ENTRIES,
-      NUM_META_ENTRIES, truncate = false)//new MemoryStorage[K, V](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+    implicit val storage = new CassandraStorage[K, V](KEYSPACE, NUM_LEAF_ENTRIES,
+      NUM_META_ENTRIES, truncate = true)//new MemoryStorage[K, V](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
 
     implicit val hcache = new DefaultCache[Long, IndexContext]()
-    implicit val hstorage = new CassandraStorage[Long, IndexContext]("indexes", NUM_LEAF_ENTRIES,
-      NUM_META_ENTRIES, truncate = false)//new MemoryStorage[Long, IndexContext](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+    implicit val hstorage = new CassandraStorage[Long, IndexContext](KEYSPACE, NUM_LEAF_ENTRIES,
+      NUM_META_ENTRIES, truncate = true)//new MemoryStorage[Long, IndexContext](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
 
     val hindex = new HIndex(indexId)
     var data = Seq.empty[(K, V)]
@@ -219,18 +221,21 @@ object Main {
       UpdateCommand(list.map{case (k, v) => KVPair(ByteString.copyFrom(k), ByteString.copyFrom(v))})
     }
 
-    var cmds = Seq.empty[Command[K, V]]
+    for(i<-0 until 20){
 
-    for(i<-0 until 100){
-      rand.nextInt(1, 4) match {
-        case 1 => cmds = cmds :+ insert()
-        case 2 if !data.isEmpty => cmds = cmds :+ remove()
-        case 3 if !data.isEmpty => cmds = cmds :+ update()
-        case _ =>
+      var cmds = Seq.empty[Command[K, V]]
+
+      for(i<-0 until 100){
+        rand.nextInt(1, 4) match {
+          case 1 => cmds = cmds :+ insert()
+          case 2 if !data.isEmpty => cmds = cmds :+ remove()
+          case 3 if !data.isEmpty => cmds = cmds :+ update()
+          case _ =>
+        }
       }
-    }
 
-    //val hc = Await.result(hindex.execute(cmds), Duration.Inf)
+      Await.result(hindex.execute(cmds), Duration.Inf)
+    }
 
     val index = new QueryableIndex[K, V](new DefaultContext[K, V](indexId, hindex.ctx.root, NUM_LEAF_ENTRIES, NUM_META_ENTRIES))
 
@@ -239,9 +244,11 @@ object Main {
 
     isColEqual(dlist, ilist)
 
-    val t = System.nanoTime()
+    //val t = System.nanoTime()
 
     val history = new QueryableIndex[Long, IndexContext](hindex.hctx)
+
+    val t = Await.result(history.first().map(_.get.first), Duration.Inf)
 
     logger.setLevel(Level.INFO)
 

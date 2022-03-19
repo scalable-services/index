@@ -33,7 +33,6 @@ class CQLStorageSpec extends Repeatable {
     val indexId = "test"
 
     import DefaultSerializers._
-    implicit val serializer = new GrpcByteSerializer[K, V]()
 
     implicit val cache = new DefaultCache[K, V](MAX_PARENT_ENTRIES = 80000)
     implicit val storage = new CassandraStorage[Bytes, Bytes](TestConfig.KEYSPACE, NUM_LEAF_ENTRIES,

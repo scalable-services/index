@@ -87,7 +87,6 @@ class CassandraStorage[K, V](val KEYSPACE: String,
   }
 
   def updateMeta(ctx: Context[K, V]): Future[Boolean] = {
-
     val info = IndexContext(ctx.indexId, ctx.NUM_LEAF_ENTRIES, ctx.NUM_META_ENTRIES, ctx.root, ctx.levels, ctx.num_elements)
     val buf = ByteBuffer.wrap(Any.pack(info).toByteArray)
 
