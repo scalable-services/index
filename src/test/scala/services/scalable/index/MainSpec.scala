@@ -69,17 +69,15 @@ class MainSpec extends Repeatable {
 
     //insert()
 
-    //val indexCtx = index.ctx.asInstanceOf[DefaultContext[K, V]]
-    //indexCtx.save()
-
     val indexCtx = index.ctx.asInstanceOf[DefaultContext[Bytes, Bytes]]
+    //indexCtx.save()
 
     db = db.withIndexes( Seq(
       IndexContext("test-main-index", NUM_LEAF_ENTRIES, NUM_META_ENTRIES, indexCtx.root, indexCtx.levels, indexCtx.num_elements)
     ))
 
-    logger.info(Await.result(storage.save(db, indexCtx.blocks.map{case (id, block) => id -> bytesHistorySerializer.serialize(block)}.toMap),
-      Duration.Inf).toString)
+    /*logger.info(Await.result(storage.save(db, indexCtx.blocks.map{case (id, block) => id -> bytesHistorySerializer.serialize(block)}.toMap),
+      Duration.Inf).toString)*/
 
     val dlist = data.sortBy(_._1)
     val ilist = Await.result(TestHelper.all(index.inOrder()), Duration.Inf)
@@ -87,7 +85,7 @@ class MainSpec extends Repeatable {
     logger.debug(s"${Console.GREEN_B}tdata: ${dlist.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
     logger.debug(s"${Console.MAGENTA_B}idata: ${ilist.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
 
-    isColEqual(dlist, ilist)
+    assert(isColEqual(dlist, ilist))
   }
 
 }
