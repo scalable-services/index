@@ -11,7 +11,8 @@ class DefaultContext[K, V](override val indexId: String,
                      override val NUM_LEAF_ENTRIES: Int,
                      override val NUM_META_ENTRIES: Int)
                     (implicit val ec: ExecutionContext,
-                     val storage: Storage[K, V],
+                     val storage: Storage,
+                     val serializer: Serializer[Block[K, V]],
                      val cache: Cache[K, V],
                      val ord: Ordering[K],
                      val idGenerator: IdGenerator = DefaultIdGenerators.idGenerator) extends Context[K,V] {
@@ -42,7 +43,7 @@ class DefaultContext[K, V](override val indexId: String,
     case None => cache.get(unique_id) match {
       case None =>
 
-        storage.get(unique_id)(this).map { block =>
+        storage.get[K, V](unique_id).map { block =>
           cache.put(block)
           block
         }
@@ -110,21 +111,17 @@ class DefaultContext[K, V](override val indexId: String,
     b.root.equals(root)
   }
 
-  override def save(): Future[Boolean] = {
+  def save(): Boolean = {
 
     blocks.foreach { case (_, b) =>
       b.root = root
     }
 
-    storage.save(this).map { r =>
-      blocks.clear()
-      parents.clear()
-      r
-    }
+    true
   }
 
   override def duplicate(): Context[K, V] = {
     new DefaultContext[K, V](indexId, root, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)(ec, storage,
-      cache, ord, idGenerator)
+      serializer, cache, ord, idGenerator)
   }
 }

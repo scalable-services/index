@@ -2,61 +2,58 @@ package services.scalable.index.impl
 
 import org.slf4j.LoggerFactory
 import services.scalable.index._
+import services.scalable.index.grpc.DatabaseContext
 
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.{ExecutionContext, Future}
 
 class MemoryStorage[K, V](val NUM_LEAF_ENTRIES: Int, val NUM_META_ENTRIES: Int)(implicit val ec: ExecutionContext,
                                                                                 val ord: Ordering[K],
-                                                                                val cache: Cache[K,V]) extends Storage[K,V] {
-
+                                                                                val cache: Cache[K,V]) extends Storage {
   val logger = LoggerFactory.getLogger(this.getClass)
 
-  val roots = TrieMap.empty[String, (Option[String], Int, Int)]
-  val blocks = TrieMap.empty[String, Block[K,V]]
+  val databases = TrieMap.empty[String, DatabaseContext]
+  val blocks = TrieMap.empty[String, Array[Byte]]
 
-  override def get(unique_id: String)(implicit ctx: Context[K,V]): Future[Block[K,V]] = {
-    Future.successful(blocks(unique_id))
+  override def get[K, V](unique_id: String)(implicit serializer: Serializer[Block[K, V]]): Future[Block[K,V]] = {
+    val buf = blocks(unique_id)
+    Future.successful(serializer.deserialize(buf))
   }
 
-  override def save(ctx: Context[K,V]): Future[Boolean] = {
-    val c = ctx.asInstanceOf[DefaultContext[K,V]]
+  override def save(db: DatabaseContext, blocks: Map[String, Array[Byte]]): Future[Boolean] = {
+    databases.put(db.name, db)
 
-    roots.put(ctx.indexId, Tuple3(ctx.root, ctx.NUM_LEAF_ENTRIES, ctx.NUM_META_ENTRIES))
-
-    c.blocks.foreach { case (_, b) =>
-      blocks.put(b.unique_id, b)
+    blocks.foreach { case (id, b) =>
+      this.blocks.put(id, b)
     }
 
     Future.successful(true)
   }
 
-  override def load(indexId: String): Future[Context[K,V]] = {
-    roots.get(indexId) match {
-      case None => Future.failed(Errors.INDEX_NOT_FOUND(indexId))
-      case Some((root, nle, nme)) =>
-        val ctx = new DefaultContext[K,V](indexId, root, nle, nme)(ec, this, cache, ord)
-        Future.successful(ctx)
+  override def load(name: String): Future[DatabaseContext] = {
+    databases.get(name) match {
+      case None => Future.failed(Errors.INDEX_NOT_FOUND(name))
+      case Some(db) => Future.successful(db)
     }
   }
 
-  override def createIndex(indexId: String): Future[Context[K,V]] = {
-    val ctx = new DefaultContext(indexId, None, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)(ec, this, cache, ord)
+  override def createIndex(name: String): Future[DatabaseContext] = {
+    val db = DatabaseContext(name)
 
-    if(roots.isDefinedAt(indexId)){
-      return Future.failed(Errors.INDEX_ALREADY_EXISTS(indexId))
+    if(databases.isDefinedAt(name)){
+      return Future.failed(Errors.INDEX_ALREADY_EXISTS(name))
     }
 
-    roots.put(indexId, (None, NUM_LEAF_ENTRIES, NUM_META_ENTRIES))
-    Future.successful(ctx)
+    databases.put(name, db)
+    Future.successful(db)
   }
 
-  override def loadOrCreate(indexId: String): Future[Context[K,V]] = {
-    load(indexId).recoverWith {
-      case e: Errors.INDEX_NOT_FOUND => createIndex(indexId)
+  override def loadOrCreate(name: String): Future[DatabaseContext] = {
+    load(name).recoverWith {
+      case e: Errors.INDEX_NOT_FOUND => createIndex(name)
       case e => Future.failed(e)
     }
   }
 
-  override def close(): Future[Unit] = Future.successful{}
+  override def close(): Future[Unit] = Future.successful()
 }

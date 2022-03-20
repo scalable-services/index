@@ -26,8 +26,7 @@ trait Context[K, V] {
   def getParent(id: String): Option[(Option[String], Int)]
   def isFromCurrentContext(b: Block[K,V]): Boolean
 
-  def save(): Future[Boolean]
-
+  //def save(): Future[Boolean]
   def duplicate(): Context[K, V]
 
 }

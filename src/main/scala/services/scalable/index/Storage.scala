@@ -1,15 +1,16 @@
 package services.scalable.index
 
+import services.scalable.index.grpc.{DatabaseContext, IndexContext}
 import scala.concurrent.Future
 
-trait Storage[K,V] {
+trait Storage {
 
-  def get(id: String)(implicit ctx: Context[K,V]): Future[Block[K,V]]
-  def save(ctx: Context[K, V]): Future[Boolean]
+  def get[K, V](id: String)(implicit serializer: Serializer[Block[K, V]]): Future[Block[K,V]]
+  def save(contexts: DatabaseContext, blocks: Map[String, Array[Byte]]): Future[Boolean]
 
-  def createIndex(indexId: String): Future[Context[K,V]]
-  def loadOrCreate(indexId: String): Future[Context[K,V]]
-  def load(indexId: String): Future[Context[K,V]]
+  def createIndex(name: String): Future[DatabaseContext]
+  def loadOrCreate(name: String): Future[DatabaseContext]
+  def load(name: String): Future[DatabaseContext]
 
   def close(): Future[Unit]
 

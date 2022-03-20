@@ -60,6 +60,11 @@ message IndexContext {
   int64 num_elements = 6;
 }
 
+message DatabaseContext {
+  string name = 1;
+  repeated IndexContext indexes = 2;
+}
+
 message InsertCommand {
   option (scalapb.message).extends = "services.scalable.index.grpc.IndexCommand";
 
