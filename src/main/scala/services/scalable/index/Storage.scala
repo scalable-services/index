@@ -5,7 +5,7 @@ import scala.concurrent.Future
 
 trait Storage {
 
-  def get[K, V](id: String)(implicit serializer: Serializer[Block[K, V]]): Future[Block[K,V]]
+  def get(id: String): Future[Array[Byte]]
   def save(contexts: DatabaseContext, blocks: Map[String, Array[Byte]]): Future[Boolean]
 
   def createIndex(name: String): Future[DatabaseContext]

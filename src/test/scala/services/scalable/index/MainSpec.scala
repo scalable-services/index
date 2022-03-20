@@ -72,12 +72,12 @@ class MainSpec extends Repeatable {
     val indexCtx = index.ctx.asInstanceOf[DefaultContext[Bytes, Bytes]]
     //indexCtx.save()
 
-    db = db.withIndexes( Seq(
+    db = db.withIndexes(Seq(
       IndexContext("test-main-index", NUM_LEAF_ENTRIES, NUM_META_ENTRIES, indexCtx.root, indexCtx.levels, indexCtx.num_elements)
     ))
 
-    /*logger.info(Await.result(storage.save(db, indexCtx.blocks.map{case (id, block) => id -> bytesHistorySerializer.serialize(block)}.toMap),
-      Duration.Inf).toString)*/
+    logger.info(Await.result(storage.save(db, indexCtx.blocks.map{case (id, block) => id -> bytesSerializer.serialize(block)}.toMap),
+      Duration.Inf).toString)
 
     val dlist = data.sortBy(_._1)
     val ilist = Await.result(TestHelper.all(index.inOrder()), Duration.Inf)

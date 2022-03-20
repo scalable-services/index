@@ -43,7 +43,8 @@ class DefaultContext[K, V](override val indexId: String,
     case None => cache.get(unique_id) match {
       case None =>
 
-        storage.get[K, V](unique_id).map { block =>
+        storage.get(unique_id).map { buf =>
+          val block = serializer.deserialize(buf)
           cache.put(block)
           block
         }

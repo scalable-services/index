@@ -73,11 +73,11 @@ class CassandraStorage[K, V](val KEYSPACE: String,
     }
   }
 
-  override def get[K, V](unique_id: String)(implicit serializer: Serializer[Block[K, V]]): Future[Block[K,V]] = {
+  override def get(unique_id: String): Future[Array[Byte]] = {
     session.executeAsync(SELECT.bind().setString(0, unique_id)).map { rs =>
       val one = rs.one()
       val buf = one.getByteBuffer("bin")
-      serializer.deserialize(buf.array())
+      buf.array()
     }
   }
 

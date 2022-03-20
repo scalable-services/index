@@ -7,17 +7,15 @@ import services.scalable.index.grpc.DatabaseContext
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.{ExecutionContext, Future}
 
-class MemoryStorage[K, V](val NUM_LEAF_ENTRIES: Int, val NUM_META_ENTRIES: Int)(implicit val ec: ExecutionContext,
-                                                                                val ord: Ordering[K],
-                                                                                val cache: Cache[K,V]) extends Storage {
+class MemoryStorage(val NUM_LEAF_ENTRIES: Int, val NUM_META_ENTRIES: Int)(implicit val ec: ExecutionContext) extends Storage {
   val logger = LoggerFactory.getLogger(this.getClass)
 
   val databases = TrieMap.empty[String, DatabaseContext]
   val blocks = TrieMap.empty[String, Array[Byte]]
 
-  override def get[K, V](unique_id: String)(implicit serializer: Serializer[Block[K, V]]): Future[Block[K,V]] = {
+  override def get(unique_id: String): Future[Array[Byte]] = {
     val buf = blocks(unique_id)
-    Future.successful(serializer.deserialize(buf))
+    Future.successful(buf)
   }
 
   override def save(db: DatabaseContext, blocks: Map[String, Array[Byte]]): Future[Boolean] = {
