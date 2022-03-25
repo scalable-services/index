@@ -24,7 +24,7 @@ import scala.util.{Failure, Success}
 class Index[K, V](val c: Context[K, V])(implicit val ec: ExecutionContext){
 
   val logger = LoggerFactory.getLogger(this.getClass)
-  implicit val ctx = c.duplicate()
+  implicit val ctx = c//c.duplicate()
 
   val $this = this
 

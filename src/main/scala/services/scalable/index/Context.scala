@@ -10,8 +10,8 @@ trait Context[K, V] {
   val NUM_META_ENTRIES: Int
 
   var root: Option[String]
-  var num_elements = 0L
-  var levels = 0
+  var num_elements: Long
+  var levels: Int
 
   def isNew(id: String): Boolean
 

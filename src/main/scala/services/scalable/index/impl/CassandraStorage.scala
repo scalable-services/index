@@ -13,12 +13,10 @@ import com.google.protobuf.any.Any
 
 import scala.jdk.FutureConverters._
 
-class CassandraStorage[K, V](val KEYSPACE: String,
+class CassandraStorage(val KEYSPACE: String,
                              val NUM_LEAF_ENTRIES: Int,
                              val NUM_META_ENTRIES: Int,
-                             val truncate: Boolean = true)(implicit val ec: ExecutionContext,
-                                                           val ord: Ordering[K],
-                                                           val cache: Cache[K,V]) extends Storage {
+                             val truncate: Boolean = true)(implicit val ec: ExecutionContext) extends Storage {
 
   val logger = LoggerFactory.getLogger(this.getClass)
 

@@ -8,6 +8,8 @@ import scala.concurrent.{ExecutionContext, Future}
 
 class DefaultContext[K, V](override val indexId: String,
                      override var root: Option[String],
+                     override var num_elements: Long,
+                     override var levels: Int,
                      override val NUM_LEAF_ENTRIES: Int,
                      override val NUM_META_ENTRIES: Int)
                     (implicit val ec: ExecutionContext,
@@ -121,7 +123,7 @@ class DefaultContext[K, V](override val indexId: String,
   }
 
   override def duplicate(): Context[K, V] = {
-    new DefaultContext[K, V](indexId, root, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)(ec, storage,
+    new DefaultContext[K, V](indexId, root, num_elements, levels, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)(ec, storage,
       serializer, cache, ord, idGenerator)
   }
 }
