@@ -1,6 +1,6 @@
 package services.scalable.index
 
-trait Block[K,V] {
+trait Block[K, V] {
 
   val id: String
   val partition: String

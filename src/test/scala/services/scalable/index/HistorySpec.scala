@@ -35,9 +35,7 @@ class HistorySpec extends Repeatable {
     val NUM_LEAF_ENTRIES = 8
     val NUM_META_ENTRIES = 8
 
-    implicit val cache = new DefaultCache[K, V](MAX_PARENT_ENTRIES = 80000)
-    implicit val hcache = new DefaultCache[Long, IndexContext](MAX_PARENT_ENTRIES = 80000)
-
+    implicit val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
     implicit val storage = new CassandraStorage(TestConfig.KEYSPACE, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, false)
 
     val db = Await.result(storage.loadOrCreate(indexName), Duration.Inf)

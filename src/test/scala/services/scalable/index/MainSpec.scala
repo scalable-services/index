@@ -35,7 +35,7 @@ class MainSpec extends Repeatable {
 
     import services.scalable.index.DefaultSerializers._
 
-    implicit val cache = new DefaultCache[K, V](MAX_PARENT_ENTRIES = 80000)
+    implicit val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
     //implicit val storage = new MemoryStorage[K, V](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
     implicit val storage = new CassandraStorage(TestConfig.KEYSPACE, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, false)
 

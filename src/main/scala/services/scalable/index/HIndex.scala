@@ -13,8 +13,7 @@ class HIndex[K, V](db: DatabaseContext,
                          val ordering: Ordering[K],
                          val serializer: Serializer[Block[K, V]],
                          val storage: Storage,
-                         val cache: Cache[K, V],
-                         val hcache: Cache[Long, IndexContext]) {
+                         val cache: Cache) {
 
   import DefaultSerializers._
 

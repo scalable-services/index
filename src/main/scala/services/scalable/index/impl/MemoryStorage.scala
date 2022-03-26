@@ -9,7 +9,7 @@ import scala.concurrent.{ExecutionContext, Future}
 
 class MemoryStorage[K, V](val NUM_LEAF_ENTRIES: Int, val NUM_META_ENTRIES: Int)(implicit val ec: ExecutionContext,
                                                                                 val ord: Ordering[K],
-                                                                                val cache: Cache[K,V]) extends Storage {
+                                                                                val cache: Cache) extends Storage {
   val logger = LoggerFactory.getLogger(this.getClass)
 
   val databases = TrieMap.empty[String, DatabaseContext]

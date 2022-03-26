@@ -15,7 +15,7 @@ class DefaultContext[K, V](override val indexId: String,
                     (implicit val ec: ExecutionContext,
                      val storage: Storage,
                      val serializer: Serializer[Block[K, V]],
-                     val cache: Cache[K, V],
+                     val cache: Cache,
                      val ord: Ordering[K],
                      val idGenerator: IdGenerator = DefaultIdGenerators.idGenerator) extends Context[K,V] {
 
@@ -42,7 +42,7 @@ class DefaultContext[K, V](override val indexId: String,
    * To work the blocks being manipulated must be in memory before saving...
    */
   override def get(unique_id: String): Future[Block[K,V]] = blocks.get(unique_id) match {
-    case None => cache.get(unique_id) match {
+    case None => cache.get[K, V](unique_id) match {
       case None =>
 
         storage.get[K, V](unique_id).map { block =>
