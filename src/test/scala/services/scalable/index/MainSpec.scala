@@ -35,14 +35,15 @@ class MainSpec extends Repeatable {
 
     import services.scalable.index.DefaultSerializers._
 
-    implicit val cache = new DefaultCache[K, V](MAX_PARENT_ENTRIES = 80000)
+    implicit val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
     //implicit val storage = new MemoryStorage[K, V](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
-    implicit val storage = new CassandraStorage[K, V](TestConfig.KEYSPACE, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, false)
+    implicit val storage = new CassandraStorage(TestConfig.KEYSPACE, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, false)
 
     var db = Await.result(storage.loadOrCreate("test"), Duration.Inf)
     val indexContext = if(db.indexes.isEmpty) IndexContext("test", NUM_LEAF_ENTRIES, NUM_META_ENTRIES, None, 0, 0) else db.indexes.head
 
-    val ctx = new DefaultContext[K, V](indexContext.id, indexContext.root, indexContext.numLeafItems, indexContext.numMetaItems)
+    val ctx = new DefaultContext[K, V](indexContext.id, indexContext.root,
+      indexContext.numElements, indexContext.levels, indexContext.numLeafItems, indexContext.numMetaItems)
 
     var data = Seq.empty[(K, V)]
     val index = new QueryableIndex[K, V](ctx)

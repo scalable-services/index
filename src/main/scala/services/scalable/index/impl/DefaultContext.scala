@@ -8,12 +8,14 @@ import scala.concurrent.{ExecutionContext, Future}
 
 class DefaultContext[K, V](override val indexId: String,
                      override var root: Option[String],
+                     override var num_elements: Long,
+                     override var levels: Int,
                      override val NUM_LEAF_ENTRIES: Int,
                      override val NUM_META_ENTRIES: Int)
                     (implicit val ec: ExecutionContext,
                      val storage: Storage,
                      val serializer: Serializer[Block[K, V]],
-                     val cache: Cache[K, V],
+                     val cache: Cache,
                      val ord: Ordering[K],
                      val idGenerator: IdGenerator = DefaultIdGenerators.idGenerator) extends Context[K,V] {
 
@@ -40,7 +42,7 @@ class DefaultContext[K, V](override val indexId: String,
    * To work the blocks being manipulated must be in memory before saving...
    */
   override def get(unique_id: String): Future[Block[K,V]] = blocks.get(unique_id) match {
-    case None => cache.get(unique_id) match {
+    case None => cache.get[K, V](unique_id) match {
       case None =>
 
         storage.get(unique_id).map { buf =>
@@ -122,7 +124,7 @@ class DefaultContext[K, V](override val indexId: String,
   }
 
   override def duplicate(): Context[K, V] = {
-    new DefaultContext[K, V](indexId, root, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)(ec, storage,
+    new DefaultContext[K, V](indexId, root, num_elements, levels, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)(ec, storage,
       serializer, cache, ord, idGenerator)
   }
 }
