@@ -5,9 +5,19 @@ option java_multiple_files = true;
 option java_package = "services.scalable.index.grpc";
 option java_outer_classname = "ClientServiceProto";
 
-package services.scalable.index;
+import "scalapb/scalapb.proto";
+import "google/protobuf/wrappers.proto";
 
-message Tuple {
+package services.scalable.index.grpc;
+
+option (scalapb.options) = {
+  single_file: true
+  flat_package: true
+  preserve_unknown_fields: false
+  preamble: "trait IndexCommand"
+};
+
+message KVPair {
   bytes key = 1;
   bytes value = 2;
 }
@@ -15,7 +25,7 @@ message Tuple {
 message LeafBlock {
   string id = 1;
   string partition = 2;
-  repeated Tuple tuples = 3;
+  repeated KVPair tuples = 3;
   int32 min = 4;
   int32 max = 5;
 
@@ -39,4 +49,36 @@ message MetaBlock {
   oneof optional_root {
     string root = 6;
   }
+}
+
+message IndexContext {
+  string id = 1;
+  int32 num_leaf_items = 2;
+  int32 num_meta_items = 3;
+  optional string root = 4;
+  int32 levels = 5;
+  int64 num_elements = 6;
+}
+
+message DatabaseContext {
+  string name = 1;
+  repeated IndexContext indexes = 2;
+}
+
+message InsertCommand {
+  option (scalapb.message).extends = "services.scalable.index.grpc.IndexCommand";
+
+  repeated KVPair list = 1;
+}
+
+message RemoveCommand {
+  option (scalapb.message).extends = "services.scalable.index.grpc.IndexCommand";
+
+  repeated bytes keys = 1;
+}
+
+message UpdateCommand {
+  option (scalapb.message).extends = "services.scalable.index.grpc.IndexCommand";
+
+  repeated KVPair list = 1;
 }

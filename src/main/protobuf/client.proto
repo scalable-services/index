@@ -7,7 +7,7 @@ option java_multiple_files = true;
 option java_package = "services.scalable.index.grpc";
 option java_outer_classname = "ClientServiceProto";
 
-package services.scalable.index;
+package services.scalable.index.grpc;
 //#options
 
 //#services

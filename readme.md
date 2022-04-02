@@ -7,7 +7,7 @@
 
 1. Tools needed:
 - Docker
-- JDK 1.8 or superior (ideally JDK 15)
+- JDK 1.8 or superior (ideally JDK 17)
 - SBT build tool (1.4.5) (Scala)
 - YugaByteDB (Cassandra like database)
 

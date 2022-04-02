@@ -2,7 +2,7 @@ package services.scalable.index
 
 import scala.concurrent.Future
 
-trait Context {
+trait Context[K, V] {
 
   val indexId: String
 
@@ -10,22 +10,23 @@ trait Context {
   val NUM_META_ENTRIES: Int
 
   var root: Option[String]
-  var num_elements = 0L
-  var levels = 0
+  var num_elements: Long
+  var levels: Int
 
   def isNew(id: String): Boolean
 
-  def get(id: String): Future[Block]
-  def getLeaf(id: String): Future[Leaf]
-  def getMeta(id: String): Future[Meta]
-
-  def createLeaf(): Leaf
-  def createMeta(): Meta
+  def get(id: String): Future[Block[K,V]]
+  def getLeaf(id: String): Future[Leaf[K,V]]
+  def getMeta(id: String): Future[Meta[K,V]]
+  
+  def createLeaf(): Leaf[K,V]
+  def createMeta(): Meta[K,V]
 
   def setParent(id: String, idx: Int, parent: Option[String])
   def getParent(id: String): Option[(Option[String], Int)]
-  def isFromCurrentContext(b: Block): Boolean
+  def isFromCurrentContext(b: Block[K,V]): Boolean
 
-  def save(): Future[Boolean]
+  //def save(): Future[Boolean]
+  def duplicate(): Context[K, V]
 
 }

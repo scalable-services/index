@@ -1,25 +1,23 @@
 package services.scalable.index
 
 import org.slf4j.LoggerFactory
-
-import scala.collection.mutable.ArrayBuffer
 import scala.util.{Failure, Success, Try}
 
-class Leaf(override val id: String,
-           override val partition: String,
-           override val MIN: Int,
-           override val MAX: Int,
-           override val size: Int = 0) extends Block {
+class Leaf[K, V](override val id: String,
+                          override val partition: String,
+                          override val MIN: Int,
+                          override val MAX: Int,
+                          override val size: Int = 0) extends Block[K,V] {
 
   val logger = LoggerFactory.getLogger(this.getClass)
 
-  var tuples = Seq.empty[Tuple]
+  var tuples = Seq.empty[Tuple[K,V]]
 
-  override def last: Bytes = tuples.last._1
-  override def first: Bytes = tuples.head._1
-  
-  def insert(data: Seq[Tuple], upsert: Boolean)(implicit ord: Ordering[Bytes]): Try[Int] = {
+  override def last: K = tuples.last._1
+  override def first: K = tuples.head._1
 
+  def insert(data: Seq[Tuple[K,V]], upsert: Boolean)(implicit ord: Ordering[K]): Try[Int] = {
+    
     if(isFull()) return Failure(Errors.LEAF_BLOCK_FULL)
 
     val n = Math.min(MAX - tuples.length, data.length)
@@ -40,9 +38,9 @@ class Leaf(override val id: String,
     Success(len)
   }
 
-  def remove(keys: Seq[Bytes])(implicit ord: Ordering[Bytes]): Try[Int] = {
+  def remove(keys: Seq[K])(implicit ord: Ordering[K]): Try[Int] = {
     if(keys.exists{ k => !tuples.exists{ case (k1, _) => ord.equiv(k1, k) }}){
-      return Failure(Errors.LEAF_KEY_NOT_FOUND(keys))
+      return Failure(Errors.LEAF_KEY_NOT_FOUND[K](keys))
     }
 
     tuples = tuples.filterNot{case (k, _) => keys.exists{ k1 => ord.equiv(k, k1)}}
@@ -50,7 +48,7 @@ class Leaf(override val id: String,
     Success(keys.length)
   }
 
-  def update(data: Seq[Tuple])(implicit ord: Ordering[Bytes]): Try[Int] = {
+  def update(data: Seq[Tuple[K,V]])(implicit ord: Ordering[K]): Try[Int] = {
 
     if(data.exists{ case (k, _) => !tuples.exists{case (k1, _) => ord.equiv(k1, k) }}){
       return Failure(Errors.LEAF_KEY_NOT_FOUND(data.map(_._1)))
@@ -65,8 +63,8 @@ class Leaf(override val id: String,
 
   override def length: Int = tuples.length
 
-  override def borrowLeftTo(t: Block)(implicit ctx: Context): Leaf = {
-    val target = t.asInstanceOf[Leaf]
+  override def borrowLeftTo(t: Block[K,V])(implicit ctx: Context[K,V]): Leaf[K,V] = {
+    val target = t.asInstanceOf[Leaf[K,V]]
 
     val len = tuples.length
     val start = len - target.minNeeded()
@@ -77,8 +75,8 @@ class Leaf(override val id: String,
     target
   }
 
-  override def borrowRightTo(t: Block)(implicit ctx: Context): Block = {
-    val target = t.asInstanceOf[Leaf]
+  override def borrowRightTo(t: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V] = {
+    val target = t.asInstanceOf[Leaf[K,V]]
 
     val n = target.minNeeded()
     target.tuples = target.tuples ++ tuples.slice(0, n)
@@ -87,8 +85,8 @@ class Leaf(override val id: String,
     target
   }
 
-  override def merge(r: Block)(implicit ctx: Context): Block = {
-    val right = r.asInstanceOf[Leaf]
+  override def merge(r: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V] = {
+    val right = r.asInstanceOf[Leaf[K,V]]
 
     tuples = tuples ++ right.tuples
     this
@@ -97,11 +95,11 @@ class Leaf(override val id: String,
   override def isFull(): Boolean = tuples.length == MAX
   override def isEmpty(): Boolean = tuples.isEmpty
 
-  def inOrder(): Seq[Tuple] = tuples
+  def inOrder(): Seq[Tuple[K,V]] = tuples
 
   override def hasMinimum(): Boolean = tuples.length >= MIN
 
-  override def copy()(implicit ctx: Context): Leaf = {
+  override def copy()(implicit ctx: Context[K,V]): Leaf[K,V] = {
     if(ctx.isNew(unique_id)) return this
 
     val (p, pos) = ctx.getParent(unique_id).get
@@ -119,20 +117,19 @@ class Leaf(override val id: String,
     copy
   }
   
-  override def split()(implicit ctx: Context): Leaf = {
+  override def split()(implicit ctx: Context[K,V]): Leaf[K,V] = {
     val right = ctx.createLeaf()
 
     val len = tuples.length
     val pos = len/2
 
     right.tuples = tuples.slice(pos, len)
-    right.tuples = tuples.slice(pos, len)
     tuples = tuples.slice(0, pos)
 
     right
   }
 
-  def binSearch(k: Bytes, start: Int = 0, end: Int = tuples.length - 1)(implicit ord: Ordering[Bytes]): (Boolean, Int) = {
+  def binSearch(k: K, start: Int = 0, end: Int = tuples.length - 1)(implicit ord: Ordering[K]): (Boolean, Int) = {
     if(start > end) return false -> start
 
     val pos = start + (end - start)/2
@@ -144,7 +141,7 @@ class Leaf(override val id: String,
     binSearch(k, pos + 1, end)
   }
 
-  def find(k: Bytes)(implicit ord: Ordering[Bytes]): Option[Tuple] = {
+  def find(k: K)(implicit ord: Ordering[K]): Option[Tuple[K,V]] = {
     val (found, pos) = binSearch(k)
 
     if(!found) return None
@@ -152,42 +149,42 @@ class Leaf(override val id: String,
     Some(tuples(pos))
   }
 
-  def lt(k: Bytes, include: Boolean = false)(implicit ord: Ordering[Bytes]): Seq[Tuple] = {
+  def lt(k: K, include: Boolean = false)(implicit ord: Ordering[K]): Seq[Tuple[K,V]] = {
     if(include) return tuples.filter{case (k1, _) => ord.lteq(k1, k)}.reverse
     tuples.filter{case (k1, _) => ord.lt(k1, k)}.reverse
   }
 
-  def lte(k: Bytes)(implicit ord: Ordering[Bytes]): Seq[Tuple] = {
+  def lte(k: K)(implicit ord: Ordering[K]): Seq[Tuple[K,V]] = {
     lt(k, true)
   }
 
-  def gt(k: Bytes, include: Boolean = false)(implicit ord: Ordering[Bytes]): Seq[Tuple] = {
+  def gt(k: K, include: Boolean = false)(implicit ord: Ordering[K]): Seq[Tuple[K,V]] = {
     if(include) return tuples.filter{case (k1, _) => ord.gteq(k1, k)}
     tuples.filter{case (k1, _) => ord.gt(k1, k)}
   }
 
-  def gte(k: Bytes)(implicit ord: Ordering[Bytes]): Seq[Tuple] = {
+  def gte(k: K)(implicit ord: Ordering[K]): Seq[Tuple[K,V]] = {
     gt(k, true)
   }
 
-  def interval(lower: Bytes, upper: Bytes, includeLower: Boolean = false, includeUpper: Boolean = false)(implicit ord: Ordering[Bytes]): Seq[Tuple] = {
+  def interval(lower: K, upper: K, includeLower: Boolean = false, includeUpper: Boolean = false)(implicit ord: Ordering[K]): Seq[Tuple[K,V]] = {
     tuples.filter{case (k, _) => (if(includeLower) ord.gteq(k, lower) else ord.gt(k, lower)) && (if(includeUpper) ord.lteq(k, upper) else ord.lt(k, upper))}
   }
 
-  def min()(implicit ord: Ordering[Bytes]): Option[Tuple] = {
+  def min()(implicit ord: Ordering[K]): Option[Tuple[K,V]] = {
     if(tuples.isEmpty) return None
     Some(tuples.minBy(_._1))
   }
 
-  def max()(implicit ord: Ordering[Bytes]): Option[Tuple] = {
+  def max()(implicit ord: Ordering[K]): Option[Tuple[K,V]] = {
     if(tuples.isEmpty) return None
     Some(tuples.maxBy(_._1))
   }
 
-  override def print()(implicit kf: Bytes => String, vf: Bytes => String): String = {
+  override def print()(implicit kf: K => String, vf: V => String): String = {
     if(tuples.isEmpty) return "[]"
 
-    val sb = new StringBuilder()
+    val sb = new StringBuilder(s"${id}:")
     sb ++= Console.GREEN_B
     sb ++= "["
     sb ++= Console.RESET

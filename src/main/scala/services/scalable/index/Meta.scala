@@ -3,32 +3,32 @@ package services.scalable.index
 import org.slf4j.LoggerFactory
 import scala.util.{Failure, Success, Try}
 
-class Meta (override val id: String,
-            override val partition: String,
-            override val MIN: Int,
-            override val MAX: Int,
-            override val size: Int = 0) extends Block {
+class Meta[K, V](override val id: String,
+                          override val partition: String,
+                          override val MIN: Int,
+                          override val MAX: Int,
+                          override val size: Int = 0) extends Block[K,V] {
 
   val logger = LoggerFactory.getLogger(this.getClass)
 
-  var pointers = Array.empty[Pointer]
+  var pointers = Array.empty[Pointer[K]]
 
-  override def last: Bytes = pointers.last._1
-  override def first: Bytes = pointers.head._1
+  override def last: K = pointers.last._1
+  override def first: K = pointers.head._1
 
-  def setPointer(block: Block, pos: Int)(implicit ctx: Context): Unit = {
+  def setPointer(block: Block[K,V], pos: Int)(implicit ctx: Context[K,V]): Unit = {
     pointers(pos) = block.last -> block.unique_id
     ctx.setParent(block.unique_id, pos, Some(unique_id))
   }
 
-  def setPointers()(implicit ctx: Context): Unit = {
+  def setPointers()(implicit ctx: Context[K,V]): Unit = {
     for(i<-0 until pointers.length){
       val (k, c) = pointers(i)
       ctx.setParent(c, i, Some(unique_id))
     }
   }
 
-  def binSearch(k: Bytes, start: Int = 0, end: Int = pointers.length - 1)(implicit ord: Ordering[Bytes]): (Boolean, Int) = {
+  def binSearch(k: K, start: Int = 0, end: Int = pointers.length - 1)(implicit ord: Ordering[K]): (Boolean, Int) = {
     if(start > end) return false -> start
 
     val pos = start + (end - start)/2
@@ -40,12 +40,44 @@ class Meta (override val id: String,
     binSearch(k, pos + 1, end)
   }
 
-  def findPath(k: Bytes)(implicit ord: Ordering[Bytes]): String = {
+  def binSearchGt(k: K, start: Int = 0, end: Int = pointers.length - 1, inclusive: Boolean)(implicit ord: Ordering[K]): (Boolean, Int) = {
+    if(start > end) return false -> start
+
+    val pos = start + (end - start)/2
+    val c = ord.compare(k, pointers(pos)._1)
+
+    if(c < 0) return binSearch(k, start, pos - 1)
+
+    if(c == 0) {
+      if(inclusive) return true -> pos
+      return false -> pos
+    }
+
+    true -> (pos + 1)
+  }
+
+  def binSearchLt(k: K, start: Int = 0, end: Int = pointers.length - 1, inclusive: Boolean)(implicit ord: Ordering[K]): (Boolean, Int) = {
+    if(start > end) return false -> start
+
+    val pos = start + (end - start)/2
+    val c = ord.compare(k, pointers(pos)._1)
+
+    if(c == 0){
+      if(inclusive) return true -> pos
+      return false -> pos
+    }
+
+    if(c < 0) return true -> (pos - 1)
+
+    binSearch(k, pos + 1, end)
+  }
+
+  def findPath(k: K)(implicit ord: Ordering[K]): String = {
     val (_, pos) = binSearch(k)
     pointers(if(pos < pointers.length) pos else pos - 1)._2
   }
 
-  def insert(data: Seq[Pointer])(implicit ctx: Context, ord: Ordering[Bytes]): Try[Int] = {
+  def insert(data: Seq[Pointer[K]])(implicit ctx: Context[K,V], ord: Ordering[K]): Try[Int] = {
     if(isFull()) return Failure(Errors.META_BLOCK_FULL)
 
     if(data.exists{case (k, _) => pointers.exists{case (k1, _) => ord.equiv(k, k1)}}){
@@ -59,10 +91,10 @@ class Meta (override val id: String,
     Success(data.length)
   }
 
-  def removeAt(pos: Int)(implicit ctx: Context): Pointer = {
+  def removeAt(pos: Int)(implicit ctx: Context[K,V]): Pointer[K] = {
     val p = pointers(pos)
 
-    var aux = Array.empty[Pointer]
+    var aux = Array.empty[Pointer[K]]
 
     for(i<-0 until pos){
       aux = aux :+ pointers(i)
@@ -92,8 +124,8 @@ class Meta (override val id: String,
 
   override def length: Int = pointers.length
 
-  override def borrowLeftTo(t: Block)(implicit ctx: Context): Block = {
-    val target = t.asInstanceOf[Meta]
+  override def borrowLeftTo(t: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V] = {
+    val target = t.asInstanceOf[Meta[K,V]]
 
     val len = pointers.length
     val start = len - target.minNeeded()
@@ -107,8 +139,8 @@ class Meta (override val id: String,
     target
   }
 
-  override def borrowRightTo(t: Block)(implicit ctx: Context): Block = {
-    val target = t.asInstanceOf[Meta]
+  override def borrowRightTo(t: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V] = {
+    val target = t.asInstanceOf[Meta[K,V]]
 
     val n = target.minNeeded()
     target.pointers = target.pointers ++ pointers.slice(0, n)
@@ -120,8 +152,8 @@ class Meta (override val id: String,
     target
   }
 
-  override def merge(r: Block)(implicit ctx: Context): Block = {
-    val right = r.asInstanceOf[Meta]
+  override def merge(r: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V] = {
+    val right = r.asInstanceOf[Meta[K,V]]
 
     pointers = pointers ++ right.pointers
 
@@ -135,7 +167,7 @@ class Meta (override val id: String,
 
   override def hasMinimum(): Boolean = pointers.length >= MIN
 
-  override def copy()(implicit ctx: Context): Meta = {
+  override def copy()(implicit ctx: Context[K,V]): Meta[K,V] = {
     if(ctx.isNew(unique_id)) return this
 
     val (p, pos) = ctx.getParent(unique_id).get
@@ -157,7 +189,7 @@ class Meta (override val id: String,
     copy
   }
 
-  override def split()(implicit ctx: Context): Meta = {
+  override def split()(implicit ctx: Context[K,V]): Meta[K,V] = {
     val right = ctx.createMeta()
 
     val len = pointers.length
@@ -172,10 +204,10 @@ class Meta (override val id: String,
     right
   }
 
-  override def print()(implicit kf: Bytes => String, vf: Bytes => String): String = {
+  override def print()(implicit kf: K => String, vf: V => String): String = {
     if(pointers.isEmpty) return "[]"
 
-    val sb = new StringBuilder()
+    val sb = new StringBuilder(s"${id}:")
     sb ++= Console.RED_B
     sb ++= "["
     sb ++= Console.RESET
@@ -201,6 +233,6 @@ class Meta (override val id: String,
     sb.toString()
   }
 
-  def inOrder(): Seq[Pointer] = pointers
+  def inOrder(): Seq[Pointer[K]] = pointers
 
 }
