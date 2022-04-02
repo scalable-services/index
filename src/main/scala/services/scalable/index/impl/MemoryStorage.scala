@@ -7,13 +7,8 @@ import services.scalable.index.grpc.DatabaseContext
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.{ExecutionContext, Future}
 
-<<<<<<< HEAD
 class MemoryStorage(val NUM_LEAF_ENTRIES: Int, val NUM_META_ENTRIES: Int)(implicit val ec: ExecutionContext) extends Storage {
-=======
-class MemoryStorage[K, V](val NUM_LEAF_ENTRIES: Int, val NUM_META_ENTRIES: Int)(implicit val ec: ExecutionContext,
-                                                                                val ord: Ordering[K],
-                                                                                val cache: Cache) extends Storage {
->>>>>>> 18bf32bc95d220ec507a113413847ee667954524
+
   val logger = LoggerFactory.getLogger(this.getClass)
 
   val databases = TrieMap.empty[String, DatabaseContext]
