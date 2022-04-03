@@ -27,6 +27,7 @@
       <sourceFolder url="file://$MODULE_DIR$/../../target/scala-2.13/akka-grpc/test" isTestSource="true" generated="true" />
       <sourceFolder url="file://$MODULE_DIR$/../../target/scala-2.13/akka-grpc/test" isTestSource="true" generated="true" />
       <sourceFolder url="file://$MODULE_DIR$/../../target/scala-2.13/akka-grpc/test" isTestSource="true" generated="true" />
+      <sourceFolder url="file://$MODULE_DIR$/../../target/scala-2.13/akka-grpc/test" isTestSource="true" generated="true" />
       <excludeFolder url="file://$MODULE_DIR$/../../target" />
       <excludeFolder url="file://$MODULE_DIR$/../../target/global-logging" />
       <excludeFolder url="file://$MODULE_DIR$/../../target/protobuf_external" />
