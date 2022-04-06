@@ -22,6 +22,17 @@ message KVPair {
   bytes value = 2;
 }
 
+message Pointer {
+  bytes key = 1;
+  string partition = 2;
+  string id = 3;
+}
+
+message RootRef {
+  string partition = 1;
+  string id = 2;
+}
+
 message LeafBlock {
   string id = 1;
   string partition = 2;
@@ -29,14 +40,7 @@ message LeafBlock {
   int32 min = 4;
   int32 max = 5;
 
-  oneof optional_root {
-    string root = 6;
-  }
-}
-
-message Pointer {
-  bytes key = 1;
-  string link = 2;
+  optional RootRef root = 6;
 }
 
 message MetaBlock {
@@ -46,16 +50,14 @@ message MetaBlock {
   int32 min = 4;
   int32 max = 5;
 
-  oneof optional_root {
-    string root = 6;
-  }
+  optional RootRef root = 6;
 }
 
 message IndexContext {
   string id = 1;
   int32 num_leaf_items = 2;
   int32 num_meta_items = 3;
-  optional string root = 4;
+  optional RootRef root = 4;
   int32 levels = 5;
   int64 num_elements = 6;
 }

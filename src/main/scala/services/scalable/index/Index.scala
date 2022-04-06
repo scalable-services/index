@@ -302,7 +302,7 @@ class Index[K, V](val c: Context[K, V])(implicit val ec: ExecutionContext){
     }
   }
 
-  protected def borrowRight(target: Block[K, V], left: Option[Block[K, V]], right: Option[String], parent: Meta[K,V], pos: Int)
+  protected def borrowRight(target: Block[K, V], left: Option[Block[K, V]], right: Option[(String, String)], parent: Meta[K,V], pos: Int)
                                        (implicit ord: Ordering[K]): Future[Boolean] = {
     right match {
       case Some(id) => ctx.get(id).flatMap { r =>
@@ -328,7 +328,7 @@ class Index[K, V](val c: Context[K, V])(implicit val ec: ExecutionContext){
     }
   }
 
-  protected def borrowLeft(target: Block[K, V], left: Option[String], right: Option[String], parent: Meta[K,V], pos: Int)
+  protected def borrowLeft(target: Block[K, V], left: Option[(String, String)], right: Option[(String, String)], parent: Meta[K,V], pos: Int)
                                       (implicit ord: Ordering[K]): Future[Boolean] = {
     left match {
       case Some(id) => ctx.get(id).flatMap { l =>
@@ -669,7 +669,7 @@ class Index[K, V](val c: Context[K, V])(implicit val ec: ExecutionContext){
     ctx.get(root).flatMap(b => getRightMost(Some(b)))
   }
 
-  def next(current: Option[String])(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
+  def next(current: Option[(String, String)])(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
 
     def nxt(b: Block[K,V]): Future[Option[Leaf[K,V]]] = {
 
@@ -705,7 +705,7 @@ class Index[K, V](val c: Context[K, V])(implicit val ec: ExecutionContext){
     }
   }
 
-  def prev(current: Option[String])(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
+  def prev(current: Option[(String, String)])(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
 
     def prv(b: Block[K,V]): Future[Option[Leaf[K,V]]] = {
 
@@ -765,7 +765,7 @@ class Index[K, V](val c: Context[K, V])(implicit val ec: ExecutionContext){
    * Prints any subtree from the provided root
    * Caution: prettyPrint is currently synchronous!
    */
-  def prettyPrint(root: Option[String] = ctx.root, timeout: Duration = Duration.Inf)(implicit kf: K => String, vf: V => String): (Int, Int) = {
+  def prettyPrint(root: Option[(String, String)] = ctx.root, timeout: Duration = Duration.Inf)(implicit kf: K => String, vf: V => String): (Int, Int) = {
 
     val levels = scala.collection.mutable.Map[Int, scala.collection.mutable.ArrayBuffer[Block[K,V]]]()
     var num_data_blocks = 0
@@ -859,7 +859,7 @@ class Index[K, V](val c: Context[K, V])(implicit val ec: ExecutionContext){
     levels.size
   }*/
 
-  protected[index] def getNumLevels(root: Option[String] = ctx.root): Future[Int] = {
+  protected[index] def getNumLevels(root: Option[(String, String)] = ctx.root): Future[Int] = {
 
     val levels = TrieMap.empty[Int, scala.collection.mutable.ArrayBuffer[Block[K,V]]]
     val num_data_blocks = new AtomicInteger(0)

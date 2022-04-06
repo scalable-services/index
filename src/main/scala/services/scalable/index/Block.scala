@@ -5,7 +5,9 @@ trait Block[K, V] {
   val id: String
   val partition: String
 
-  val unique_id: String = partition.concat("#").concat(id)
+  //val unique_id: String = partition.concat("#").concat(id)
+
+  val unique_id = (partition, id)
 
   val size: Int
 
@@ -13,7 +15,7 @@ trait Block[K, V] {
   val MAX: Int
 
   // Tells from what root pointer this block was originally created
-  var root: Option[String] = None
+  var root: Option[(String, String)] = None
 
   def last: K
   def first: K

@@ -13,15 +13,22 @@ final class GrpcByteSerializer[K, V](implicit val ks: Serializer[K], val vs: Ser
 
           Any.pack(LeafBlock(leaf.id, leaf.partition, leaf.tuples.map { case (k, v) =>
             KVPair(ByteString.copyFrom(ks.serialize(k)), ByteString.copyFrom(vs.serialize(v)))
-          }, block.MIN, block.MAX, if(leaf.root.isDefined) LeafBlock.OptionalRoot.Root(leaf.root.get)
-          else LeafBlock.OptionalRoot.Empty)).toByteArray
+          }, block.MIN, block.MAX,
+            if(leaf.root.isDefined){
+              val (partition, id) = leaf.root.get
+              Some(RootRef(partition, id))
+            } else None
+          )).toByteArray
 
         case meta: Meta[K,V] =>
 
-          Any.pack(MetaBlock(meta.id, meta.partition, meta.pointers.map { case (k, c) =>
-            Pointer(ByteString.copyFrom(ks.serialize(k)), c)
-          }, meta.MIN, meta.MAX, if(meta.root.isDefined) MetaBlock.OptionalRoot.Root(meta.root.get)
-          else MetaBlock.OptionalRoot.Empty)).toByteArray
+          Any.pack(MetaBlock(meta.id, meta.partition, meta.pointers.map { case (k, (p, id)) =>
+            Pointer(ByteString.copyFrom(ks.serialize(k)), p, id)
+          }, meta.MIN, meta.MAX, if(meta.root.isDefined) {
+            val (partition, id) = meta.root.get
+            Some(RootRef(partition, id))
+          }
+          else None)).toByteArray
       }
     }
 
@@ -37,7 +44,7 @@ final class GrpcByteSerializer[K, V](implicit val ks: Serializer[K], val vs: Ser
 
         val block = new Leaf[K,V](leaf.id, leaf.partition, leaf.min, leaf.max, bytes.length)
 
-        block.root = leaf.optionalRoot.root
+        block.root = leaf.root.map(r => r.partition -> r.id)
 
         block.tuples = tuples
 
@@ -46,10 +53,10 @@ final class GrpcByteSerializer[K, V](implicit val ks: Serializer[K], val vs: Ser
 
       val meta = parsed.unpack(MetaBlock)
 
-      val pointers = Array(meta.pointers.map { t => ks.deserialize(t.key.toByteArray) -> t.link }: _*)
+      val pointers = Array(meta.pointers.map { t => ks.deserialize(t.key.toByteArray) -> (t.partition, t.id) }: _*)
       val block = new Meta[K,V](meta.id, meta.partition, meta.min, meta.max, bytes.length)
 
-      block.root = meta.optionalRoot.root
+      block.root = meta.root.map(r => r.partition -> r.id)
 
       block.pointers = pointers
 

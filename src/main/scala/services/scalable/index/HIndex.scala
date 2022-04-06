@@ -1,9 +1,10 @@
 package services.scalable.index
 
 import services.scalable.index.Commands._
-import services.scalable.index.grpc.{DatabaseContext, IndexContext}
+import services.scalable.index.grpc.{DatabaseContext, IndexContext, RootRef}
 import services.scalable.index.impl.DefaultContext
 
+import java.util.UUID
 import scala.concurrent.{ExecutionContext, Future}
 
 class HIndex[K, V](db: DatabaseContext,
@@ -23,8 +24,8 @@ class HIndex[K, V](db: DatabaseContext,
   var indexContext = if(mainIndex.isEmpty) IndexContext("main", NUM_LEAF_ENTRIES, NUM_META_ENTRIES, None, 0, 0) else mainIndex.get
   var historyContext = if(historyIndex.isEmpty) IndexContext("history", NUM_LEAF_ENTRIES, NUM_META_ENTRIES, None, 0, 0) else historyIndex.get
 
-  protected def inserth(list: Seq[(Long, IndexContext)]): Future[Option[DefaultContext[Long, IndexContext]]] = {
-    val ctx = new DefaultContext[Long, IndexContext](historyContext.id, historyContext.root, historyContext.numElements,
+  protected def inserth(list: Seq[(Long, IndexContext)])(implicit idGenerator: IdGenerator): Future[Option[DefaultContext[Long, IndexContext]]] = {
+    val ctx = new DefaultContext[Long, IndexContext](historyContext.id, historyContext.root.map{r => (r.partition, r.id)}, historyContext.numElements,
       historyContext.levels, historyContext.numLeafItems, historyContext.numMetaItems)
     val index = new QueryableIndex[Long, IndexContext](ctx)
 
@@ -44,12 +45,20 @@ class HIndex[K, V](db: DatabaseContext,
 
   def execute(cmds: Seq[Command[K, V]]): Future[Boolean] = {
 
-    val ctx = new DefaultContext[K, V](indexContext.id, indexContext.root, indexContext.numElements, indexContext.levels,
+    implicit val idGenerator = new IdGenerator {
+      val partition = UUID.randomUUID.toString
+
+      override def generateId[K, V](ctx: Context[K, V]): String = partition
+      override def generatePartition[K, V](ctx: Context[K, V]): String = UUID.randomUUID.toString
+    }
+
+    val ctx = new DefaultContext[K, V](indexContext.id, indexContext.root.map{r => (r.partition, r.id)}, indexContext.numElements, indexContext.levels,
       indexContext.numLeafItems, indexContext.numMetaItems)
     val index = new QueryableIndex[K, V](ctx)
     val now = System.nanoTime()
 
     def process(pos: Int, previous: Boolean): Future[Boolean] = {
+
       if(!previous) return Future.successful(false)
       if(pos == cmds.length) return Future.successful(true)
 
@@ -72,7 +81,7 @@ class HIndex[K, V](db: DatabaseContext,
       case true =>
 
         val c = index.ctx.asInstanceOf[DefaultContext[K, V]]
-        val icontext = IndexContext("main", c.NUM_LEAF_ENTRIES, c.NUM_META_ENTRIES, c.root, c.levels, c.num_elements)
+        val icontext = IndexContext("main", c.NUM_LEAF_ENTRIES, c.NUM_META_ENTRIES, c.root.map{r => RootRef(r._1, r._2)}, c.levels, c.num_elements)
 
         inserth(Seq(now -> icontext)).flatMap {
           case Some(h) =>
@@ -80,11 +89,11 @@ class HIndex[K, V](db: DatabaseContext,
             h.save()
             c.save()
 
-            val hcontext = new IndexContext("history", h.NUM_LEAF_ENTRIES, h.NUM_META_ENTRIES, h.root, h.levels, h.num_elements)
+            val hcontext = new IndexContext("history", h.NUM_LEAF_ENTRIES, h.NUM_META_ENTRIES, h.root.map{r => RootRef(r._1, r._2)}, h.levels, h.num_elements)
             val database = db.withIndexes(Seq(icontext, hcontext))
 
-            val blocks = c.blocks.map{case (id, block) => id -> serializer.serialize(block)}.toMap ++
-              h.blocks.map{case (id, block) => id -> grpcHistorySerializer.serialize(block)}.toMap
+            val blocks = c.blocks.map{case (_, block) => (block.partition, block.id) -> serializer.serialize(block)}.toMap ++
+              h.blocks.map{case (_, block) => (block.partition, block.id) -> grpcHistorySerializer.serialize(block)}.toMap
 
             storage.save(database, blocks).map {
               case true =>
@@ -105,7 +114,10 @@ class HIndex[K, V](db: DatabaseContext,
   }
 
   def findT(t: Long): Future[Option[IndexContext]] = {
-    val ctx = new DefaultContext[Long, IndexContext](historyContext.id, historyContext.root, historyContext.numElements,
+
+    import DefaultIdGenerators._
+
+    val ctx = new DefaultContext[Long, IndexContext](historyContext.id, historyContext.root.map{r => (r.partition, r.id)}, historyContext.numElements,
       historyContext.levels, historyContext.numLeafItems, historyContext.numMetaItems)
     val history = new QueryableIndex[Long, IndexContext](ctx)
 

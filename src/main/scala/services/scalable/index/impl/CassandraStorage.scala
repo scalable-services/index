@@ -26,10 +26,10 @@ class CassandraStorage(val KEYSPACE: String,
     .withKeyspace(KEYSPACE)
     .build()
 
-  val INSERT = session.prepare("insert into blocks(id, bin, size) values (?, ?, ?);")
+  val INSERT = session.prepare("insert into blocks(partition, id, bin, size) values (?, ?, ?, ?);")
   val SELECT_ROOT = session.prepare("select buf from databases where id=?;")
   val INSERT_DB = session.prepare("insert into databases(id, buf) VALUES(?,?) IF NOT EXISTS;")
-  val SELECT = session.prepare("select * from blocks where id=?;")
+  val SELECT = session.prepare("select * from blocks where partition=? and id=?;")
   val UPDATE_DB = session.prepare("update databases set buf=? where id = ? IF EXISTS;")
 
   if(truncate){
@@ -71,8 +71,8 @@ class CassandraStorage(val KEYSPACE: String,
     }
   }
 
-  override def get(unique_id: String): Future[Array[Byte]] = {
-    session.executeAsync(SELECT.bind().setString(0, unique_id)).map { rs =>
+  override def get(id: (String, String)): Future[Array[Byte]] = {
+    session.executeAsync(SELECT.bind().setString(0, id._1).setString(1, id._2)).map { rs =>
       val one = rs.one()
       val buf = one.getByteBuffer("bin")
       buf.array()
@@ -86,15 +86,16 @@ class CassandraStorage(val KEYSPACE: String,
       .setString(1, db.name)).map(_.wasApplied())
   }
 
-  override def save(db: DatabaseContext, blocks: Map[String, Array[Byte]]): Future[Boolean] = {
+  override def save(db: DatabaseContext, blocks: Map[(String, String), Array[Byte]]): Future[Boolean] = {
     val stm = BatchStatement.builder(DefaultBatchType.LOGGED)
 
-    blocks.map { case (uid, bin) =>
+    blocks.map { case ((partition, id), bin) =>
       stm.addStatement(INSERT
         .bind()
-        .setString(0, uid)
-        .setByteBuffer(1, ByteBuffer.wrap(bin))
-        .setInt(2, bin.length)
+        .setString(0, partition)
+        .setString(1, id)
+        .setByteBuffer(2, ByteBuffer.wrap(bin))
+        .setInt(3, bin.length)
       )
     }
 

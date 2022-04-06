@@ -18,7 +18,7 @@ package object index {
 
   type Bytes = Array[Byte]
   type Tuple[K, V] = Tuple2[K, V]
-  type Pointer[K] = Tuple2[K, String]
+  type Pointer[K] = Tuple2[K, (String, String)]
 
   implicit def toScalaFuture[T](cs: CompletionStage[T]) = toScala[T](cs)
 

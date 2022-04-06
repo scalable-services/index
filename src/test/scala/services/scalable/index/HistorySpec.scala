@@ -9,9 +9,10 @@ import services.scalable.index.Commands._
 import services.scalable.index.grpc._
 import services.scalable.index.impl.{CassandraStorage, DefaultCache, DefaultContext}
 
+import java.util.UUID
 import scala.concurrent.Await
-import scala.concurrent.duration.Duration
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.duration.Duration
 
 class HistorySpec extends Repeatable {
 
@@ -21,9 +22,8 @@ class HistorySpec extends Repeatable {
 
   "operations" should " run successfully" in {
 
-    import DefaultSerializers._
     import DefaultComparators._
-    import DefaultIdGenerators._
+    import DefaultSerializers._
 
     type K = Bytes
     type V = Bytes
@@ -34,6 +34,11 @@ class HistorySpec extends Repeatable {
 
     val NUM_LEAF_ENTRIES = 8
     val NUM_META_ENTRIES = 8
+
+    implicit val idGenerator = new IdGenerator {
+      override def generateId[K, V](ctx: Context[K, V]): String = "1"
+      override def generatePartition[K, V](ctx: Context[K, V]): String = UUID.randomUUID.toString
+    }
 
     implicit val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
     implicit val storage = new CassandraStorage(TestConfig.KEYSPACE, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, false)
@@ -108,7 +113,7 @@ class HistorySpec extends Repeatable {
       Await.result(hindex.execute(cmds), Duration.Inf)
     }*/
 
-    val index = new QueryableIndex[K, V](new DefaultContext[K, V]("main", hindex.indexContext.root, hindex.indexContext.numElements,
+    val index = new QueryableIndex[K, V](new DefaultContext[K, V]("main", hindex.indexContext.root.map{r => (r.partition, r.id)}, hindex.indexContext.numElements,
       hindex.indexContext.levels, NUM_LEAF_ENTRIES, NUM_META_ENTRIES))
 
     val dlist = data.sortBy(_._1)
@@ -117,7 +122,7 @@ class HistorySpec extends Repeatable {
     isColEqual(dlist, ilist)
 
     val history = new QueryableIndex[Long, IndexContext](
-      new DefaultContext[Long, IndexContext]("history", hindex.historyContext.root,
+      new DefaultContext[Long, IndexContext]("history", hindex.historyContext.root.map{r => (r.partition, r.id)},
         hindex.historyContext.numElements, hindex.historyContext.levels, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
     )
 
@@ -137,7 +142,7 @@ class HistorySpec extends Repeatable {
 
       val ctx = opt.get
 
-      val index = new QueryableIndex[K, V](new DefaultContext[K, V](ctx.id, ctx.root,
+      val index = new QueryableIndex[K, V](new DefaultContext[K, V](ctx.id, ctx.root.map{r => (r.partition, r.id)},
         ctx.numElements, ctx.levels, NUM_LEAF_ENTRIES, NUM_META_ENTRIES))
       val idata = Await.result(TestHelper.all(index.inOrder()), Duration.Inf)
       println(s"${Console.GREEN_B}${idata.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v, Charsets.UTF_8)}}${Console.RESET}")

@@ -7,7 +7,7 @@ import scala.collection.concurrent.TrieMap
 import scala.concurrent.{ExecutionContext, Future}
 
 class DefaultContext[K, V](override val indexId: String,
-                     override var root: Option[String],
+                     override var root: Option[(String, String)],
                      override var num_elements: Long,
                      override var levels: Int,
                      override val NUM_LEAF_ENTRIES: Int,
@@ -17,7 +17,7 @@ class DefaultContext[K, V](override val indexId: String,
                      val serializer: Serializer[Block[K, V]],
                      val cache: Cache,
                      val ord: Ordering[K],
-                     val idGenerator: IdGenerator = DefaultIdGenerators.idGenerator) extends Context[K,V] {
+                     val idGenerator: IdGenerator) extends Context[K,V] {
 
   val logger = LoggerFactory.getLogger(this.getClass)
 
@@ -27,10 +27,12 @@ class DefaultContext[K, V](override val indexId: String,
   val META_MAX = NUM_META_ENTRIES
   val META_MIN = META_MAX/2
 
-  val blocks = TrieMap.empty[String, Block[K,V]]
-  val parents = TrieMap.empty[String, (Option[String], Int)]
+  val blocks = TrieMap.empty[(String, String), Block[K,V]]
+  val parents = TrieMap.empty[(String, String), (Option[(String, String)], Int)]
 
-  if(root.isDefined) setParent(root.get, 0, None)
+  if(root.isDefined) {
+    setParent(root.get, 0, None)
+  }
 
   root match {
     case None =>
@@ -41,11 +43,11 @@ class DefaultContext[K, V](override val indexId: String,
    *
    * To work the blocks being manipulated must be in memory before saving...
    */
-  override def get(unique_id: String): Future[Block[K,V]] = blocks.get(unique_id) match {
-    case None => cache.get[K, V](unique_id) match {
+  override def get(id: (String, String)): Future[Block[K,V]] = blocks.get(id) match {
+    case None => cache.get[K, V](id) match {
       case None =>
 
-        storage.get(unique_id).map { buf =>
+        storage.get(id).map { buf =>
           val block = serializer.deserialize(buf)
           cache.put(block)
           block
@@ -57,16 +59,16 @@ class DefaultContext[K, V](override val indexId: String,
     case Some(block) => Future.successful(block)
   }
 
-  override def getLeaf(unique_id: String): Future[Leaf[K,V]] = {
-    get(unique_id).map(_.asInstanceOf[Leaf[K,V]])
+  override def getLeaf(id: (String, String)): Future[Leaf[K,V]] = {
+    get(id).map(_.asInstanceOf[Leaf[K,V]])
   }
 
-  override def getMeta(unique_id: String): Future[Meta[K,V]] = {
-    get(unique_id).map(_.asInstanceOf[Meta[K,V]])
+  override def getMeta(id: (String, String)): Future[Meta[K,V]] = {
+    get(id).map(_.asInstanceOf[Meta[K,V]])
   }
 
-  override def isNew(unique_id: String): Boolean = {
-    blocks.isDefinedAt(unique_id)
+  override def isNew(id: (String, String)): Boolean = {
+    blocks.isDefinedAt(id)
   }
 
   override def createLeaf(): Leaf[K,V] = {
@@ -87,15 +89,15 @@ class DefaultContext[K, V](override val indexId: String,
     meta
   }
 
-  override def setParent(unique_id: String, idx: Int, parent: Option[String]): Unit = {
+  override def setParent(unique_id: (String, String), idx: Int, parent: Option[(String, String)]): Unit = {
     parents += unique_id -> (parent, idx)
     cache.put(unique_id, parent, idx)
   }
 
-  override def getParent(unique_id: String): Option[(Option[String], Int)] = {
-    if(parents.isDefinedAt(unique_id)) return parents.get(unique_id)
+  override def getParent(id: (String, String)): Option[(Option[(String, String)], Int)] = {
+    if(parents.isDefinedAt(id)) return parents.get(id)
 
-    cache.getParent(unique_id) match {
+    cache.getParent(id) match {
       case None => None
       case ctxOpt =>
 
@@ -104,7 +106,7 @@ class DefaultContext[K, V](override val indexId: String,
 
         val (parent, pos) = ctxOpt.get
 
-        setParent(unique_id, pos, parent)
+        setParent(id, pos, parent)
 
         ctxOpt
     }

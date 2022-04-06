@@ -12,14 +12,14 @@ class MemoryStorage(val NUM_LEAF_ENTRIES: Int, val NUM_META_ENTRIES: Int)(implic
   val logger = LoggerFactory.getLogger(this.getClass)
 
   val databases = TrieMap.empty[String, DatabaseContext]
-  val blocks = TrieMap.empty[String, Array[Byte]]
+  val blocks = TrieMap.empty[(String, String), Array[Byte]]
 
-  override def get(unique_id: String): Future[Array[Byte]] = {
-    val buf = blocks(unique_id)
+  override def get(id: (String, String)): Future[Array[Byte]] = {
+    val buf = blocks(id)
     Future.successful(buf)
   }
 
-  override def save(db: DatabaseContext, blocks: Map[String, Array[Byte]]): Future[Boolean] = {
+  override def save(db: DatabaseContext, blocks: Map[(String, String), Array[Byte]]): Future[Boolean] = {
     databases.put(db.name, db)
 
     blocks.foreach { case (id, b) =>
