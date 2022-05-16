@@ -75,31 +75,19 @@ class DBSpec extends Repeatable {
       cmds
     }
 
-    var cmds = insert()
-
     val t0 = System.nanoTime()
-    var result = Await.result(db.execute(cmds), Duration.Inf)
+    var result = Await.result(db.execute(insert()), Duration.Inf)
 
    // dbCtx = result.ctx.get
 
     logger.info(Await.result(storage.save(dbCtx, result.blocks),
       Duration.Inf).toString)
 
-    //dbCtx = result.ctx.get
-    //db = new DB[K, V](dbCtx)
-
-    cmds = insert()
-
-    result = Await.result(db.execute(cmds), Duration.Inf)
-
-    //dbCtx = result.ctx.get
+    result = Await.result(db.execute(insert()), Duration.Inf)
 
     logger.info(s"\n${Console.MAGENTA_B}result: ${result.ok}${Console.RESET}\n")
 
     if(result.ok){
-
-      //dbCtx = result.ctx.get
-      //db = new DB[K, V](dbCtx)
 
       logger.info(Await.result(storage.save(dbCtx, result.blocks), Duration.Inf).toString)
 
