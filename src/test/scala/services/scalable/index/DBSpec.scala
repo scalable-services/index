@@ -48,12 +48,11 @@ class DBSpec extends Repeatable {
       "main" -> IndexContext(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, None, 0, 0)
     ))
 
-    var dbCtx = Await.result(storage.loadOrCreate(indexId), Duration.Inf)
+    val dbCtx = Await.result(storage.loadOrCreate(indexId), Duration.Inf)
       .withLatest(view)
       .withHistory(IndexContext(s"$indexId-history", NUM_LEAF_ENTRIES, NUM_META_ENTRIES, None, 0, 0))
 
-    var db = new DB[K, V](dbCtx)
-
+    val db = new DB[K, V](dbCtx)
     var data = Seq.empty[(K, V)]
 
     def insert(): Seq[Commands.Command[K, V]] = {
@@ -78,39 +77,36 @@ class DBSpec extends Repeatable {
 
     var cmds = insert()
 
+    val t0 = System.nanoTime()
     var result = Await.result(db.execute(cmds), Duration.Inf)
 
-    dbCtx = result.ctx.get
+   // dbCtx = result.ctx.get
 
     logger.info(Await.result(storage.save(dbCtx, result.blocks),
       Duration.Inf).toString)
 
-    dbCtx = result.ctx.get
+    //dbCtx = result.ctx.get
+    //db = new DB[K, V](dbCtx)
 
-    db = new DB[K, V](dbCtx)
     cmds = insert()
 
     result = Await.result(db.execute(cmds), Duration.Inf)
 
-    dbCtx = result.ctx.get
+    //dbCtx = result.ctx.get
 
     logger.info(s"\n${Console.MAGENTA_B}result: ${result.ok}${Console.RESET}\n")
 
     if(result.ok){
 
-      dbCtx = result.ctx.get
+      //dbCtx = result.ctx.get
+      //db = new DB[K, V](dbCtx)
 
-      logger.info(Await.result(storage.save(dbCtx, result.blocks),
-        Duration.Inf).toString)
+      logger.info(Await.result(storage.save(dbCtx, result.blocks), Duration.Inf).toString)
 
-      val historyIndex = new QueryableIndex[Long, IndexView](dbCtx.history.get)
+      val t1 = System.nanoTime()
 
-      val last = Await.result(historyIndex.last(), Duration.Inf).get
-      val t0 = last.tuples.head._2
-      val t1 = last.tuples.last._2
-
-      val t0Index = new QueryableIndex[K, V](t0.indexes("main"))
-      val t1Index = new QueryableIndex[K, V](t1.indexes("main"))
+      val t0Index = Await.result(db.findIndex(t0, "main"), Duration.Inf).get//last.tuples.head._2
+      val t1Index = Await.result(db.findIndex(t1, "main"), Duration.Inf).get //last.tuples.last._2
 
       val t0list = Await.result(TestHelper.all(t0Index.inOrder()), Duration.Inf)
       val t1list = Await.result(TestHelper.all(t1Index.inOrder()), Duration.Inf)

@@ -9,15 +9,13 @@ case class DBExecutionResult[K, V](ok: Boolean = false,
                                    ctx: Option[DBContext] = None,
                                    blocks: Map[(String, String), Array[Byte]] = Map.empty[(String, String), Array[Byte]])
 
-class DB[K, V](dbctx: DBContext)(implicit val ec: ExecutionContext,
+class DB[K, V](var ctx: DBContext)(implicit val ec: ExecutionContext,
                                val storage: Storage,
                                val serializer: Serializer[Block[K, V]],
                                val cache: Cache,
                                val ord: Ordering[K],
                                val idGenerator: IdGenerator){
   import DefaultSerializers._
-
-  var ctx = dbctx
 
   def execute(cmds: Seq[Commands.Command[K, V]]): Future[DBExecutionResult[K, V]] = {
     var indexes = Map.empty[String, Index[K, V]]
@@ -49,7 +47,7 @@ class DB[K, V](dbctx: DBContext)(implicit val ec: ExecutionContext,
 
     val groups = cmds.groupBy(_.id)
 
-    Future.sequence(groups.map{case (id, cmds) => exec(id, cmds)}).flatMap {
+    Future.sequence(groups.map{ case (id, cmds) => exec(id, cmds)}).flatMap {
       case results if results.exists(_.isEmpty) => Future.successful(DBExecutionResult[K, V](false))
       case results =>
 
@@ -67,9 +65,10 @@ class DB[K, V](dbctx: DBContext)(implicit val ec: ExecutionContext,
         history match {
           case None =>
 
+            this.ctx = ctx.withLatest(view)
+
             Future.successful(DBExecutionResult(true,
-              Some(dbctx
-                .withLatest(view)), ctxs.map(_.blocks).foldLeft(TrieMap.empty[(String, String), Block[K, V]]){ case (p, n) =>
+              Some(this.ctx), ctxs.map(_.blocks).foldLeft(TrieMap.empty[(String, String), Block[K, V]]){ case (p, n) =>
                 p ++ n
               }.map{case (id, block) => id -> serializer.serialize(block)}.toMap))
 
@@ -77,10 +76,13 @@ class DB[K, V](dbctx: DBContext)(implicit val ec: ExecutionContext,
 
             history.insert(Seq(time -> view)).map {
               case n if n == 1 =>
+
+                this.ctx = ctx
+                  .withLatest(view)
+                  .withHistory(history.save())
+
                 DBExecutionResult(true,
-                  Some(dbctx
-                    .withLatest(view)
-                    .withHistory(history.save())), ctxs.map(_.blocks).foldLeft(TrieMap.empty[(String, String), Block[K, V]]){ case (p, n) =>
+                  Some(this.ctx), ctxs.map(_.blocks).foldLeft(TrieMap.empty[(String, String), Block[K, V]]){ case (p, n) =>
                     p ++ n
                   }.map{case (id, block) => id -> serializer.serialize(block)}.toMap
                     ++ history.ctx.blocks.map{case (id, block) => id -> grpcHistorySerializer.serialize(block)})
@@ -91,5 +93,44 @@ class DB[K, V](dbctx: DBContext)(implicit val ec: ExecutionContext,
 
 
     }
+  }
+
+  def findT(t: Long): Future[Option[IndexView]] = {
+    if(ctx.history.isEmpty) return Future.successful(None)
+
+    val h = ctx.history.get
+    val history = new QueryableIndex[Long, IndexView](h)
+
+    history.findPath(t).map(_.map { leaf =>
+      var pos = leaf.binSearch(t, 0, leaf.tuples.length - 1)._2
+      pos = if(pos == leaf.length) pos - 1 else pos
+      leaf.tuples(pos)._2
+    })
+  }
+
+  def findIndex(t: Long, index: String): Future[Option[QueryableIndex[K, V]]] = {
+    findT(t).map {
+      case None => None
+      case Some(view) => view.indexes.get(index).map(new QueryableIndex[K, V](_))
+    }
+  }
+
+  def findLatestIndex(index: String): Option[QueryableIndex[K, V]] = {
+    ctx.latest.indexes.get(index).map(new QueryableIndex[K, V](_))
+  }
+
+  def findT(t: Long, index: String): Future[Option[IndexContext]] = {
+    findT(t).map {
+      case None => None
+      case Some(view) => view.indexes.get(index)
+    }
+  }
+
+  def latest(): IndexView = {
+    ctx.latest
+  }
+
+  def latest(index: String): Option[IndexContext] = {
+    ctx.latest.indexes.get(index)
   }
 }
