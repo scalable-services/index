@@ -4,7 +4,7 @@ import com.datastax.oss.driver.api.core.config.{DefaultDriverOption, DriverConfi
 import com.google.common.primitives.UnsignedBytes
 import com.google.protobuf.any.Any
 import services.scalable.index.IdGenerator
-import services.scalable.index.grpc.IndexContext
+import services.scalable.index.grpc.{IndexContext, IndexView}
 import services.scalable.index.impl.GrpcByteSerializer
 
 import java.nio.ByteBuffer
@@ -79,12 +79,12 @@ package object index {
       override def deserialize(b: Array[Byte]): Bytes = b
     }
 
-    implicit val ctxSerializer = new Serializer[IndexContext] {
-      override def serialize(t: IndexContext): Bytes = {
+    implicit val ctxSerializer = new Serializer[IndexView] {
+      override def serialize(t: IndexView): Bytes = {
         Any.pack(t).toByteArray
       }
-      override def deserialize(b: Bytes): IndexContext = {
-        Any.parseFrom(b).unpack(IndexContext)
+      override def deserialize(b: Bytes): IndexView = {
+        Any.parseFrom(b).unpack(IndexView)
       }
     }
 
@@ -97,7 +97,7 @@ package object index {
       }
     }
 
-    implicit val grpcHistorySerializer = new GrpcByteSerializer[Long, IndexContext]()
-    implicit val bytesSerializer = new GrpcByteSerializer[Bytes, Bytes]()
+    implicit val grpcHistorySerializer = new GrpcByteSerializer[Long, IndexView]()
+    implicit val grpcBytesSerializer = new GrpcByteSerializer[Bytes, Bytes]()
   }
 }

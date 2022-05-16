@@ -2,16 +2,13 @@ package services.scalable.index.impl
 
 import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.cql.{BatchStatement, DefaultBatchType}
+import com.google.protobuf.any.Any
 import org.slf4j.LoggerFactory
 import services.scalable.index._
-import services.scalable.index.grpc.{DatabaseContext, IndexContext}
+import services.scalable.index.grpc.DBContext
 
 import java.nio.ByteBuffer
-import scala.collection.concurrent.TrieMap
 import scala.concurrent.{ExecutionContext, Future}
-import com.google.protobuf.any.Any
-
-import scala.jdk.FutureConverters._
 
 class CassandraStorage(val KEYSPACE: String,
                              val NUM_LEAF_ENTRIES: Int,
@@ -37,34 +34,34 @@ class CassandraStorage(val KEYSPACE: String,
     logger.debug(s"TRUNCATED META: ${session.execute("TRUNCATE table blocks;").wasApplied()}\n")
   }
 
-  override def createIndex(name: String): Future[DatabaseContext] = {
-    val db = DatabaseContext(name)
+  override def createIndex(id: String): Future[DBContext] = {
+    val db = DBContext(id)
     val buf = ByteBuffer.wrap(Any.pack(db).toByteArray)
 
     session.executeAsync(INSERT_DB.bind()
-      .setString(0, db.name)
+      .setString(0, db.id)
       .setByteBuffer(1, buf)).flatMap {
       case r if r.wasApplied() => Future.successful(db)
-      case _ => Future.failed(Errors.INDEX_ALREADY_EXISTS(db.name))
+      case _ => Future.failed(Errors.INDEX_ALREADY_EXISTS(db.id))
     }
   }
 
-  override def loadOrCreate(name: String): Future[DatabaseContext] = {
-    load(name).recoverWith {
-      case e: Errors.INDEX_NOT_FOUND => createIndex(name)
+  override def loadOrCreate(id: String): Future[DBContext] = {
+    load(id).recoverWith {
+      case e: Errors.INDEX_NOT_FOUND => createIndex(id)
       case e => Future.failed(e)
     }
   }
 
-  override def load(name: String): Future[DatabaseContext] = {
-    session.executeAsync(SELECT_ROOT.bind().setString(0, name)).flatMap { rs =>
+  override def load(id: String): Future[DBContext] = {
+    session.executeAsync(SELECT_ROOT.bind().setString(0, id)).flatMap { rs =>
       val one = rs.one()
 
       if(one == null){
-        Future.failed(Errors.INDEX_NOT_FOUND(name))
+        Future.failed(Errors.INDEX_NOT_FOUND(id))
       } else {
         val r = one.getByteBuffer("buf")
-        val db = Any.parseFrom(r.array()).unpack(DatabaseContext)
+        val db = Any.parseFrom(r.array()).unpack(DBContext)
 
         Future.successful(db)
       }
@@ -79,14 +76,14 @@ class CassandraStorage(val KEYSPACE: String,
     }
   }
 
-  def updateDB(db: DatabaseContext): Future[Boolean] = {
+  def updateDB(db: DBContext): Future[Boolean] = {
     val buf = ByteBuffer.wrap(Any.pack(db).toByteArray)
 
     session.executeAsync(UPDATE_DB.bind().setByteBuffer(0, buf)
-      .setString(1, db.name)).map(_.wasApplied())
+      .setString(1, db.id)).map(_.wasApplied())
   }
 
-  override def save(db: DatabaseContext, blocks: Map[(String, String), Array[Byte]]): Future[Boolean] = {
+  override def save(db: DBContext, blocks: Map[(String, String), Array[Byte]]): Future[Boolean] = {
     val stm = BatchStatement.builder(DefaultBatchType.LOGGED)
 
     blocks.map { case ((partition, id), bin) =>

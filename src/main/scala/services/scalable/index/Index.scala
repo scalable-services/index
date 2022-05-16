@@ -1,7 +1,8 @@
 package services.scalable.index
 
 import org.slf4j.LoggerFactory
-import services.scalable.index.impl.DefaultContext
+import services.scalable.index.Commands._
+import services.scalable.index.grpc.IndexContext
 
 import java.util.concurrent.atomic.AtomicInteger
 import scala.collection.concurrent.TrieMap
@@ -21,16 +22,19 @@ import scala.util.{Failure, Success}
  * the context. Once you done, the resulting context can be saved and passed to future instances of the class representing another set of
  * operations.
  */
-class Index[K, V](val c: Context[K, V])(implicit val ec: ExecutionContext){
+class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
+                                      val storage: Storage,
+                                      val serializer: Serializer[Block[K, V]],
+                                      val cache: Cache,
+                                      val ord: Ordering[K],
+                                      val idGenerator: IdGenerator){
 
   val logger = LoggerFactory.getLogger(this.getClass)
-  implicit val ctx = c//c.duplicate()
 
+  implicit val ctx = Context.fromIndexContext(ictx)
   val $this = this
 
-  /*def save(): Future[Context[K, V]] = {
-    ctx.save().map(_ => ctx)
-  }*/
+  def save() = ctx.save()
 
   def findPath(k: K, start: Block[K,V], limit: Option[Block[K,V]])(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
 
@@ -904,6 +908,24 @@ class Index[K, V](val c: Context[K, V])(implicit val ec: ExecutionContext){
       case Some(id) => ctx.get(id).flatMap(b => inOrder(b, 0)).map(_ => levels.size)
       case _ => Future.successful(0)
     }
+  }
+
+  def execute(cmds: Seq[Command[K, V]]): Future[Boolean] = {
+    def process(pos: Int, previous: Boolean): Future[Boolean] = {
+
+      if(!previous) return Future.successful(false)
+      if(pos == cmds.length) return Future.successful(true)
+
+      val cmd = cmds(pos)
+
+      (cmd match {
+        case cmd: Insert[K, V] => insert(cmd.list).map(_ == cmd.list.length)
+        case cmd: Remove[K, V] => remove(cmd.keys).map(_ == cmd.keys.length)
+        case cmd: Update[K, V] => update(cmd.list).map(_ == cmd.list.length)
+      }).flatMap(ok => process(pos + 1, ok))
+    }
+
+    process(0, true)
   }
 
 }
