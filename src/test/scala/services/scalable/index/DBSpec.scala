@@ -93,8 +93,8 @@ class DBSpec extends Repeatable {
 
       val t1 = System.nanoTime()
 
-      val t0Index = Await.result(db.findIndex(t0, "main"), Duration.Inf).get//last.tuples.head._2
-      val t1Index = Await.result(db.findIndex(t1, "main"), Duration.Inf).get //last.tuples.last._2
+      val t0Index = Await.result(db.findIndex(t0, "main"), Duration.Inf).get
+      val t1Index = Await.result(db.findIndex(t1, "main"), Duration.Inf).get
 
       val t0list = Await.result(TestHelper.all(t0Index.inOrder()), Duration.Inf)
       val t1list = Await.result(TestHelper.all(t1Index.inOrder()), Duration.Inf)
