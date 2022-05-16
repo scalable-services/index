@@ -23,7 +23,8 @@ class DB[K, V](dbctx: DBContext)(implicit val ec: ExecutionContext,
   def execute(cmds: Seq[Commands.Command[K, V]]): Future[DBExecutionResult[K, V]] = {
     var indexes = Map.empty[String, Index[K, V]]
 
-    val history = new QueryableIndex[Long, IndexView](ctx.history.get)
+    val history: Option[QueryableIndex[Long, IndexView]] = if(ctx.history.isEmpty) None
+      else Some(new QueryableIndex[Long, IndexView](ctx.history.get))
     var view = ctx.latest
 
     def getIndex(id: String): Index[K, V] = {
@@ -64,18 +65,32 @@ class DB[K, V](dbctx: DBContext)(implicit val ec: ExecutionContext,
 
         view = view.withIndexes(indexes)
 
-        history.insert(Seq(time -> view)).map {
-          case n if n == 1 =>
-            DBExecutionResult(true,
-              Some(dbctx
-              .withLatest(view)
-              .withHistory(history.save())), ctxs.map(_.blocks).foldLeft(TrieMap.empty[(String, String), Block[K, V]]){ case (p, n) =>
-                p ++ n
-              }.map{case (id, block) => id -> grpcBytesSerializer.serialize(block.asInstanceOf[Block[Bytes, Bytes]])}.toMap
-                ++ history.ctx.blocks.map{case (id, block) => id -> grpcHistorySerializer.serialize(block)})
+        history match {
+          case None =>
 
-          case _ => DBExecutionResult[K, V](false)
+            Future.successful(DBExecutionResult(true,
+              Some(dbctx
+                .withLatest(view)), ctxs.map(_.blocks).foldLeft(TrieMap.empty[(String, String), Block[K, V]]){ case (p, n) =>
+                p ++ n
+              }.map{case (id, block) => id -> grpcBytesSerializer.serialize(block.asInstanceOf[Block[Bytes, Bytes]])}.toMap))
+
+          case Some(history) =>
+
+            history.insert(Seq(time -> view)).map {
+              case n if n == 1 =>
+                DBExecutionResult(true,
+                  Some(dbctx
+                    .withLatest(view)
+                    .withHistory(history.save())), ctxs.map(_.blocks).foldLeft(TrieMap.empty[(String, String), Block[K, V]]){ case (p, n) =>
+                    p ++ n
+                  }.map{case (id, block) => id -> grpcBytesSerializer.serialize(block.asInstanceOf[Block[Bytes, Bytes]])}.toMap
+                    ++ history.ctx.blocks.map{case (id, block) => id -> grpcHistorySerializer.serialize(block)})
+
+              case _ => DBExecutionResult[K, V](false)
+            }
         }
+
+
     }
   }
 }
