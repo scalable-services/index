@@ -98,8 +98,6 @@ class DBSpec extends Repeatable {
 
     if(result.ok){
 
-      data = data ++ cmds.map(_.asInstanceOf[Commands.Insert[K, V]].list).flatten
-
       dbCtx = result.ctx.get
 
       logger.info(Await.result(storage.save(dbCtx, result.blocks),

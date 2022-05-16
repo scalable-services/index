@@ -7,8 +7,7 @@ import scala.concurrent.{ExecutionContext, Future}
 
 case class DBExecutionResult[K, V](ok: Boolean = false,
                                    ctx: Option[DBContext] = None,
-                                   blocks: Map[(String, String), Array[Byte]] =
-                                    Map.empty[(String, String), Array[Byte]])
+                                   blocks: Map[(String, String), Array[Byte]] = Map.empty[(String, String), Array[Byte]])
 
 class DB[K, V](dbctx: DBContext)(implicit val ec: ExecutionContext,
                                val storage: Storage,
@@ -72,7 +71,7 @@ class DB[K, V](dbctx: DBContext)(implicit val ec: ExecutionContext,
               Some(dbctx
                 .withLatest(view)), ctxs.map(_.blocks).foldLeft(TrieMap.empty[(String, String), Block[K, V]]){ case (p, n) =>
                 p ++ n
-              }.map{case (id, block) => id -> grpcBytesSerializer.serialize(block.asInstanceOf[Block[Bytes, Bytes]])}.toMap))
+              }.map{case (id, block) => id -> serializer.serialize(block)}.toMap))
 
           case Some(history) =>
 
@@ -83,7 +82,7 @@ class DB[K, V](dbctx: DBContext)(implicit val ec: ExecutionContext,
                     .withLatest(view)
                     .withHistory(history.save())), ctxs.map(_.blocks).foldLeft(TrieMap.empty[(String, String), Block[K, V]]){ case (p, n) =>
                     p ++ n
-                  }.map{case (id, block) => id -> grpcBytesSerializer.serialize(block.asInstanceOf[Block[Bytes, Bytes]])}.toMap
+                  }.map{case (id, block) => id -> serializer.serialize(block)}.toMap
                     ++ history.ctx.blocks.map{case (id, block) => id -> grpcHistorySerializer.serialize(block)})
 
               case _ => DBExecutionResult[K, V](false)
