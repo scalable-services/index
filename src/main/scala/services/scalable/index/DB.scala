@@ -5,7 +5,7 @@ import services.scalable.index.grpc._
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.{ExecutionContext, Future}
 
-case class DBExecutionResult[K, V](ok: Boolean = false,
+case class DBExecutionResult(ok: Boolean = false,
                                    ctx: Option[DBContext] = None,
                                    blocks: Map[(String, String), Array[Byte]] = Map.empty[(String, String), Array[Byte]])
 
@@ -33,7 +33,7 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
     ctx
   }
 
-  def execute(cmds: Seq[Commands.Command[K, V]]): Future[DBExecutionResult[K, V]] = {
+  def execute(cmds: Seq[Commands.Command[K, V]]): Future[DBExecutionResult] = {
     var indexes = Map.empty[String, Index[K, V]]
 
     val history: Option[QueryableIndex[Long, IndexView]] = if(ctx.history.isEmpty) None
@@ -64,7 +64,7 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
     val groups = cmds.groupBy(_.id)
 
     Future.sequence(groups.map{ case (id, cmds) => exec(id, cmds)}).flatMap {
-      case results if results.exists(_.isEmpty) => Future.successful(DBExecutionResult[K, V](false))
+      case results if results.exists(_.isEmpty) => Future.successful(DBExecutionResult(false))
       case results =>
 
         val ctxs = results.map(_.get)
@@ -103,7 +103,7 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
                   }.map{case (id, block) => id -> serializer.serialize(block)}.toMap
                     ++ history.ctx.blocks.map{case (id, block) => id -> grpcHistorySerializer.serialize(block)})
 
-              case _ => DBExecutionResult[K, V](false)
+              case _ => DBExecutionResult(false)
             }
         }
 
