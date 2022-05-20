@@ -1,6 +1,5 @@
 package services.scalable.index
 
-import jdk.internal.org.jline.reader.History
 import services.scalable.index.grpc._
 
 import scala.collection.concurrent.TrieMap
