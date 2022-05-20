@@ -1,5 +1,6 @@
 package services.scalable.index
 
+import jdk.internal.org.jline.reader.History
 import services.scalable.index.grpc._
 
 import scala.collection.concurrent.TrieMap
@@ -9,13 +10,29 @@ case class DBExecutionResult[K, V](ok: Boolean = false,
                                    ctx: Option[DBContext] = None,
                                    blocks: Map[(String, String), Array[Byte]] = Map.empty[(String, String), Array[Byte]])
 
-class DB[K, V](var ctx: DBContext)(implicit val ec: ExecutionContext,
+class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionContext,
                                val storage: Storage,
                                val serializer: Serializer[Block[K, V]],
                                val cache: Cache,
                                val ord: Ordering[K],
                                val idGenerator: IdGenerator){
   import DefaultSerializers._
+
+  def createHistory(id: String, num_leaf_entries: Int, num_meta_entries: Int): DBContext = {
+    ctx = ctx
+      .withHistory(IndexContext(id, num_leaf_entries, num_meta_entries))
+    ctx
+  }
+
+  def createIndex(id: String, num_leaf_entries: Int, num_meta_entries: Int): DBContext = {
+    var view = ctx.latest
+    view = view.withIndexes(view.indexes + (id -> IndexContext(id, num_leaf_entries, num_meta_entries)))
+
+    this.ctx = ctx
+      .withLatest(view)
+
+    ctx
+  }
 
   def execute(cmds: Seq[Commands.Command[K, V]]): Future[DBExecutionResult[K, V]] = {
     var indexes = Map.empty[String, Index[K, V]]

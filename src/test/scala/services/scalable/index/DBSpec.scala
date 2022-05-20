@@ -7,10 +7,11 @@ import org.slf4j.LoggerFactory
 import services.scalable.index.grpc._
 import services.scalable.index.impl._
 import com.google.protobuf.any.Any
+
 import java.util.UUID
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.Await
-import scala.concurrent.duration.Duration
+import scala.concurrent.duration.{DAYS, Duration}
 
 class DBSpec extends Repeatable {
 
@@ -44,16 +45,19 @@ class DBSpec extends Repeatable {
     implicit val storage = new MemoryStorage(NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
     //implicit val storage = new CassandraStorage(TestConfig.KEYSPACE, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, false)
 
-    val view = IndexView(System.nanoTime(), Map(
+    /*val view = IndexView(System.nanoTime(), Map(
       "main" -> IndexContext(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, None, 0, 0)
     ))
 
     val dbCtx = Await.result(storage.loadOrCreate(indexId), Duration.Inf)
       .withLatest(view)
-      .withHistory(IndexContext(s"$indexId-history", NUM_LEAF_ENTRIES, NUM_META_ENTRIES, None, 0, 0))
+      .withHistory(IndexContext(s"history", NUM_LEAF_ENTRIES, NUM_META_ENTRIES, None, 0, 0))*/
 
-    val db = new DB[K, V](dbCtx)
+    val db = new DB[K, V]()
     var data = Seq.empty[(K, V)]
+
+    db.createHistory("history", NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+    db.createIndex("main", NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
 
     def insert(): Seq[Commands.Command[K, V]] = {
       val n = 100//rand.nextInt(1, 100)
@@ -80,7 +84,7 @@ class DBSpec extends Repeatable {
 
    // dbCtx = result.ctx.get
 
-    logger.info(Await.result(storage.save(dbCtx, result.blocks),
+    logger.info(Await.result(storage.save(result.ctx.get, result.blocks),
       Duration.Inf).toString)
 
     result = Await.result(db.execute(insert()), Duration.Inf)
@@ -89,7 +93,7 @@ class DBSpec extends Repeatable {
 
     if(result.ok){
 
-      logger.info(Await.result(storage.save(dbCtx, result.blocks), Duration.Inf).toString)
+      logger.info(Await.result(storage.save(result.ctx.get, result.blocks), Duration.Inf).toString)
 
       val t1 = System.nanoTime()
 
