@@ -1,7 +1,8 @@
 package services.scalable.index
 
 import org.slf4j.LoggerFactory
-import services.scalable.index.impl.DefaultContext
+import services.scalable.index.Commands._
+import services.scalable.index.grpc.IndexContext
 
 import java.util.concurrent.atomic.AtomicInteger
 import scala.collection.concurrent.TrieMap
@@ -21,16 +22,19 @@ import scala.util.{Failure, Success}
  * the context. Once you done, the resulting context can be saved and passed to future instances of the class representing another set of
  * operations.
  */
-class Index[K, V](val c: Context[K, V])(implicit val ec: ExecutionContext){
+class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
+                                      val storage: Storage,
+                                      val serializer: Serializer[Block[K, V]],
+                                      val cache: Cache,
+                                      val ord: Ordering[K],
+                                      val idGenerator: IdGenerator){
 
   val logger = LoggerFactory.getLogger(this.getClass)
-  implicit val ctx = c//c.duplicate()
 
+  implicit val ctx = Context.fromIndexContext(ictx)
   val $this = this
 
-  /*def save(): Future[Context[K, V]] = {
-    ctx.save().map(_ => ctx)
-  }*/
+  def save() = ctx.save()
 
   def findPath(k: K, start: Block[K,V], limit: Option[Block[K,V]])(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
 
@@ -302,7 +306,7 @@ class Index[K, V](val c: Context[K, V])(implicit val ec: ExecutionContext){
     }
   }
 
-  protected def borrowRight(target: Block[K, V], left: Option[Block[K, V]], right: Option[String], parent: Meta[K,V], pos: Int)
+  protected def borrowRight(target: Block[K, V], left: Option[Block[K, V]], right: Option[(String, String)], parent: Meta[K,V], pos: Int)
                                        (implicit ord: Ordering[K]): Future[Boolean] = {
     right match {
       case Some(id) => ctx.get(id).flatMap { r =>
@@ -328,7 +332,7 @@ class Index[K, V](val c: Context[K, V])(implicit val ec: ExecutionContext){
     }
   }
 
-  protected def borrowLeft(target: Block[K, V], left: Option[String], right: Option[String], parent: Meta[K,V], pos: Int)
+  protected def borrowLeft(target: Block[K, V], left: Option[(String, String)], right: Option[(String, String)], parent: Meta[K,V], pos: Int)
                                       (implicit ord: Ordering[K]): Future[Boolean] = {
     left match {
       case Some(id) => ctx.get(id).flatMap { l =>
@@ -669,7 +673,7 @@ class Index[K, V](val c: Context[K, V])(implicit val ec: ExecutionContext){
     ctx.get(root).flatMap(b => getRightMost(Some(b)))
   }
 
-  def next(current: Option[String])(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
+  def next(current: Option[(String, String)])(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
 
     def nxt(b: Block[K,V]): Future[Option[Leaf[K,V]]] = {
 
@@ -705,7 +709,7 @@ class Index[K, V](val c: Context[K, V])(implicit val ec: ExecutionContext){
     }
   }
 
-  def prev(current: Option[String])(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
+  def prev(current: Option[(String, String)])(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
 
     def prv(b: Block[K,V]): Future[Option[Leaf[K,V]]] = {
 
@@ -765,7 +769,7 @@ class Index[K, V](val c: Context[K, V])(implicit val ec: ExecutionContext){
    * Prints any subtree from the provided root
    * Caution: prettyPrint is currently synchronous!
    */
-  def prettyPrint(root: Option[String] = ctx.root, timeout: Duration = Duration.Inf)(implicit kf: K => String, vf: V => String): (Int, Int) = {
+  def prettyPrint(root: Option[(String, String)] = ctx.root, timeout: Duration = Duration.Inf)(implicit kf: K => String, vf: V => String): (Int, Int) = {
 
     val levels = scala.collection.mutable.Map[Int, scala.collection.mutable.ArrayBuffer[Block[K,V]]]()
     var num_data_blocks = 0
@@ -859,7 +863,7 @@ class Index[K, V](val c: Context[K, V])(implicit val ec: ExecutionContext){
     levels.size
   }*/
 
-  protected[index] def getNumLevels(root: Option[String] = ctx.root): Future[Int] = {
+  protected[index] def getNumLevels(root: Option[(String, String)] = ctx.root): Future[Int] = {
 
     val levels = TrieMap.empty[Int, scala.collection.mutable.ArrayBuffer[Block[K,V]]]
     val num_data_blocks = new AtomicInteger(0)
@@ -904,6 +908,24 @@ class Index[K, V](val c: Context[K, V])(implicit val ec: ExecutionContext){
       case Some(id) => ctx.get(id).flatMap(b => inOrder(b, 0)).map(_ => levels.size)
       case _ => Future.successful(0)
     }
+  }
+
+  def execute(cmds: Seq[Command[K, V]]): Future[Boolean] = {
+    def process(pos: Int, previous: Boolean): Future[Boolean] = {
+
+      if(!previous) return Future.successful(false)
+      if(pos == cmds.length) return Future.successful(true)
+
+      val cmd = cmds(pos)
+
+      (cmd match {
+        case cmd: Insert[K, V] => insert(cmd.list).map(_ == cmd.list.length)
+        case cmd: Remove[K, V] => remove(cmd.keys).map(_ == cmd.keys.length)
+        case cmd: Update[K, V] => update(cmd.list).map(_ == cmd.list.length)
+      }).flatMap(ok => process(pos + 1, ok))
+    }
+
+    process(0, true)
   }
 
 }

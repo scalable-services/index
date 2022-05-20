@@ -9,8 +9,10 @@ CREATE TABLE history.databases (
     AND transactions = {'enabled': 'false'};
 
 CREATE TABLE history.blocks (
-    id text PRIMARY KEY,
+    partition text,
+    id text,
     bin blob,
-    size int
+    size int,
+    PRIMARY KEY(partition, id)
 ) WITH default_time_to_live = 0
     AND transactions = {'enabled': 'false'};

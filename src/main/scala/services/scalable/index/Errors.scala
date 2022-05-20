@@ -21,7 +21,7 @@ object Errors {
 
   case class KEY_NOT_FOUND[K](k: K) extends RuntimeException(s"Key not found!") with IndexError
 
-  case class BLOCK_NOT_SAME_CONTEXT(broot: Option[String], croot: Option[String])
+  case class BLOCK_NOT_SAME_CONTEXT(broot: Option[(String, String)], croot: Option[(String, String)])
     extends RuntimeException(s"Current block's root ${broot} is not equal to the current root context: ${croot}") with IndexError
 
   case class INDEX_NOT_FOUND(id: String) extends RuntimeException(s"Index ${id} not found!") with IndexError

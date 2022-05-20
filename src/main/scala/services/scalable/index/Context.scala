@@ -1,32 +1,143 @@
 package services.scalable.index
 
-import scala.concurrent.Future
+import org.slf4j.LoggerFactory
+import services.scalable.index.grpc.{IndexContext, RootRef}
 
-trait Context[K, V] {
+import scala.collection.concurrent.TrieMap
+import scala.concurrent.{ExecutionContext, Future}
 
-  val indexId: String
+class Context[K, V](val indexId: String,
+                    var root: Option[(String, String)],
+                    var num_elements: Long,
+                    var levels: Int,
+                    val NUM_LEAF_ENTRIES: Int,
+                    val NUM_META_ENTRIES: Int)
+                   (implicit val ec: ExecutionContext,
+                     val storage: Storage,
+                     val serializer: Serializer[Block[K, V]],
+                     val cache: Cache,
+                     val ord: Ordering[K],
+                     val idGenerator: IdGenerator) {
 
-  val NUM_LEAF_ENTRIES: Int
-  val NUM_META_ENTRIES: Int
+  val logger = LoggerFactory.getLogger(this.getClass)
 
-  var root: Option[String]
-  var num_elements: Long
-  var levels: Int
+  val LEAF_MAX = NUM_LEAF_ENTRIES
+  val LEAF_MIN = LEAF_MAX/2
 
-  def isNew(id: String): Boolean
+  val META_MAX = NUM_META_ENTRIES
+  val META_MIN = META_MAX/2
 
-  def get(id: String): Future[Block[K,V]]
-  def getLeaf(id: String): Future[Leaf[K,V]]
-  def getMeta(id: String): Future[Meta[K,V]]
-  
-  def createLeaf(): Leaf[K,V]
-  def createMeta(): Meta[K,V]
+  val blocks = TrieMap.empty[(String, String), Block[K,V]]
+  val parents = TrieMap.empty[(String, String), (Option[(String, String)], Int)]
 
-  def setParent(id: String, idx: Int, parent: Option[String])
-  def getParent(id: String): Option[(Option[String], Int)]
-  def isFromCurrentContext(b: Block[K,V]): Boolean
+  if(root.isDefined) {
+    setParent(root.get, 0, None)
+  }
 
-  //def save(): Future[Boolean]
-  def duplicate(): Context[K, V]
+  root match {
+    case None =>
+    case Some(r) => parents += r -> (None, 0)
+  }
 
+  /**
+   *
+   * To work the blocks being manipulated must be in memory before saving...
+   */
+  def get(id: (String, String)): Future[Block[K,V]] = blocks.get(id) match {
+    case None => cache.get[K, V](id) match {
+      case None =>
+
+        storage.get(id).map { buf =>
+          val block = serializer.deserialize(buf)
+          cache.put(block)
+          block
+        }
+
+      case Some(block) => Future.successful(block)
+    }
+
+    case Some(block) => Future.successful(block)
+  }
+
+  def getLeaf(id: (String, String)): Future[Leaf[K,V]] = {
+    get(id).map(_.asInstanceOf[Leaf[K,V]])
+  }
+
+  def getMeta(id: (String, String)): Future[Meta[K,V]] = {
+    get(id).map(_.asInstanceOf[Meta[K,V]])
+  }
+
+  def isNew(id: (String, String)): Boolean = {
+    blocks.isDefinedAt(id)
+  }
+
+  def createLeaf(): Leaf[K,V] = {
+    val leaf = new Leaf[K,V](idGenerator.generateId(this), idGenerator.generatePartition(this), LEAF_MIN, LEAF_MAX)
+
+    blocks += leaf.unique_id -> leaf
+    setParent(leaf.unique_id, 0, None)
+
+    leaf
+  }
+
+  def createMeta(): Meta[K,V] = {
+    val meta = new Meta[K,V](idGenerator.generateId(this), idGenerator.generatePartition(this), META_MIN, META_MAX)
+
+    blocks += meta.unique_id -> meta
+    setParent(meta.unique_id, 0, None)
+
+    meta
+  }
+
+  def setParent(unique_id: (String, String), idx: Int, parent: Option[(String, String)]): Unit = {
+    parents += unique_id -> (parent, idx)
+    cache.put(unique_id, parent, idx)
+  }
+
+  def getParent(id: (String, String)): Option[(Option[(String, String)], Int)] = {
+    if(parents.isDefinedAt(id)) return parents.get(id)
+
+    cache.getParent(id) match {
+      case None => None
+      case ctxOpt =>
+
+        logger.debug(s"HIT THE CACHE!\n")
+        //parents += unique_id -> ctxOpt.get
+
+        val (parent, pos) = ctxOpt.get
+
+        setParent(id, pos, parent)
+
+        ctxOpt
+    }
+  }
+
+  def isFromCurrentContext(b: Block[K,V]): Boolean = {
+    b.root.equals(root)
+  }
+
+  def save(): IndexContext = {
+    blocks.foreach { case (_, b) =>
+      b.root = root
+    }
+
+    IndexContext(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, root.map{r => RootRef(r._1, r._2)}, levels, num_elements)
+  }
+
+  def copy(): Context[K, V] = {
+    new Context[K, V](indexId, root, num_elements, levels, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)(ec, storage,
+      serializer, cache, ord, idGenerator)
+  }
+}
+
+object Context {
+  def fromIndexContext[K, V](ictx: IndexContext)(implicit ec: ExecutionContext,
+                                                 storage: Storage,
+                                                 serializer: Serializer[Block[K, V]],
+                                                 cache: Cache,
+                                                 ord: Ordering[K],
+                                                 idGenerator: IdGenerator): Context[K, V] = {
+    new Context[K, V]("main", ictx.root.map{ r => (r.partition, r.id)}, ictx.numElements,
+      ictx.levels, ictx.numLeafItems, ictx.numMetaItems)
+  }
 }

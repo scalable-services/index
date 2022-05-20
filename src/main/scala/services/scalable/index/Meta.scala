@@ -17,7 +17,7 @@ class Meta[K, V](override val id: String,
   override def first: K = pointers.head._1
 
   def setPointer(block: Block[K,V], pos: Int)(implicit ctx: Context[K,V]): Unit = {
-    pointers(pos) = block.last -> block.unique_id
+    pointers(pos) = block.last -> (block.partition, block.id)
     ctx.setParent(block.unique_id, pos, Some(unique_id))
   }
 
@@ -72,7 +72,7 @@ class Meta[K, V](override val id: String,
     binSearch(k, pos + 1, end)
   }
 
-  def findPath(k: K)(implicit ord: Ordering[K]): String = {
+  def findPath(k: K)(implicit ord: Ordering[K]): (String, String) = {
     val (_, pos) = binSearch(k)
     pointers(if(pos < pointers.length) pos else pos - 1)._2
   }
@@ -110,13 +110,13 @@ class Meta[K, V](override val id: String,
     p
   }
 
-  def left(pos: Int): Option[String] = {
+  def left(pos: Int): Option[(String, String)] = {
     val lpos = pos - 1
     if(lpos < 0) return None
     Some(pointers(lpos)._2)
   }
 
-  def right(pos: Int): Option[String] = {
+  def right(pos: Int): Option[(String, String)] = {
     val rpos = pos + 1
     if(rpos == pointers.length) return None
     Some(pointers(rpos)._2)

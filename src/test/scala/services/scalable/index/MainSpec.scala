@@ -4,8 +4,8 @@ import com.google.common.base.Charsets
 import io.netty.util.internal.ThreadLocalRandom
 import org.apache.commons.lang3.RandomStringUtils
 import org.slf4j.LoggerFactory
-import services.scalable.index.grpc.{DatabaseContext, IndexContext}
-import services.scalable.index.impl.{CassandraStorage, DefaultCache, DefaultContext, GrpcByteSerializer, MemoryStorage}
+import services.scalable.index.grpc._
+import services.scalable.index.impl._
 
 import java.util.UUID
 import scala.concurrent.Await
@@ -17,9 +17,8 @@ class MainSpec extends Repeatable {
 
   "operations" should " run successfully" in {
 
-    type T = services.scalable.index.QueryableIndex[K, V]
     val logger = LoggerFactory.getLogger(this.getClass)
-    
+
     val rand = ThreadLocalRandom.current()
     import scala.concurrent.ExecutionContext.Implicits.global
 
@@ -35,18 +34,21 @@ class MainSpec extends Repeatable {
 
     import services.scalable.index.DefaultSerializers._
 
+    implicit val idGenerator = new IdGenerator {
+      override def generateId[K, V](ctx: Context[K, V]): String = UUID.randomUUID.toString
+      override def generatePartition[K, V](ctx: Context[K, V]): String = "p0"
+    }
+
     implicit val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
-    //implicit val storage = new MemoryStorage[K, V](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
-    implicit val storage = new CassandraStorage(TestConfig.KEYSPACE, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, false)
+    implicit val storage = new MemoryStorage(NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+    //implicit val storage = new CassandraStorage(TestConfig.KEYSPACE, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, false)
 
-    var db = Await.result(storage.loadOrCreate("test"), Duration.Inf)
-    val indexContext = if(db.indexes.isEmpty) IndexContext("test", NUM_LEAF_ENTRIES, NUM_META_ENTRIES, None, 0, 0) else db.indexes.head
-
-    val ctx = new DefaultContext[K, V](indexContext.id, indexContext.root,
-      indexContext.numElements, indexContext.levels, indexContext.numLeafItems, indexContext.numMetaItems)
+    var db = Await.result(storage.loadOrCreate(indexId), Duration.Inf)
+    val indexContext = if(db.latest.indexes.isEmpty) IndexContext(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, None, 0, 0)
+      else db.latest.indexes.head._2
 
     var data = Seq.empty[(K, V)]
-    val index = new QueryableIndex[K, V](ctx)
+    val index = new QueryableIndex[K, V](indexContext)
 
     def insert(): Unit = {
       val n = 100//rand.nextInt(1, 100)
@@ -61,23 +63,28 @@ class MainSpec extends Repeatable {
         }
       }
 
-      val result = Await.result(index.insert(list), Duration.Inf)
+      val cmds = Seq(
+        Commands.Insert(indexId, list)
+      )
+      val result = Await.result(index.execute(cmds), Duration.Inf)
 
-      if(result > 0){
-        data = data ++ list.slice(0, result)
+      if(result){
+        data = data ++ list
       }
     }
 
-    //insert()
+    insert()
 
-    val indexCtx = index.ctx.asInstanceOf[DefaultContext[Bytes, Bytes]]
-    //indexCtx.save()
+    db = db.withLatest(
+      IndexView(
+        System.nanoTime(),
+        Map(
+          "main" -> index.save()
+        )
+      )
+    )
 
-    db = db.withIndexes(Seq(
-      IndexContext("test-main-index", NUM_LEAF_ENTRIES, NUM_META_ENTRIES, indexCtx.root, indexCtx.levels, indexCtx.num_elements)
-    ))
-
-    logger.info(Await.result(storage.save(db, indexCtx.blocks.map{case (id, block) => id -> bytesSerializer.serialize(block)}.toMap),
+    logger.info(Await.result(storage.save(db, index.ctx.blocks.map{case (id, block) => id -> grpcBytesSerializer.serialize(block)}.toMap),
       Duration.Inf).toString)
 
     val dlist = data.sortBy(_._1)
