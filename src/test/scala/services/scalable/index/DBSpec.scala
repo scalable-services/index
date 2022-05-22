@@ -77,13 +77,9 @@ class DBSpec extends Repeatable {
 
     logger.info(s"\n${Console.MAGENTA_B}result: ${result}${Console.RESET}\n")
 
-    val r = db.save()
+    val ok = Await.result(db.save(), Duration.Inf)
 
-    println(s"r: ${r.ctx}")
-
-    if(r.ok){
-
-      logger.info(Await.result(storage.save(r.ctx.get, r.blocks), Duration.Inf).toString)
+    if(ok){
 
       val t1 = System.nanoTime()
 

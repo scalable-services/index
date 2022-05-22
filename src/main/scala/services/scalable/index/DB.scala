@@ -86,8 +86,6 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
                 println(Await.result(all(history.inOrder()), Duration.Inf))
                 println()
 
-                //ctx = ctx.withLatest(view).withHistory(history.save())
-
                 true
               case _ => false
             }
@@ -104,7 +102,7 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
     }
   }
 
-  def save(): DBExecutionResult = {
+  def save(): Future[Boolean] = {
     val ictxs = indexes.map{case (id, i) => id -> i.save()}
     val view = ctx.latest.withIndexes(indexes.map{case (id, i) => id -> ictxs(id)})
 
@@ -112,24 +110,16 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
       ctx = ctx
         .withLatest(view)
 
-      return DBExecutionResult(true,
-        Some(ctx), indexes.map(_._2.ctx.blocks).foldLeft(TrieMap.empty[(String, String), Block[K, V]]){ case (p, n) =>
-          p ++ n
-        }.map{case (id, block) => id -> serializer.serialize(block)}.toMap)
+      return storage.save(ctx, indexes.map(_._2.ctx.blocks).foldLeft(TrieMap.empty[(String, String), Block[K, V]]){ case (p, n) =>
+        p ++ n
+      }.map{case (id, block) => id -> serializer.serialize(block)}.toMap)
     }
-
-    /*println()
-    println(Await.result(all(history.get.inOrder()), Duration.Inf))
-    println()*/
-
-    println(history.get.ctx.indexId)
 
     ctx = ctx
       .withLatest(view)
       .withHistory(history.get.save())
 
-    DBExecutionResult(true,
-      Some(ctx), indexes.map(_._2.ctx.blocks).foldLeft(TrieMap.empty[(String, String), Block[K, V]]){ case (p, n) =>
+      storage.save(ctx, indexes.map(_._2.ctx.blocks).foldLeft(TrieMap.empty[(String, String), Block[K, V]]){ case (p, n) =>
         p ++ n
       }.map{case (id, block) => id -> serializer.serialize(block)}.toMap
         ++ history.get.ctx.blocks.map{case (id, block) => id -> grpcHistorySerializer.serialize(block)})
