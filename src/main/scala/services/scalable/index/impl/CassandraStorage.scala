@@ -11,9 +11,9 @@ import java.nio.ByteBuffer
 import scala.concurrent.{ExecutionContext, Future}
 
 class CassandraStorage(val KEYSPACE: String,
-                             val NUM_LEAF_ENTRIES: Int,
-                             val NUM_META_ENTRIES: Int,
-                             val truncate: Boolean = true)(implicit val ec: ExecutionContext) extends Storage {
+                       val NUM_LEAF_ENTRIES: Int,
+                       val NUM_META_ENTRIES: Int,
+                       val truncate: Boolean = true)(implicit val ec: ExecutionContext) extends Storage {
 
   val logger = LoggerFactory.getLogger(this.getClass)
 
