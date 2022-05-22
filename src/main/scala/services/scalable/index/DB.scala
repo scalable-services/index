@@ -53,7 +53,7 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
 
       index.execute(cmds).map {
         case false => None
-        case true => Some(index.save())
+        case true => Some(index.snapshot())
       }
     }
 
@@ -76,7 +76,7 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
   }
 
   def save(): Future[Boolean] = {
-    val ictxs = indexes.map{case (id, i) => id -> i.save()}
+    val ictxs = indexes.map{case (id, i) => id -> i.snapshot()}
     val view = ctx.latest.withIndexes(indexes.map{case (id, i) => id -> ictxs(id)})
 
     if(history.isEmpty) {
@@ -93,7 +93,7 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
 
     ctx = ctx
       .withLatest(view)
-      .withHistory(history.get.save())
+      .withHistory(history.get.snapshot())
 
       storage.save(ctx, indexes.map(_._2.ctx.blocks).foldLeft(TrieMap.empty[(String, String), Block[K, V]]){ case (p, n) =>
         p ++ n

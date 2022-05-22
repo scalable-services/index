@@ -112,15 +112,13 @@ class Context[K, V](val indexId: String,
     b.root.equals(root)
   }
 
-  def save(): IndexContext = {
+  def snapshot(): IndexContext = {
     blocks.filter(_._2.isNew).foreach { case (_, b) =>
       b.root = root
       b.isNew = false
     }
 
-    // blocks.clear()
-
-    println(s"\nSAVING $indexId: ${root.map{r => RootRef(r._1, r._2)}}\n")
+    logger.info(s"\nSAVING $indexId: ${root.map{r => RootRef(r._1, r._2)}}\n")
 
     IndexContext(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, root.map{r => RootRef(r._1, r._2)}, levels, num_elements)
   }

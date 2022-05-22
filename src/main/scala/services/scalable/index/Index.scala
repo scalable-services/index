@@ -34,8 +34,15 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
   implicit val ctx = Context.fromIndexContext(ictx)
   val $this = this
 
-  def save(): IndexContext = {
-    ctx.save()
+  def snapshot(): IndexContext = {
+    ctx.snapshot()
+  }
+
+  def save(): Future[Boolean] = {
+    storage.save(ctx.snapshot(), ctx.blocks.map{case (id, block) => id -> serializer.serialize(block)}.toMap).map { r =>
+      ctx.blocks.clear()
+      r
+    }
   }
 
   def findPath(k: K, start: Block[K,V], limit: Option[Block[K,V]])(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {

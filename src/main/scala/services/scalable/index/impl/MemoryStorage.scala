@@ -12,6 +12,7 @@ class MemoryStorage(val NUM_LEAF_ENTRIES: Int, val NUM_META_ENTRIES: Int)(implic
   val logger = LoggerFactory.getLogger(this.getClass)
 
   val databases = TrieMap.empty[String, DBContext]
+  val indexes = TrieMap.empty[String, IndexContext]
   val blocks = TrieMap.empty[(String, String), Array[Byte]]
 
   override def get(id: (String, String)): Future[Array[Byte]] = {
@@ -29,27 +30,62 @@ class MemoryStorage(val NUM_LEAF_ENTRIES: Int, val NUM_META_ENTRIES: Int)(implic
     Future.successful(true)
   }
 
-  override def load(id: String): Future[DBContext] = {
+  override def save(index: IndexContext, blocks: Map[(String, String), Array[Byte]]): Future[Boolean] = {
+    indexes.put(index.id, index)
+
+    blocks.foreach { case (id, b) =>
+      this.blocks.put(id, b)
+    }
+
+    Future.successful(true)
+  }
+
+  override def loadDB(id: String): Future[DBContext] = {
     databases.get(id) match {
-      case None => Future.failed(Errors.INDEX_NOT_FOUND(id))
+      case None => Future.failed(Errors.DB_NOT_FOUND(id))
       case Some(db) => Future.successful(db)
     }
   }
 
-  override def createIndex(id: String): Future[DBContext] = {
+  override def loadIndex(id: String): Future[IndexContext] = {
+    indexes.get(id) match {
+      case None => Future.failed(Errors.INDEX_NOT_FOUND(id))
+      case Some(index) => Future.successful(index)
+    }
+  }
+
+  override def createDB(id: String): Future[DBContext] = {
     val db = DBContext(id)
 
     if(databases.isDefinedAt(id)){
-      return Future.failed(Errors.INDEX_ALREADY_EXISTS(id))
+      return Future.failed(Errors.DB_ALREADY_EXISTS(id))
     }
 
     databases.put(id, db)
     Future.successful(db)
   }
 
-  override def loadOrCreate(name: String): Future[DBContext] = {
-    load(name).recoverWith {
-      case e: Errors.INDEX_NOT_FOUND => createIndex(name)
+  override def createIndex(id: String, num_leaf_entries: Int, num_meta_entries: Int): Future[IndexContext] = {
+    val index = IndexContext(id, num_leaf_entries, num_meta_entries)
+
+    if(indexes.isDefinedAt(id)){
+      return Future.failed(Errors.INDEX_ALREADY_EXISTS(id))
+    }
+
+    indexes.put(id, index)
+    Future.successful(index)
+  }
+
+  override def loadOrCreateDB(name: String): Future[DBContext] = {
+    loadDB(name).recoverWith {
+      case e: Errors.DB_NOT_FOUND => createDB(name)
+      case e => Future.failed(e)
+    }
+  }
+
+  override def loadOrCreateIndex(name: String, num_leaf_entries: Int, num_meta_entries: Int): Future[IndexContext] = {
+    loadIndex(name).recoverWith {
+      case e: Errors.INDEX_NOT_FOUND => createIndex(name, num_leaf_entries, num_meta_entries)
       case e => Future.failed(e)
     }
   }

@@ -3,6 +3,7 @@ package services.scalable.index
 object Errors {
 
   sealed trait IndexError
+  sealed trait DBError
 
   case object LEAF_BLOCK_FULL extends RuntimeException("Leaf is full!") with IndexError
   case object META_BLOCK_FULL extends RuntimeException("Meta is full!") with IndexError
@@ -25,9 +26,11 @@ object Errors {
     extends RuntimeException(s"Current block's root ${broot} is not equal to the current root context: ${croot}") with IndexError
 
   case class INDEX_NOT_FOUND(id: String) extends RuntimeException(s"Index ${id} not found!") with IndexError
+  case class DB_NOT_FOUND(id: String) extends RuntimeException(s"DB ${id} not found!") with DBError
 
   case class INDEX_CREATION_ERROR(id: String) extends RuntimeException(s"There was a problem creating index ${id}!") with IndexError
 
   case class INDEX_ALREADY_EXISTS(id: String) extends RuntimeException(s"Index ${id} already exists!") with IndexError
+  case class DB_ALREADY_EXISTS(id: String) extends RuntimeException(s"DB ${id} already exists!") with DBError
 
 }
