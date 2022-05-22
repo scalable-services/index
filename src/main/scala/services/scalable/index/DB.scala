@@ -75,7 +75,7 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
 
         history match {
           case None => Future.successful(true)
-          case Some(history) => history.execute(Seq(Commands.Insert("history", Seq(time -> view))))
+          case Some(history) => history.execute(Seq(Commands.Insert(history.ctx.indexId, Seq(time -> view))))
         }
     }
   }
