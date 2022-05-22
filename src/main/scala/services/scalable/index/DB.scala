@@ -53,7 +53,7 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
 
       index.execute(cmds).map {
         case false => None
-        case true => Some(index.ctx.save())
+        case true => Some(index.save())
       }
     }
 
