@@ -129,6 +129,10 @@ class Context[K, V](val indexId: String,
     new Context[K, V](indexId, root, num_elements, levels, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)(ec, storage,
       serializer, cache, ord, idGenerator)
   }
+
+  def clear(): Unit = {
+    blocks.clear()
+  }
 }
 
 object Context {
