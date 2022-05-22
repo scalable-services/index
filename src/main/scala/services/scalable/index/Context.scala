@@ -67,10 +67,6 @@ class Context[K, V](val indexId: String,
     get(id).map(_.asInstanceOf[Meta[K,V]])
   }
 
-  /*def isNew(id: (String, String)): Boolean = {
-    blocks.isDefinedAt(id)
-  }*/
-
   def createLeaf(): Leaf[K,V] = {
     val leaf = new Leaf[K,V](idGenerator.generateId(this), idGenerator.generatePartition(this), LEAF_MIN, LEAF_MAX)
 
