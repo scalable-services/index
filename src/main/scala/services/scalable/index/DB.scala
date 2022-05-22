@@ -73,22 +73,9 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
         val ictxs = results.map(_.get).map{c => c.id -> c}.toMap
         val view = ctx.latest.withIndexes(ictxs).withTime(time)
 
-        println(s"\n\nexec view: ${view}\n\n")
-
         history match {
           case None => Future.successful(true)
-          case Some(history) =>
-
-            history.execute(Seq(Commands.Insert("history", Seq(time -> view)))).map {
-              case true =>
-
-                println()
-                println(Await.result(all(history.inOrder()), Duration.Inf))
-                println()
-
-                true
-              case _ => false
-            }
+          case Some(history) => history.execute(Seq(Commands.Insert("history", Seq(time -> view))))
         }
     }
   }
@@ -132,8 +119,6 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
       var pos = leaf.binSearch(t, 0, leaf.tuples.length - 1)._2
       pos = if(pos == leaf.length) pos - 1 else pos
 
-      println(s"prox ${t} => ${leaf.tuples(pos)._1}")
-
       leaf.tuples(pos)._2
     })
   }
@@ -141,11 +126,7 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
   def findIndex(t: Long, index: String): Future[Option[QueryableIndex[K, V]]] = {
     findT(t).map {
       case None => None
-      case Some(view) =>
-
-        println(s"t: ${t} view: ${view}")
-
-        view.indexes.get(index).map(new QueryableIndex[K, V](_))
+      case Some(view) => view.indexes.get(index).map(new QueryableIndex[K, V](_))
     }
   }
 
