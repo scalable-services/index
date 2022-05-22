@@ -3,12 +3,7 @@ package services.scalable.index
 import services.scalable.index.grpc._
 
 import scala.collection.concurrent.TrieMap
-import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, ExecutionContext, Future}
-
-case class DBExecutionResult(ok: Boolean = false,
-                                   ctx: Option[DBContext] = None,
-                                   blocks: Map[(String, String), Array[Byte]] = Map.empty[(String, String), Array[Byte]])
+import scala.concurrent.{ExecutionContext, Future}
 
 class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionContext,
                                val storage: Storage,
@@ -77,15 +72,6 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
           case None => Future.successful(true)
           case Some(history) => history.execute(Seq(Commands.Insert(history.ctx.indexId, Seq(time -> view))))
         }
-    }
-  }
-
-  def all[K, V](it: AsyncIterator[Seq[Tuple[K, V]]])(implicit ec: ExecutionContext): Future[Seq[Tuple[K, V]]] = {
-    it.hasNext().flatMap {
-      case true => it.next().flatMap { list =>
-        all(it).map{list ++ _}
-      }
-      case false => Future.successful(Seq.empty[Tuple[K, V]])
     }
   }
 
