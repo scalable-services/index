@@ -13,4 +13,18 @@ object TestHelper {
     }
   }
 
+  def isColEqual[K, V](source: Seq[Tuple2[K, V]], target: Seq[Tuple2[K, V]])(implicit ordk: Ordering[K], ordv: Ordering[V]): Boolean = {
+    if(target.length != source.length) return false
+    for(i<-0 until source.length){
+      val (ks, vs) = source(i)
+      val (kt, vt) = target(i)
+
+      if(!(ordk.equiv(kt, ks) && ordv.equiv(vt, vs))){
+        return false
+      }
+    }
+
+    true
+  }
+
 }

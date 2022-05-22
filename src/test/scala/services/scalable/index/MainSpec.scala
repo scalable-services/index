@@ -93,7 +93,7 @@ class MainSpec extends Repeatable {
     logger.debug(s"${Console.GREEN_B}tdata: ${dlist.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
     logger.debug(s"${Console.MAGENTA_B}idata: ${ilist.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
 
-    assert(isColEqual(dlist, ilist))
+    assert(TestHelper.isColEqual(dlist, ilist))
   }
 
 }
