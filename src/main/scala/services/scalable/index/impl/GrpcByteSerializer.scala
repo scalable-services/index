@@ -47,6 +47,7 @@ final class GrpcByteSerializer[K, V](implicit val ks: Serializer[K], val vs: Ser
         block.root = leaf.root.map(r => r.partition -> r.id)
 
         block.tuples = tuples
+        block.isNew = false
 
         return block
       }
@@ -59,6 +60,7 @@ final class GrpcByteSerializer[K, V](implicit val ks: Serializer[K], val vs: Ser
       block.root = meta.root.map(r => r.partition -> r.id)
 
       block.pointers = pointers
+      block.isNew = false
 
       block
     }

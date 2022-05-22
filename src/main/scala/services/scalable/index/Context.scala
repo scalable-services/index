@@ -67,9 +67,9 @@ class Context[K, V](val indexId: String,
     get(id).map(_.asInstanceOf[Meta[K,V]])
   }
 
-  def isNew(id: (String, String)): Boolean = {
+  /*def isNew(id: (String, String)): Boolean = {
     blocks.isDefinedAt(id)
-  }
+  }*/
 
   def createLeaf(): Leaf[K,V] = {
     val leaf = new Leaf[K,V](idGenerator.generateId(this), idGenerator.generatePartition(this), LEAF_MIN, LEAF_MAX)
@@ -117,9 +117,14 @@ class Context[K, V](val indexId: String,
   }
 
   def save(): IndexContext = {
-    blocks.foreach { case (_, b) =>
+    blocks.filter(_._2.isNew).foreach { case (_, b) =>
       b.root = root
+      b.isNew = false
     }
+
+    // blocks.clear()
+
+    println(s"\nSAVING $indexId: ${root.map{r => RootRef(r._1, r._2)}}\n")
 
     IndexContext(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, root.map{r => RootRef(r._1, r._2)}, levels, num_elements)
   }
@@ -137,7 +142,7 @@ object Context {
                                                  cache: Cache,
                                                  ord: Ordering[K],
                                                  idGenerator: IdGenerator): Context[K, V] = {
-    new Context[K, V]("main", ictx.root.map{ r => (r.partition, r.id)}, ictx.numElements,
+    new Context[K, V](ictx.id, ictx.root.map{ r => (r.partition, r.id)}, ictx.numElements,
       ictx.levels, ictx.numLeafItems, ictx.numMetaItems)
   }
 }

@@ -45,19 +45,11 @@ class DBSpec extends Repeatable {
     implicit val storage = new MemoryStorage(NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
     //implicit val storage = new CassandraStorage(TestConfig.KEYSPACE, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, false)
 
-    /*val view = IndexView(System.nanoTime(), Map(
-      "main" -> IndexContext(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, None, 0, 0)
-    ))
-
-    val dbCtx = Await.result(storage.loadOrCreate(indexId), Duration.Inf)
-      .withLatest(view)
-      .withHistory(IndexContext(s"history", NUM_LEAF_ENTRIES, NUM_META_ENTRIES, None, 0, 0))*/
-
     val db = new DB[K, V]()
     var data = Seq.empty[(K, V)]
 
-    db.createHistory("history", NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
     db.createIndex("main", NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+    db.createHistory("history", NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
 
     def insert(): Seq[Commands.Command[K, V]] = {
       val n = 100//rand.nextInt(1, 100)
@@ -81,19 +73,17 @@ class DBSpec extends Repeatable {
 
     val t0 = System.nanoTime()
     var result = Await.result(db.execute(insert()), Duration.Inf)
-
-   // dbCtx = result.ctx.get
-
-    logger.info(Await.result(storage.save(result.ctx.get, result.blocks),
-      Duration.Inf).toString)
-
     result = Await.result(db.execute(insert()), Duration.Inf)
 
-    logger.info(s"\n${Console.MAGENTA_B}result: ${result.ok}${Console.RESET}\n")
+    logger.info(s"\n${Console.MAGENTA_B}result: ${result}${Console.RESET}\n")
 
-    if(result.ok){
+    val r = db.save()
 
-      logger.info(Await.result(storage.save(result.ctx.get, result.blocks), Duration.Inf).toString)
+    println(s"r: ${r.ctx}")
+
+    if(r.ok){
+
+      logger.info(Await.result(storage.save(r.ctx.get, r.blocks), Duration.Inf).toString)
 
       val t1 = System.nanoTime()
 

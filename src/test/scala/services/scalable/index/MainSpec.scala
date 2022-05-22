@@ -74,6 +74,7 @@ class MainSpec extends Repeatable {
     }
 
     insert()
+    insert()
 
     db = db.withLatest(
       IndexView(

@@ -34,7 +34,9 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
   implicit val ctx = Context.fromIndexContext(ictx)
   val $this = this
 
-  def save() = ctx.save()
+  def save(): IndexContext = {
+    ctx.save()
+  }
 
   def findPath(k: K, start: Block[K,V], limit: Option[Block[K,V]])(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
 
