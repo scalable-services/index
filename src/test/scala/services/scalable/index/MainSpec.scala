@@ -43,9 +43,7 @@ class MainSpec extends Repeatable {
     implicit val storage = new MemoryStorage(NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
     //implicit val storage = new CassandraStorage(TestConfig.KEYSPACE, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, false)
 
-    var db = Await.result(storage.loadOrCreate(indexId), Duration.Inf)
-    val indexContext = if(db.latest.indexes.isEmpty) IndexContext(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, None, 0, 0)
-      else db.latest.indexes.head._2
+    val indexContext = Await.result(storage.loadOrCreateIndex(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES), Duration.Inf)
 
     var data = Seq.empty[(K, V)]
     val index = new QueryableIndex[K, V](indexContext)
@@ -76,17 +74,7 @@ class MainSpec extends Repeatable {
     insert()
     insert()
 
-    db = db.withLatest(
-      IndexView(
-        System.nanoTime(),
-        Map(
-          "main" -> index.save()
-        )
-      )
-    )
-
-    logger.info(Await.result(storage.save(db, index.ctx.blocks.map{case (id, block) => id -> grpcBytesSerializer.serialize(block)}.toMap),
-      Duration.Inf).toString)
+    logger.info(Await.result(index.save(), Duration.Inf).toString)
 
     val dlist = data.sortBy(_._1)
     val ilist = Await.result(TestHelper.all(index.inOrder()), Duration.Inf)

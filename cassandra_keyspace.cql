@@ -8,6 +8,14 @@ CREATE TABLE history.databases (
 ) WITH default_time_to_live = 0
     AND transactions = {'enabled': 'false'};
 
+CREATE TABLE history.indexes (
+    id text PRIMARY KEY,
+    buf blob,
+    num_leaf_entries int,
+    num_meta_entries int
+) WITH default_time_to_live = 0
+    AND transactions = {'enabled': 'false'};
+
 CREATE TABLE history.blocks (
     partition text,
     id text,
