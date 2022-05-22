@@ -17,6 +17,8 @@ trait Block[K, V] {
   // Tells from what root pointer this block was originally created
   var root: Option[(String, String)] = None
 
+  var isNew: Boolean = true
+
   def last: K
   def first: K
   def length: Int
