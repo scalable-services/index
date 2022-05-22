@@ -1,7 +1,6 @@
 package services.scalable.index
 
 import services.scalable.index.grpc._
-
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -46,8 +45,6 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
   }
 
   def execute(cmds: Seq[Commands.Command[K, V]]): Future[Boolean] = {
-    //var view = ctx.latest
-
     def exec(id: String, cmds: Seq[Commands.Command[K, V]]): Future[Option[IndexContext]] = {
       val index = indexes(id)
 

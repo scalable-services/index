@@ -66,6 +66,8 @@ class MainSpec extends Repeatable {
       )
       val result = Await.result(index.execute(cmds), Duration.Inf)
 
+      index.snapshot()
+
       if(result){
         data = data ++ list
       }

@@ -34,6 +34,10 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
   implicit val ctx = Context.fromIndexContext(ictx)
   val $this = this
 
+  /**
+   * Creates a snapshot of the tree that could be saved and accessed later
+   * @return
+   */
   def snapshot(): IndexContext = {
     ctx.snapshot()
   }
