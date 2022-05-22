@@ -89,8 +89,11 @@ class DBSpec extends Repeatable {
       val t0list = Await.result(TestHelper.all(t0Index.inOrder()), Duration.Inf)
       val t1list = Await.result(TestHelper.all(t1Index.inOrder()), Duration.Inf)
 
+      val latest = Await.result(TestHelper.all(db.indexes("main").inOrder()), Duration.Inf)
+
       logger.debug(s"${Console.GREEN_B}t0: ${t0list.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
       logger.debug(s"${Console.MAGENTA_B}t1: ${t1list.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
+      logger.debug(s"${Console.YELLOW_B}latest: ${latest.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
 
       //assert(isColEqual(dlist, ilist))
     }

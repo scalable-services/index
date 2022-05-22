@@ -13,7 +13,7 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
                                val idGenerator: IdGenerator){
   import DefaultSerializers._
 
-  protected var indexes = Map.empty[String, Index[K, V]]
+  var indexes = Map.empty[String, Index[K, V]]
   var history: Option[QueryableIndex[Long, IndexView]] = None
 
   protected def putIndex(id: String): QueryableIndex[K, V] = {
@@ -85,7 +85,10 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
 
       return storage.save(ctx, indexes.map(_._2.ctx.blocks).foldLeft(TrieMap.empty[(String, String), Block[K, V]]){ case (p, n) =>
         p ++ n
-      }.map{case (id, block) => id -> serializer.serialize(block)}.toMap)
+      }.map{case (id, block) => id -> serializer.serialize(block)}.toMap).map { r =>
+        indexes.foreach(_._2.ctx.clear())
+        r
+      }
     }
 
     ctx = ctx
@@ -95,7 +98,10 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
       storage.save(ctx, indexes.map(_._2.ctx.blocks).foldLeft(TrieMap.empty[(String, String), Block[K, V]]){ case (p, n) =>
         p ++ n
       }.map{case (id, block) => id -> serializer.serialize(block)}.toMap
-        ++ history.get.ctx.blocks.map{case (id, block) => id -> grpcHistorySerializer.serialize(block)})
+        ++ history.get.ctx.blocks.map{case (id, block) => id -> grpcHistorySerializer.serialize(block)}).map { r =>
+        indexes.foreach(_._2.ctx.clear())
+        r
+      }
   }
 
   def findT(t: Long): Future[Option[IndexView]] = {
