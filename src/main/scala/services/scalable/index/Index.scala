@@ -42,10 +42,12 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
     ctx.snapshot()
   }
 
-  def save(): Future[Boolean] = {
-    storage.save(ctx.snapshot(), ctx.blocks.map{case (id, block) => id -> serializer.serialize(block)}.toMap).map { r =>
+  def save(): Future[IndexContext] = {
+    val snapshot = ctx.snapshot()
+
+    storage.save(snapshot, ctx.blocks.map{case (id, block) => id -> serializer.serialize(block)}.toMap).map { r =>
       ctx.blocks.clear()
-      r
+      snapshot
     }
   }
 

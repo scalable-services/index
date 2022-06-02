@@ -21,7 +21,9 @@ libraryDependencies ++= Seq(
 
   "com.datastax.oss" % "java-driver-core" % "4.13.0",
 
-  "org.scala-lang.modules" %% "scala-collection-compat" % "2.1.6"
+  "org.scala-lang.modules" %% "scala-collection-compat" % "2.1.6",
+
+  "org.apache.commons" % "commons-compress" % "1.21"
 )
 
 libraryDependencies += "com.thesamet.scalapb" %% "scalapb-runtime" % scalapb.compiler.Version.scalapbVersion % "protobuf"

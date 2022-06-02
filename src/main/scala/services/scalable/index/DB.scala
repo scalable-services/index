@@ -12,8 +12,21 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
                                val idGenerator: IdGenerator){
   import DefaultSerializers._
 
-  var indexes = Map.empty[String, Index[K, V]]
+  var indexes = Map.empty[String, QueryableIndex[K, V]]
   var history: Option[QueryableIndex[Long, IndexView]] = None
+
+  /**
+   * Fills up the indexes (if any) from the provided context
+   */
+  if(!ctx.latest.indexes.isEmpty){
+    ctx.latest.indexes.foreach { case (id, ictx) =>
+      indexes = indexes + (id -> new QueryableIndex[K, V](ictx))
+    }
+  }
+
+  if(ctx.history.isDefined){
+    history = Some(new QueryableIndex[Long, IndexView](ctx.history.get))
+  }
 
   protected def putIndex(id: String): QueryableIndex[K, V] = {
     val index = new QueryableIndex[K, V](ctx.latest.indexes(id))
@@ -72,7 +85,7 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
     }
   }
 
-  def save(): Future[Boolean] = {
+  def save(): Future[DBContext] = {
     val ictxs = indexes.map{case (id, i) => id -> i.snapshot()}
     val view = ctx.latest.withIndexes(indexes.map{case (id, i) => id -> ictxs(id)})
 
@@ -84,7 +97,7 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
         p ++ n
       }.map{case (id, block) => id -> serializer.serialize(block)}.toMap).map { r =>
         indexes.foreach(_._2.ctx.clear())
-        r
+        ctx
       }
     }
 
@@ -97,7 +110,7 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
       }.map{case (id, block) => id -> serializer.serialize(block)}.toMap
         ++ history.get.ctx.blocks.map{case (id, block) => id -> grpcHistorySerializer.serialize(block)}).map { r =>
         indexes.foreach(_._2.ctx.clear())
-        r
+        ctx
       }
   }
 
