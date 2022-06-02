@@ -45,13 +45,13 @@ final class GrpcByteSerializer[K, V](implicit val ks: Serializer[K], val vs: Ser
           else None)).toByteArray
       }
 
-      logger.info(s"Compressing block ${block.unique_id}...")
-
       lz4Out.write(input)
       lz4Out.flush()
       lz4Out.finish()
 
       val buffer = os.toByteArray
+
+      logger.info(s"Compressing block ${block.unique_id} input len: ${input.length} output length: ${buffer.length}...")
 
       os.flush()
       os.close()

@@ -29,8 +29,8 @@ class DBSpec extends Repeatable {
 
     import services.scalable.index.DefaultComparators._
 
-    val NUM_LEAF_ENTRIES = 4
-    val NUM_META_ENTRIES = 4
+    val NUM_LEAF_ENTRIES = 32
+    val NUM_META_ENTRIES = 32
 
     val indexId = "main"
 
