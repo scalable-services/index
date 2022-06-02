@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <module external.linked.project.id="index [file:/D:/Users/lucas/scalable.services/index/]" external.linked.project.path="$MODULE_DIR$/../.." external.root.project.path="$MODULE_DIR$/../.." external.system.id="SBT" type="JAVA_MODULE" version="4">
-  <component name="NewModuleRootManager" LANGUAGE_LEVEL="JDK_17">
+  <component name="NewModuleRootManager" LANGUAGE_LEVEL="JDK_18">
     <output url="file://$MODULE_DIR$/../../target/scala-2.13/classes" />
     <output-test url="file://$MODULE_DIR$/../../target/scala-2.13/test-classes" />
     <exclude-output />
@@ -103,6 +103,7 @@
     <orderEntry type="library" name="sbt: io.netty:netty-resolver:4.1.60.Final:jar" level="project" />
     <orderEntry type="library" name="sbt: io.netty:netty-transport:4.1.60.Final:jar" level="project" />
     <orderEntry type="library" name="sbt: io.perfmark:perfmark-api:0.23.0:jar" level="project" />
+    <orderEntry type="library" name="sbt: org.apache.commons:commons-compress:1.21:jar" level="project" />
     <orderEntry type="library" name="sbt: org.apache.commons:commons-lang3:3.8.1:jar" level="project" />
     <orderEntry type="library" name="sbt: org.checkerframework:checker-qual:3.8.0:jar" level="project" />
     <orderEntry type="library" name="sbt: org.codehaus.jackson:jackson-core-asl:1.9.12:jar" level="project" />

@@ -79,24 +79,27 @@ class DBSpec extends Repeatable {
 
     val ok = Await.result(db.save(), Duration.Inf)
 
-    if(ok){
+    val db2 = new DB[K, V](db.ctx)
 
-      val t1 = System.nanoTime()
+    val t1 = System.nanoTime()
 
-      val t0Index = Await.result(db.findIndex(t0, "main"), Duration.Inf).get
-      val t1Index = Await.result(db.findIndex(t1, "main"), Duration.Inf).get
+    val db2t0 = Await.result(db2.findIndex(t0, "main"), Duration.Inf)
 
-      val t0list = Await.result(TestHelper.all(t0Index.inOrder()), Duration.Inf)
-      val t1list = Await.result(TestHelper.all(t1Index.inOrder()), Duration.Inf)
+    val list = Await.result(TestHelper.all(db2t0.get.inOrder()), Duration.Inf)
 
-      val latest = Await.result(TestHelper.all(db.indexes("main").inOrder()), Duration.Inf)
+    val t0Index = Await.result(db.findIndex(t0, "main"), Duration.Inf).get
+    val t1Index = Await.result(db.findIndex(t1, "main"), Duration.Inf).get
 
-      logger.debug(s"${Console.GREEN_B}t0: ${t0list.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
-      logger.debug(s"${Console.MAGENTA_B}t1: ${t1list.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
-      logger.debug(s"${Console.YELLOW_B}latest: ${latest.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
+    val t0list = Await.result(TestHelper.all(t0Index.inOrder()), Duration.Inf)
+    val t1list = Await.result(TestHelper.all(t1Index.inOrder()), Duration.Inf)
 
-      //assert(isColEqual(dlist, ilist))
-    }
+    val latest = Await.result(TestHelper.all(db.indexes("main").inOrder()), Duration.Inf)
+
+    logger.debug(s"${Console.GREEN_B}t0: ${t0list.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
+    logger.debug(s"${Console.MAGENTA_B}t1: ${t1list.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
+    logger.debug(s"${Console.YELLOW_B}latest: ${latest.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
+
+    logger.debug(s"${Console.CYAN_B}db2 main: ${list.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
   }
 
 }
