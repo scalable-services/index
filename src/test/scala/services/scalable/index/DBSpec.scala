@@ -32,6 +32,7 @@ class DBSpec extends Repeatable {
     val NUM_LEAF_ENTRIES = 32
     val NUM_META_ENTRIES = 32
 
+    val dbId = "mydb"
     val indexId = "main"
 
     import services.scalable.index.DefaultSerializers._
@@ -45,7 +46,9 @@ class DBSpec extends Repeatable {
     implicit val storage = new MemoryStorage(NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
     //implicit val storage = new CassandraStorage(TestConfig.KEYSPACE, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, false)
 
-    val db = new DB[K, V]()
+    val dbCtx = Await.result(storage.loadOrCreateDB(dbId), Duration.Inf)
+
+    val db = new DB[K, V](dbCtx)
     var data = Seq.empty[(K, V)]
 
     db.createIndex("main", NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
@@ -71,16 +74,16 @@ class DBSpec extends Repeatable {
       cmds
     }
 
-    val t0 = System.nanoTime()
     var result = Await.result(db.execute(insert()), Duration.Inf)
     result = Await.result(db.execute(insert()), Duration.Inf)
 
     logger.info(s"\n${Console.MAGENTA_B}result: ${result}${Console.RESET}\n")
 
-    val ok = Await.result(db.save(), Duration.Inf)
+    val dbCtxSaved = Await.result(db.save(), Duration.Inf)
 
-    val db2 = new DB[K, V](db.ctx)
+    val db2 = new DB[K, V](dbCtxSaved)
 
+    val t0 = 0L
     val t1 = System.nanoTime()
 
     val db2t0 = Await.result(db2.findIndex(t0, "main"), Duration.Inf)
