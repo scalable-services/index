@@ -30,7 +30,7 @@ class MainSpec extends Repeatable {
     val NUM_LEAF_ENTRIES = 4//rand.nextInt(5, 64)
     val NUM_META_ENTRIES = 4//rand.nextInt(5, 64)
 
-    val indexId = UUID.randomUUID().toString
+    val indexId = "mysusindex"//UUID.randomUUID().toString
 
     import services.scalable.index.DefaultSerializers._
 
@@ -40,8 +40,8 @@ class MainSpec extends Repeatable {
     }
 
     implicit val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
-    implicit val storage = new MemoryStorage(NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
-    //implicit val storage = new CassandraStorage(TestConfig.KEYSPACE, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, false)
+    //implicit val storage = new MemoryStorage(NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+    implicit val storage = new CassandraStorage(TestConfig.KEYSPACE, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, false)
 
     val indexContext = Await.result(storage.loadOrCreateIndex(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES), Duration.Inf)
 
@@ -73,10 +73,10 @@ class MainSpec extends Repeatable {
       }
     }
 
-    insert()
+    /*insert()
     insert()
 
-    logger.info(Await.result(index.save(), Duration.Inf).toString)
+    logger.info(Await.result(index.save(), Duration.Inf).toString)*/
 
     val dlist = data.sortBy(_._1)
     val ilist = Await.result(TestHelper.all(index.inOrder()), Duration.Inf)
