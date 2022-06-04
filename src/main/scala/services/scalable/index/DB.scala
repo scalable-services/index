@@ -35,6 +35,8 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
   }
 
   def createHistory(id: String, num_leaf_entries: Int, num_meta_entries: Int): DBContext = {
+    if(ctx.history.isDefined) return ctx
+
     val hIndexCtx = IndexContext(id, num_leaf_entries, num_meta_entries)
 
     history = Some(new QueryableIndex[Long, IndexView](hIndexCtx))
@@ -46,6 +48,9 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
   }
 
   def createIndex(id: String, num_leaf_entries: Int, num_meta_entries: Int): DBContext = {
+
+    if(ctx.latest.indexes.isDefinedAt(id)) return ctx
+
     var view = ctx.latest
     view = view.withIndexes(view.indexes + (id -> IndexContext(id, num_leaf_entries, num_meta_entries)))
 
