@@ -12,7 +12,7 @@ object Errors {
     with IndexError
   case class LEAF_KEY_NOT_FOUND[K](keys: Seq[K]) extends RuntimeException(s"Missing key on leaf") with IndexError
 
-  case class META_DUPLICATE_KEY[K](keys: Seq[Pointer[K]], inserting: Seq[Pointer[K]]) extends RuntimeException(s"Duplicate elements on meta!")
+  case class META_DUPLICATE_KEY[K](keys: Seq[(K, Pointer)], inserting: Seq[(K, Pointer)]) extends RuntimeException(s"Duplicate elements on meta!")
     with IndexError
   case class META_KEY_NOT_FOUND[K](keys: Seq[K]) extends RuntimeException(s"Missing key on meta") with IndexError
 

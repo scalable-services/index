@@ -18,7 +18,11 @@ package object index {
 
   type Bytes = Array[Byte]
   type Tuple[K, V] = Tuple2[K, V]
-  type Pointer[K] = Tuple2[K, (String, String)]
+  //type Pointer[K] = Tuple2[K, (String, String)]
+
+  case class Pointer(partition: String, id: String, nElements: Long = 0L, level: Int = 0) {
+    def unique_id: (String, String) = (partition, id)
+  }
 
   implicit def toScalaFuture[T](cs: CompletionStage[T]) = toScala[T](cs)
 
