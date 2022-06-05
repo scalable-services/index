@@ -16,6 +16,8 @@ class Leaf[K, V](override val id: String,
   override def last: K = tuples.last._1
   override def first: K = tuples.head._1
 
+  override def nSubtree: Long = tuples.length.toLong
+
   def insert(data: Seq[Tuple[K,V]], upsert: Boolean)(implicit ord: Ordering[K]): Try[Int] = {
     
     if(isFull()) return Failure(Errors.LEAF_BLOCK_FULL)

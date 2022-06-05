@@ -85,17 +85,17 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
     }
   }
 
-  protected def fixRoot(p: Block[K,V]): Boolean = {
+  protected def fixRoot(p: Block[K, V]): Boolean = {
     p match {
       case p: Meta[K,V] =>
 
         if(p.length == 1){
           val c = p.pointers(0)._2
-          ctx.root = Some(c)
+          ctx.root = Some(c.unique_id)
 
           ctx.levels -= 1
 
-          ctx.setParent(c, 0, None)
+          ctx.setParent(c.unique_id, 0, None)
 
           true
         } else {
@@ -126,7 +126,7 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
       case Some(pid) => ctx.getMeta(pid).flatMap { p =>
         val parent = p.copy()
 
-        parent.pointers(pos) = block.last -> block.unique_id
+        parent.pointers(pos) = block.last -> Pointer(block.partition, block.id, block.nSubtree, block.level)
         ctx.setParent(block.unique_id, pos, Some(parent.unique_id))
 
         parent.setPointers()
@@ -149,20 +149,20 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
     }
   }
 
-  protected def insertParent(left: Meta[K,V], prev: Block[K,V])(implicit ord: Ordering[K]): Future[Boolean] = {
+  protected def insertParent(left: Meta[K, V], prev: Block[K, V])(implicit ord: Ordering[K]): Future[Boolean] = {
     if(left.isFull()){
       val right = left.split()
 
       if(ord.gt(prev.last, left.last)){
-        right.insert(Seq(prev.last -> prev.unique_id))
+        right.insert(Seq(prev.last -> Pointer(prev.partition, prev.id, prev.nSubtree, prev.level)))
       } else {
-        left.insert(Seq(prev.last -> prev.unique_id))
+        left.insert(Seq(prev.last -> Pointer(prev.partition, prev.id, prev.nSubtree, prev.level)))
       }
 
       return handleParent(left, right)
     }
 
-    left.insert(Seq(prev.last -> prev.unique_id)) match {
+    left.insert(Seq(prev.last -> Pointer(prev.partition, prev.id, prev.nSubtree, prev.level))) match {
       case Success(n) => recursiveCopy(left).map(_ => true)
       case Failure(ex) => Future.failed(ex)
     }
@@ -188,8 +188,8 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
         ctx.levels += 1
 
         meta.insert(Seq(
-          left.last -> left.unique_id,
-          right.last -> right.unique_id
+          left.last -> Pointer(left.partition, left.id, left.nSubtree, left.level),
+          right.last -> Pointer(right.partition, right.id, right.nSubtree, right.level)
         ))
 
         meta.setPointers()
@@ -199,7 +199,7 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
       case Some(pid) => ctx.getMeta(pid).flatMap { p =>
         val parent = p.copy()
 
-        parent.pointers(pos) = left.last -> left.unique_id
+        parent.pointers(pos) = left.last -> Pointer(left.partition, left.id, left.nSubtree, left.level)
         ctx.setParent(left.unique_id, pos, Some(parent.unique_id))
 
         insertParent(parent, right)
@@ -622,7 +622,7 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
 
           b.setPointers()
 
-          ctx.get(b.pointers(0)._2).flatMap(b => getLeftMost(Some(b)))
+          ctx.get(b.pointers(0)._2.unique_id).flatMap(b => getLeftMost(Some(b)))
       }
     }
   }
@@ -668,7 +668,7 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
 
           b.setPointers()
 
-          ctx.get(b.pointers(b.pointers.length - 1)._2).flatMap(b => getRightMost(Some(b)))
+          ctx.get(b.pointers(b.pointers.length - 1)._2.unique_id).flatMap(b => getRightMost(Some(b)))
       }
     }
   }
@@ -712,7 +712,7 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
           if (pos == len - 1) {
             nxt(parent)
           } else {
-            ctx.get(pointers(pos + 1)._2).flatMap(b => getLeftMost(Some(b)))
+            ctx.get(pointers(pos + 1)._2.unique_id).flatMap(b => getLeftMost(Some(b)))
           }
         }
       }
@@ -744,7 +744,7 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
           if (pos == 0) {
             prev(Some(parent.unique_id))
           } else {
-            ctx.get(parent.pointers(pos - 1)._2).flatMap(b => getRightMost(Some(b)))
+            ctx.get(parent.pointers(pos - 1)._2.unique_id).flatMap(b => getRightMost(Some(b)))
           }
         }
       }
@@ -814,7 +814,7 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
           val pointers = meta.pointers
 
           for(i<-0 until length){
-            inOrder(Await.result(ctx.get(pointers(i)._2), timeout), level + 1)
+            inOrder(Await.result(ctx.get(pointers(i)._2.unique_id), timeout), level + 1)
           }
 
       }
@@ -911,7 +911,7 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
           var tasks = Seq.empty[Future[Unit]]
 
           for(i<-0 until length){
-            tasks :+= ctx.get(pointers(i)._2).flatMap(b => inOrder(b, level + 1))
+            tasks :+= ctx.get(pointers(i)._2.unique_id).flatMap(b => inOrder(b, level + 1))
           }
 
           Future.sequence(tasks).map(_ => {})

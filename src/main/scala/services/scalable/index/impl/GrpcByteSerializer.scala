@@ -36,8 +36,8 @@ final class GrpcByteSerializer[K, V](implicit val ks: Serializer[K], val vs: Ser
 
         case meta: Meta[K,V] =>
 
-          Any.pack(MetaBlock(meta.id, meta.partition, meta.pointers.map { case (k, (p, id)) =>
-            Pointer(ByteString.copyFrom(ks.serialize(k)), p, id)
+          Any.pack(MetaBlock(meta.id, meta.partition, meta.pointers.map { case (k, p) =>
+            Link(ByteString.copyFrom(ks.serialize(k)), p.partition, p.id, p.nElements, p.level)
           }, meta.MIN, meta.MAX, if(meta.root.isDefined) {
             val (partition, id) = meta.root.get
             Some(RootRef(partition, id))
@@ -89,7 +89,7 @@ final class GrpcByteSerializer[K, V](implicit val ks: Serializer[K], val vs: Ser
 
       val meta = parsed.unpack(MetaBlock)
 
-      val pointers = Array(meta.pointers.map { t => ks.deserialize(t.key.toByteArray) -> (t.partition, t.id) }: _*)
+      val pointers = Array(meta.pointers.map { t => ks.deserialize(t.key.toByteArray) -> Pointer(t.partition, t.id, t.nSubtree, t.level) }: _*)
       val block = new Meta[K,V](meta.id, meta.partition, meta.min, meta.max, bytes.length)
 
       logger.info(s"Decompressing block ${block.unique_id}...")

@@ -5,8 +5,8 @@ trait Block[K, V] {
   val id: String
   val partition: String
 
-  //val unique_id: String = partition.concat("#").concat(id)
-
+  var level = 0
+  def nSubtree: Long
   val unique_id = (partition, id)
 
   val size: Int

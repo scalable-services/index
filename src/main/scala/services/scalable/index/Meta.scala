@@ -11,20 +11,22 @@ class Meta[K, V](override val id: String,
 
   val logger = LoggerFactory.getLogger(this.getClass)
 
-  var pointers = Array.empty[Pointer[K]]
+  var pointers = Array.empty[(K, Pointer)]
 
   override def last: K = pointers.last._1
   override def first: K = pointers.head._1
 
-  def setPointer(block: Block[K,V], pos: Int)(implicit ctx: Context[K,V]): Unit = {
-    pointers(pos) = block.last -> (block.partition, block.id)
+  override def nSubtree: Long = pointers.map(_._2.nElements).sum
+
+  def setPointer(block: Block[K, V], pos: Int)(implicit ctx: Context[K, V]): Unit = {
+    pointers(pos) = block.last -> Pointer(block.partition, block.id, block.nSubtree, level + 1)
     ctx.setParent(block.unique_id, pos, Some(unique_id))
   }
 
   def setPointers()(implicit ctx: Context[K,V]): Unit = {
     for(i<-0 until pointers.length){
       val (k, c) = pointers(i)
-      ctx.setParent(c, i, Some(unique_id))
+      ctx.setParent(c.unique_id, i, Some(unique_id))
     }
   }
 
@@ -74,10 +76,10 @@ class Meta[K, V](override val id: String,
 
   def findPath(k: K)(implicit ord: Ordering[K]): (String, String) = {
     val (_, pos) = binSearch(k)
-    pointers(if(pos < pointers.length) pos else pos - 1)._2
+    pointers(if(pos < pointers.length) pos else pos - 1)._2.unique_id
   }
 
-  def insert(data: Seq[Pointer[K]])(implicit ctx: Context[K,V], ord: Ordering[K]): Try[Int] = {
+  def insert(data: Seq[(K, Pointer)])(implicit ctx: Context[K,V], ord: Ordering[K]): Try[Int] = {
     if(isFull()) return Failure(Errors.META_BLOCK_FULL)
 
     if(data.exists{case (k, _) => pointers.exists{case (k1, _) => ord.equiv(k, k1)}}){
@@ -91,10 +93,10 @@ class Meta[K, V](override val id: String,
     Success(data.length)
   }
 
-  def removeAt(pos: Int)(implicit ctx: Context[K,V]): Pointer[K] = {
+  def removeAt(pos: Int)(implicit ctx: Context[K,V]): (K, Pointer) = {
     val p = pointers(pos)
 
-    var aux = Array.empty[Pointer[K]]
+    var aux = Array.empty[(K, Pointer)]
 
     for(i<-0 until pos){
       aux = aux :+ pointers(i)
@@ -113,13 +115,13 @@ class Meta[K, V](override val id: String,
   def left(pos: Int): Option[(String, String)] = {
     val lpos = pos - 1
     if(lpos < 0) return None
-    Some(pointers(lpos)._2)
+    Some(pointers(lpos)._2.unique_id)
   }
 
   def right(pos: Int): Option[(String, String)] = {
     val rpos = pos + 1
     if(rpos == pointers.length) return None
-    Some(pointers(rpos)._2)
+    Some(pointers(rpos)._2.unique_id)
   }
 
   override def length: Int = pointers.length
@@ -234,6 +236,6 @@ class Meta[K, V](override val id: String,
     sb.toString()
   }
 
-  def inOrder(): Seq[Pointer[K]] = pointers
+  def inOrder(): Seq[(K, Pointer)] = pointers
 
 }
