@@ -43,6 +43,7 @@ message LeafBlock {
   int32 max = 5;
 
   optional RootRef root = 6;
+  int32 level = 7;
 }
 
 message MetaBlock {
@@ -53,6 +54,7 @@ message MetaBlock {
   int32 max = 5;
 
   optional RootRef root = 6;
+  int32 level = 7;
 }
 
 message IndexContext {

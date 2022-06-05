@@ -117,6 +117,8 @@ class Leaf[K, V](override val id: String,
       copy.tuples = copy.tuples :+ k -> v
     }
 
+    copy.level = level
+
     copy
   }
   
@@ -128,6 +130,8 @@ class Leaf[K, V](override val id: String,
 
     right.tuples = tuples.slice(pos, len)
     tuples = tuples.slice(0, pos)
+
+    right.level = level
 
     right
   }

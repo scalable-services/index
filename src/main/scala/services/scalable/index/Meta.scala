@@ -19,7 +19,7 @@ class Meta[K, V](override val id: String,
   override def nSubtree: Long = pointers.map(_._2.nElements).sum
 
   def setPointer(block: Block[K, V], pos: Int)(implicit ctx: Context[K, V]): Unit = {
-    pointers(pos) = block.last -> Pointer(block.partition, block.id, block.nSubtree, level + 1)
+    pointers(pos) = block.last -> Pointer(block.partition, block.id, block.nSubtree, block.level)
     ctx.setParent(block.unique_id, pos, Some(unique_id))
   }
 
@@ -188,6 +188,7 @@ class Meta[K, V](override val id: String,
     }
 
     copy.setPointers()
+    copy.level = level
 
     copy
   }
@@ -203,6 +204,8 @@ class Meta[K, V](override val id: String,
 
     setPointers()
     right.setPointers()
+
+    right.level = level
 
     right
   }

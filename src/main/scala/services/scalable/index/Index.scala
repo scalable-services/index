@@ -85,7 +85,7 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
     }
   }
 
-  protected def fixRoot(p: Block[K, V]): Boolean = {
+  protected def fixRoot(p: Block[K, V]): Future[Boolean] = {
     p match {
       case p: Meta[K,V] =>
 
@@ -95,19 +95,28 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
 
           ctx.levels -= 1
 
-          ctx.setParent(c.unique_id, 0, None)
+          ctx.get(c.unique_id).map { block =>
+            block.level = ctx.levels
 
-          true
+            val copy = block.copy()
+            ctx.blocks.put(copy.unique_id, copy)
+
+            ctx.setParent(copy.unique_id, 0, None)
+
+            true
+          }
         } else {
           ctx.root = Some(p.unique_id)
           ctx.setParent(p.unique_id, 0, None)
-          true
+
+          Future.successful(true)
         }
 
       case p: Leaf[K,V] =>
         ctx.root = Some(p.unique_id)
         ctx.setParent(p.unique_id, 0, None)
-        true
+
+        Future.successful(true)
     }
   }
 
@@ -122,7 +131,7 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
     val (p, pos) = opt.get
 
     p match {
-      case None => Future.successful(fixRoot(block))
+      case None => fixRoot(block)
       case Some(pid) => ctx.getMeta(pid).flatMap { p =>
         val parent = p.copy()
 
@@ -186,6 +195,7 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
         val meta = ctx.createMeta()
 
         ctx.levels += 1
+        meta.level = ctx.levels
 
         meta.insert(Seq(
           left.last -> Pointer(left.partition, left.id, left.nSubtree, left.level),
