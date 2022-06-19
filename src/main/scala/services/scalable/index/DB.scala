@@ -84,19 +84,29 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
         val view = ctx.latest.withIndexes(ictxs).withTime(time)
 
         history match {
-          case None => Future.successful(true)
-          case Some(history) => history.execute(Seq(Commands.Insert(history.ctx.indexId, Seq(time -> view))))
+          case None =>
+
+            ctx = ctx.withLatest(view)
+
+            Future.successful(true)
+          case Some(history) =>
+
+            ctx = ctx
+              .withLatest(view)
+              .withHistory(history.snapshot())
+
+            history.execute(Seq(Commands.Insert(history.ctx.indexId, Seq(time -> view))))
         }
     }
   }
 
   def save(): Future[DBContext] = {
-    val ictxs = indexes.map{case (id, i) => id -> i.snapshot()}
-    val view = ctx.latest.withIndexes(indexes.map{case (id, i) => id -> ictxs(id)})
+    /*val ictxs = indexes.map{case (id, i) => id -> i.snapshot()}
+    val view = ctx.latest.withIndexes(indexes.map{case (id, i) => id -> ictxs(id)})*/
 
     if(history.isEmpty) {
-      ctx = ctx
-        .withLatest(view)
+      /*ctx = ctx
+        .withLatest(view)*/
 
       return storage.save(ctx, indexes.map(_._2.ctx.blocks).foldLeft(TrieMap.empty[(String, String), Block[K, V]]){ case (p, n) =>
         p ++ n
@@ -106,9 +116,9 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
       }
     }
 
-    ctx = ctx
+    /*ctx = ctx
       .withLatest(view)
-      .withHistory(history.get.snapshot())
+      .withHistory(history.get.snapshot())*/
 
       storage.save(ctx, indexes.map(_._2.ctx.blocks).foldLeft(TrieMap.empty[(String, String), Block[K, V]]){ case (p, n) =>
         p ++ n
@@ -138,7 +148,7 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
   }
 
   def findLatestIndex(index: String): Option[QueryableIndex[K, V]] = {
-    ctx.latest.indexes.get(index).map(new QueryableIndex[K, V](_))
+    indexes.get(index)
   }
 
   def findT(t: Long, index: String): Future[Option[IndexContext]] = {
