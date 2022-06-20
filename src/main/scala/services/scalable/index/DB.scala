@@ -12,15 +12,15 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
                                val idGenerator: IdGenerator){
   import DefaultSerializers._
 
-  var indexes = Map.empty[String, QueryableIndex[K, V]]
+  //var indexes = Map.empty[String, QueryableIndex[K, V]]
   var history: Option[QueryableIndex[Long, IndexView]] = None
 
   /**
    * Fills up the indexes (if any) from the provided context
    */
-  if(!ctx.latest.indexes.isEmpty){
+  if(!ctx.latest.indexes.isEmpty && !cache.dbIndexes.isDefinedAt(ctx.id)){
     ctx.latest.indexes.foreach { case (id, ictx) =>
-      indexes = indexes + (id -> new QueryableIndex[K, V](ictx))
+      cache.putIndex(ctx.id, new QueryableIndex[K, V](ictx))
     }
   }
 
@@ -30,7 +30,9 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
 
   protected def putIndex(id: String): QueryableIndex[K, V] = {
     val index = new QueryableIndex[K, V](ctx.latest.indexes(id))
-    indexes = indexes + (id -> index)
+    //indexes = indexes + (id -> index)
+
+    cache.putIndex(ctx.id, index)
     index
   }
 
@@ -63,6 +65,8 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
   }
 
   def execute(cmds: Seq[Commands.Command[K, V]]): Future[Boolean] = {
+    val indexes = cache.getIndexes[K, V](ctx.id)
+
     def exec(id: String, cmds: Seq[Commands.Command[K, V]]): Future[Option[IndexContext]] = {
       val index = indexes(id)
 
@@ -103,6 +107,8 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
   def save(): Future[DBContext] = {
     /*val ictxs = indexes.map{case (id, i) => id -> i.snapshot()}
     val view = ctx.latest.withIndexes(indexes.map{case (id, i) => id -> ictxs(id)})*/
+
+    val indexes = cache.getIndexes[K, V](ctx.id)
 
     if(history.isEmpty) {
       /*ctx = ctx
@@ -148,6 +154,7 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
   }
 
   def findLatestIndex(index: String): Option[QueryableIndex[K, V]] = {
+    val indexes = cache.getIndexes[K, V](ctx.id)
     indexes.get(index)
   }
 

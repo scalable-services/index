@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory
 import services.scalable.index._
 
 import java.util.concurrent.Executor
+import scala.collection.concurrent.TrieMap
 import scala.concurrent.ExecutionContext
 
 class DefaultCache(val MAX_BLOCK_CACHE_SIZE: Long = 100L * 1024L * 1024L,
@@ -51,4 +52,27 @@ class DefaultCache(val MAX_BLOCK_CACHE_SIZE: Long = 100L * 1024L * 1024L,
     if(info == null) None else Some(info)
   }
 
+  override val dbIndexes = TrieMap.empty[String, Map[String, QueryableIndex[_, _]]]
+
+  override def getIndexes[K, V](id: String): Map[String, QueryableIndex[K, V]] = {
+    dbIndexes(id).asInstanceOf[Map[String, QueryableIndex[K, V]]]
+  }
+
+  override def putIndex[K, V](id: String, index: QueryableIndex[K, V]): Unit = {
+
+    val indexesOpt = dbIndexes.get(id)
+
+    if(indexesOpt.isEmpty){
+      dbIndexes.put(id, Map(index.ctx.indexId -> index))
+      return
+    }
+
+    val indexes = indexesOpt.get
+
+    dbIndexes.update(id, indexes + (index.ctx.indexId -> index))
+  }
+
+  override def getIndex[K, V](id: String, indexId: String): QueryableIndex[K, V] = {
+    dbIndexes(id)(indexId).asInstanceOf[QueryableIndex[K, V]]
+  }
 }
