@@ -4,6 +4,7 @@ import com.google.common.base.Charsets
 import io.netty.util.internal.ThreadLocalRandom
 import org.apache.commons.lang3.RandomStringUtils
 import org.slf4j.LoggerFactory
+import services.scalable.index.grpc.IndexView
 import services.scalable.index.impl._
 
 import java.util.UUID
@@ -40,8 +41,10 @@ class DBSpec extends Repeatable {
     }
 
     implicit val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
-    //implicit val storage = new MemoryStorage(NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
-    implicit val storage = new CassandraStorage(TestConfig.KEYSPACE, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, false)
+    implicit val storage = new MemoryStorage(NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+    //implicit val storage = new CassandraStorage(TestConfig.KEYSPACE, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, false)
+    implicit val context = new Context[K, V](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+    implicit val hcontext = new Context[Long, IndexView](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
 
     val dbCtx = Await.result(storage.loadOrCreateDB(dbId), Duration.Inf)
 

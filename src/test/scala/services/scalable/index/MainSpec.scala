@@ -41,6 +41,7 @@ class MainSpec extends Repeatable {
 
     implicit val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
     implicit val storage = new MemoryStorage(NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+    implicit val context = new Context[K, V](NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
     //implicit val storage = new CassandraStorage(TestConfig.KEYSPACE, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, false)
 
     val indexContext = Await.result(storage.loadOrCreateIndex(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES), Duration.Inf)
