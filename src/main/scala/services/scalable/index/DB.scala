@@ -14,7 +14,7 @@ class DB[K, V](var dbctx: DBContext = DBContext())(implicit val ec: ExecutionCon
                                val idGenerator: IdGenerator){
   import DefaultSerializers._
 
-  val indexes = TrieMap.empty[String, QueryableIndex[K, V]]
+  var indexes = TrieMap.empty[String, QueryableIndex[K, V]]
   var history: Option[QueryableIndex[Long, IndexView]] = None
 
   /**
