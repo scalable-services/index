@@ -52,27 +52,19 @@ class DefaultCache(val MAX_BLOCK_CACHE_SIZE: Long = 100L * 1024L * 1024L,
     if(info == null) None else Some(info)
   }
 
-  override val dbIndexes = TrieMap.empty[String, Map[String, QueryableIndex[_, _]]]
+  override val ctxBlocks = TrieMap.empty[String, Map[(String, String), Block[_, _]]]
 
-  override def getIndexes[K, V](id: String): Map[String, QueryableIndex[K, V]] = {
-    dbIndexes(id).asInstanceOf[Map[String, QueryableIndex[K, V]]]
+  override def putNewBlock[K, V](ctxId: String, block: Block[K, V]): Unit = {
+    var blocks = ctxBlocks.get(ctxId).orElse(Some(Map.empty[(String, String), Block[K, V]])).get
+
+    blocks = blocks + (block.unique_id -> block)
+    ctxBlocks.update(ctxId, blocks)
   }
 
-  override def putIndex[K, V](id: String, index: QueryableIndex[K, V]): Unit = {
+  override def getNewBlock[K, V](ctxId: String, blockId: (String, String)): Option[Block[K, V]] = {
+    if(!ctxBlocks.isDefinedAt(ctxId)) return None
 
-    val indexesOpt = dbIndexes.get(id)
-
-    if(indexesOpt.isEmpty){
-      dbIndexes.put(id, Map(index.ctx.indexId -> index))
-      return
-    }
-
-    val indexes = indexesOpt.get
-
-    dbIndexes.update(id, indexes + (index.ctx.indexId -> index))
+    ctxBlocks(ctxId).get(blockId).map(_.asInstanceOf[Block[K, V]])
   }
 
-  override def getIndex[K, V](id: String, indexId: String): QueryableIndex[K, V] = {
-    dbIndexes(id)(indexId).asInstanceOf[QueryableIndex[K, V]]
-  }
 }

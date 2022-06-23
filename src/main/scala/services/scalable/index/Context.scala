@@ -3,6 +3,7 @@ package services.scalable.index
 import org.slf4j.LoggerFactory
 import services.scalable.index.grpc.{IndexContext, RootRef}
 
+import java.util.UUID
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -18,6 +19,9 @@ class Context[K, V](val indexId: String,
                      val cache: Cache,
                      val ord: Ordering[K],
                      val idGenerator: IdGenerator) {
+
+  // Context id (for global manipulation of new blocks)
+  val id: String = UUID.randomUUID().toString
 
   val logger = LoggerFactory.getLogger(this.getClass)
 
