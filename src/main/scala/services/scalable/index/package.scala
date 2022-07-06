@@ -103,6 +103,5 @@ package object index {
 
     implicit val grpcHistorySerializer = new GrpcByteSerializer[Long, IndexView]()
     implicit val grpcBytesSerializer = new GrpcByteSerializer[Bytes, Bytes]()
-    implicit val grpcDBContextSerializer = new GrpcByteSerializer[Bytes, DBContext]()
   }
 }

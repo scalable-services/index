@@ -18,15 +18,15 @@ class Meta[K, V](override val id: String,
 
   override def nSubtree: Long = pointers.map(_._2.nElements).sum
 
-  def setPointer(block: Block[K, V], pos: Int)(implicit ctx: Context[K, V], ctxId: String): Unit = {
+  def setPointer(block: Block[K, V], pos: Int)(implicit ctx: Context[K, V]): Unit = {
     pointers(pos) = block.last -> Pointer(block.partition, block.id, block.nSubtree, block.level)
-    ctx.setParent(ctxId, block.unique_id, pos, Some(unique_id))
+    ctx.setParent(block.unique_id, pos, Some(unique_id))
   }
 
-  def setPointers()(implicit ctx: Context[K,V], ctxId: String): Unit = {
+  def setPointers()(implicit ctx: Context[K,V]): Unit = {
     for(i<-0 until pointers.length){
       val (k, c) = pointers(i)
-      ctx.setParent(ctxId, c.unique_id, i, Some(unique_id))
+      ctx.setParent(c.unique_id, i, Some(unique_id))
     }
   }
 
@@ -79,7 +79,7 @@ class Meta[K, V](override val id: String,
     pointers(if(pos < pointers.length) pos else pos - 1)._2.unique_id
   }
 
-  def insert(data: Seq[(K, Pointer)])(implicit ctx: Context[K,V], ctxId: String, ord: Ordering[K]): Try[Int] = {
+  def insert(data: Seq[(K, Pointer)])(implicit ctx: Context[K,V], ord: Ordering[K]): Try[Int] = {
     if(isFull()) return Failure(Errors.META_BLOCK_FULL)
 
     if(data.exists{case (k, _) => pointers.exists{case (k1, _) => ord.equiv(k, k1)}}){
@@ -93,7 +93,7 @@ class Meta[K, V](override val id: String,
     Success(data.length)
   }
 
-  def removeAt(pos: Int)(implicit ctx: Context[K,V], ctxId: String): (K, Pointer) = {
+  def removeAt(pos: Int)(implicit ctx: Context[K,V]): (K, Pointer) = {
     val p = pointers(pos)
 
     var aux = Array.empty[(K, Pointer)]
@@ -126,7 +126,7 @@ class Meta[K, V](override val id: String,
 
   override def length: Int = pointers.length
 
-  override def borrowLeftTo(t: Block[K,V])(implicit ctx: Context[K,V], ctxId: String): Block[K,V] = {
+  override def borrowLeftTo(t: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V] = {
     val target = t.asInstanceOf[Meta[K,V]]
 
     val len = pointers.length
@@ -141,7 +141,7 @@ class Meta[K, V](override val id: String,
     target
   }
 
-  override def borrowRightTo(t: Block[K,V])(implicit ctx: Context[K,V], ctxId: String): Block[K,V] = {
+  override def borrowRightTo(t: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V] = {
     val target = t.asInstanceOf[Meta[K,V]]
 
     val n = target.minNeeded()
@@ -154,7 +154,7 @@ class Meta[K, V](override val id: String,
     target
   }
 
-  override def merge(r: Block[K,V])(implicit ctx: Context[K,V], ctxId: String): Block[K,V] = {
+  override def merge(r: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V] = {
     val right = r.asInstanceOf[Meta[K,V]]
 
     pointers = pointers ++ right.pointers
@@ -169,14 +169,14 @@ class Meta[K, V](override val id: String,
 
   override def hasMinimum(): Boolean = pointers.length >= MIN
 
-  override def copy()(implicit ctx: Context[K,V], ctxId: String): Meta[K,V] = {
+  override def copy()(implicit ctx: Context[K,V]): Meta[K,V] = {
     //if(ctx.isNew(unique_id)) return this
     if(isNew) return this
 
-    val (p, pos) = ctx.getParent(ctxId, unique_id).get
+    val (p, pos) = ctx.getParent(unique_id).get
 
-    val copy = ctx.createMeta(ctxId)
-    ctx.setParent(ctxId, copy.unique_id, pos, p)
+    val copy = ctx.createMeta()
+    ctx.setParent(copy.unique_id, pos, p)
 
     //copy.pointers = pointers.clone()
 
@@ -193,8 +193,8 @@ class Meta[K, V](override val id: String,
     copy
   }
 
-  override def split()(implicit ctx: Context[K,V], ctxId: String): Meta[K,V] = {
-    val right = ctx.createMeta(ctxId)
+  override def split()(implicit ctx: Context[K,V]): Meta[K,V] = {
+    val right = ctx.createMeta()
 
     val len = pointers.length
     val pos = len/2
