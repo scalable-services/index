@@ -3,12 +3,10 @@ package services.scalable
 import com.datastax.oss.driver.api.core.config.{DefaultDriverOption, DriverConfigLoader}
 import com.google.common.primitives.UnsignedBytes
 import com.google.protobuf.any.Any
-import services.scalable.index.IdGenerator
-import services.scalable.index.grpc.{DBContext, IndexContext, IndexView}
+import services.scalable.index.grpc.{DBContext, IndexView}
 import services.scalable.index.impl.GrpcByteSerializer
 
 import java.nio.ByteBuffer
-import java.time.Duration
 import java.util.UUID
 import java.util.concurrent.CompletionStage
 import scala.compat.java8.FutureConverters.toScala
