@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory
 import services.scalable.index._
 
 import java.util.concurrent.Executor
+import scala.collection.concurrent.TrieMap
 import scala.concurrent.ExecutionContext
 
 class DefaultCache(val MAX_BLOCK_CACHE_SIZE: Long = 100L * 1024L * 1024L,
@@ -49,6 +50,21 @@ class DefaultCache(val MAX_BLOCK_CACHE_SIZE: Long = 100L * 1024L * 1024L,
   override def getParent(unique_id: (String, String)): Option[(Option[(String, String)], Int)] = {
     val info = parents.getIfPresent(unique_id)
     if(info == null) None else Some(info)
+  }
+
+  override val ctxBlocks = TrieMap.empty[String, Map[(String, String), Block[_, _]]]
+
+  override def putNewBlock[K, V](ctxId: String, block: Block[K, V]): Unit = {
+    var blocks = ctxBlocks.get(ctxId).orElse(Some(Map.empty[(String, String), Block[K, V]])).get
+
+    blocks = blocks + (block.unique_id -> block)
+    ctxBlocks.update(ctxId, blocks)
+  }
+
+  override def getNewBlock[K, V](ctxId: String, blockId: (String, String)): Option[Block[K, V]] = {
+    if(!ctxBlocks.isDefinedAt(ctxId)) return None
+
+    ctxBlocks(ctxId).get(blockId).map(_.asInstanceOf[Block[K, V]])
   }
 
 }
