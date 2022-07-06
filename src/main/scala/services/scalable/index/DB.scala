@@ -12,15 +12,15 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
                                val idGenerator: IdGenerator){
   import DefaultSerializers._
 
-  //var indexes = Map.empty[String, QueryableIndex[K, V]]
+  var indexes = TrieMap.empty[String, QueryableIndex[K, V]]
   var history: Option[QueryableIndex[Long, IndexView]] = None
 
   /**
    * Fills up the indexes (if any) from the provided context
    */
-  if(!ctx.latest.indexes.isEmpty && !cache.dbIndexes.isDefinedAt(ctx.id)){
+  if(!ctx.latest.indexes.isEmpty){
     ctx.latest.indexes.foreach { case (id, ictx) =>
-      cache.putIndex(ctx.id, new QueryableIndex[K, V](ictx))
+      indexes.put(id, new QueryableIndex[K, V](ictx))
     }
   }
 
@@ -30,9 +30,7 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
 
   protected def putIndex(id: String): QueryableIndex[K, V] = {
     val index = new QueryableIndex[K, V](ctx.latest.indexes(id))
-    //indexes = indexes + (id -> index)
-
-    cache.putIndex(ctx.id, index)
+    indexes += (id -> index)
     index
   }
 
@@ -65,8 +63,6 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
   }
 
   def execute(cmds: Seq[Commands.Command[K, V]]): Future[Boolean] = {
-    val indexes = cache.getIndexes[K, V](ctx.id)
-
     def exec(id: String, cmds: Seq[Commands.Command[K, V]]): Future[Option[IndexContext]] = {
       val index = indexes(id)
 
@@ -108,13 +104,11 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
     /*val ictxs = indexes.map{case (id, i) => id -> i.snapshot()}
     val view = ctx.latest.withIndexes(indexes.map{case (id, i) => id -> ictxs(id)})*/
 
-    val indexes = cache.getIndexes[K, V](ctx.id)
-
     if(history.isEmpty) {
       /*ctx = ctx
         .withLatest(view)*/
 
-      return storage.save(ctx, indexes.map(_._2.ctx.blocks).foldLeft(TrieMap.empty[(String, String), Block[K, V]]){ case (p, n) =>
+      return storage.save(ctx, indexes.map(_._2.ctx.getBlocks()).foldLeft(TrieMap.empty[(String, String), Block[K, V]]){ case (p, n) =>
         p ++ n
       }.map{case (id, block) => id -> serializer.serialize(block)}.toMap).map { r =>
         indexes.foreach(_._2.ctx.clear())
@@ -126,10 +120,10 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
       .withLatest(view)
       .withHistory(history.get.snapshot())*/
 
-      storage.save(ctx, indexes.map(_._2.ctx.blocks).foldLeft(TrieMap.empty[(String, String), Block[K, V]]){ case (p, n) =>
+      storage.save(ctx, indexes.map(_._2.ctx.getBlocks()).foldLeft(TrieMap.empty[(String, String), Block[K, V]]){ case (p, n) =>
         p ++ n
       }.map{case (id, block) => id -> serializer.serialize(block)}.toMap
-        ++ history.get.ctx.blocks.map{case (id, block) => id -> grpcHistorySerializer.serialize(block)}).map { r =>
+        ++ history.get.ctx.getBlocks().map{case (id, block) => id -> grpcHistorySerializer.serialize(block)}).map { r =>
         indexes.foreach(_._2.ctx.clear())
         ctx
       }
@@ -154,7 +148,6 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
   }
 
   def findLatestIndex(index: String): Option[QueryableIndex[K, V]] = {
-    val indexes = cache.getIndexes[K, V](ctx.id)
     indexes.get(index)
   }
 

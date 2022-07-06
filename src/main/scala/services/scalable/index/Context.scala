@@ -7,7 +7,7 @@ import java.util.UUID
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.{ExecutionContext, Future}
 
-class Context[K, V](val indexId: String,
+sealed class Context[K, V](val indexId: String,
                     var root: Option[(String, String)],
                     var num_elements: Long,
                     var levels: Int,
@@ -31,7 +31,8 @@ class Context[K, V](val indexId: String,
   val META_MAX = NUM_META_ENTRIES
   val META_MIN = META_MAX/2
 
-  val blocks = TrieMap.empty[(String, String), Block[K,V]]
+  //val blocks = TrieMap.empty[(String, String), Block[K,V]]
+  var blockReferences = Seq.empty[(String, String)]
   val parents = TrieMap.empty[(String, String), (Option[(String, String)], Int)]
 
   if(root.isDefined) {
@@ -47,7 +48,7 @@ class Context[K, V](val indexId: String,
    *
    * To work the blocks being manipulated must be in memory before saving...
    */
-  def get(id: (String, String)): Future[Block[K,V]] = blocks.get(id) match {
+  def get(id: (String, String)): Future[Block[K,V]] = cache.newBlocks.get(id) match {
     case None => cache.get[K, V](id) match {
       case None =>
 
@@ -60,7 +61,17 @@ class Context[K, V](val indexId: String,
       case Some(block) => Future.successful(block)
     }
 
-    case Some(block) => Future.successful(block)
+    case Some(block) => Future.successful(block.asInstanceOf[Block[K, V]])
+  }
+
+  def put(block: Block[K, V]): Unit = {
+    cache.newBlocks.put(block.unique_id, block)
+  }
+
+  def getBlocks(): Map[(String, String), Block[K, V]] = {
+    blockReferences.map { id =>
+      id -> cache.newBlocks.get(id).get.asInstanceOf[Block[K, V]]
+    }.toMap
   }
 
   def getLeaf(id: (String, String)): Future[Leaf[K,V]] = {
@@ -74,7 +85,8 @@ class Context[K, V](val indexId: String,
   def createLeaf(): Leaf[K,V] = {
     val leaf = new Leaf[K,V](idGenerator.generateId(this), idGenerator.generatePartition(this), LEAF_MIN, LEAF_MAX)
 
-    blocks += leaf.unique_id -> leaf
+    cache.newBlocks += leaf.unique_id -> leaf
+    blockReferences :+= leaf.unique_id
     setParent(leaf.unique_id, 0, None)
 
     leaf
@@ -83,7 +95,8 @@ class Context[K, V](val indexId: String,
   def createMeta(): Meta[K,V] = {
     val meta = new Meta[K,V](idGenerator.generateId(this), idGenerator.generatePartition(this), META_MIN, META_MAX)
 
-    blocks += meta.unique_id -> meta
+    cache.newBlocks += meta.unique_id -> meta
+    blockReferences :+= meta.unique_id
     setParent(meta.unique_id, 0, None)
 
     meta
@@ -117,7 +130,7 @@ class Context[K, V](val indexId: String,
   }
 
   def snapshot(): IndexContext = {
-    blocks.filter(_._2.isNew).foreach { case (_, b) =>
+    cache.newBlocks.filter(_._2.isNew).foreach { case (_, b) =>
       b.root = root
       b.isNew = false
     }
@@ -133,7 +146,9 @@ class Context[K, V](val indexId: String,
   }
 
   def clear(): Unit = {
-    blocks.clear()
+    blockReferences.foreach { id =>
+      cache.newBlocks.remove(id)
+    }
   }
 }
 

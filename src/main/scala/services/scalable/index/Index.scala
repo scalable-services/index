@@ -45,8 +45,8 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
   def save(): Future[IndexContext] = {
     val snapshot = ctx.snapshot()
 
-    storage.save(snapshot, ctx.blocks.map{case (id, block) => id -> serializer.serialize(block)}.toMap).map { r =>
-      ctx.blocks.clear()
+    storage.save(snapshot, ctx.getBlocks().map{case (id, block) => id -> serializer.serialize(block)}.toMap).map { r =>
+      ctx.clear()
       snapshot
     }
   }
@@ -99,7 +99,7 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
             block.level = ctx.levels
 
             val copy = block.copy()
-            ctx.blocks.put(copy.unique_id, copy)
+            ctx.put(copy)
 
             ctx.setParent(copy.unique_id, 0, None)
 
