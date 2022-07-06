@@ -65,7 +65,7 @@ class Leaf[K, V](override val id: String,
 
   override def length: Int = tuples.length
 
-  override def borrowLeftTo(t: Block[K,V])(implicit ctx: Context[K,V], ctxId: String): Leaf[K,V] = {
+  override def borrowLeftTo(t: Block[K,V])(implicit ctx: Context[K,V]): Leaf[K,V] = {
     val target = t.asInstanceOf[Leaf[K,V]]
 
     val len = tuples.length
@@ -77,7 +77,7 @@ class Leaf[K, V](override val id: String,
     target
   }
 
-  override def borrowRightTo(t: Block[K,V])(implicit ctx: Context[K,V], ctxId: String): Block[K,V] = {
+  override def borrowRightTo(t: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V] = {
     val target = t.asInstanceOf[Leaf[K,V]]
 
     val n = target.minNeeded()
@@ -87,7 +87,7 @@ class Leaf[K, V](override val id: String,
     target
   }
 
-  override def merge(r: Block[K,V])(implicit ctx: Context[K,V], ctxId: String): Block[K,V] = {
+  override def merge(r: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V] = {
     val right = r.asInstanceOf[Leaf[K,V]]
 
     tuples = tuples ++ right.tuples
@@ -101,14 +101,14 @@ class Leaf[K, V](override val id: String,
 
   override def hasMinimum(): Boolean = tuples.length >= MIN
 
-  override def copy()(implicit ctx: Context[K, V], ctxId: String): Leaf[K,V] = {
+  override def copy()(implicit ctx: Context[K, V]): Leaf[K,V] = {
     //if(ctx.isNew(unique_id)) return this
     if(isNew) return this
 
-    val (p, pos) = ctx.getParent(ctxId, unique_id).get
+    val (p, pos) = ctx.getParent(unique_id).get
 
-    val copy = ctx.createLeaf(ctxId)
-    ctx.setParent(ctxId, copy.unique_id, pos, p)
+    val copy = ctx.createLeaf()
+    ctx.setParent(copy.unique_id, pos, p)
 
     val len = tuples.length
 
@@ -122,8 +122,8 @@ class Leaf[K, V](override val id: String,
     copy
   }
   
-  override def split()(implicit ctx: Context[K,V], ctxId: String): Leaf[K,V] = {
-    val right = ctx.createLeaf(ctxId)
+  override def split()(implicit ctx: Context[K,V]): Leaf[K,V] = {
+    val right = ctx.createLeaf()
 
     val len = tuples.length
     val pos = len/2

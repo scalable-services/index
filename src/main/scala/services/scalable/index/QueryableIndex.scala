@@ -12,13 +12,12 @@ import scala.concurrent.{ExecutionContext, Future}
  * the pattern to be compared to.
  */
 class QueryableIndex[K, V](c: IndexContext)(override implicit val ec: ExecutionContext,
-                                                  override val ctx: Context[K, V],
                                                   override val storage: Storage,
                                                   override val serializer: Serializer[Block[K, V]],
                                                   override val cache: Cache,
                                                   override val ord: Ordering[K],
                                                   override val idGenerator: IdGenerator)
-  extends Index[K, V](c)(ec, ctx, storage, serializer, cache, ord, idGenerator) {
+  extends Index[K, V](c)(ec, storage, serializer, cache, ord, idGenerator) {
 
   override val $this = this
 
@@ -47,7 +46,7 @@ class QueryableIndex[K, V](c: IndexContext)(override implicit val ec: ExecutionC
         }
 
       override def hasNext(): Future[Boolean] = {
-        if(!firstTime) return Future.successful(root.isDefined)
+        if(!firstTime) return Future.successful(ctx.root.isDefined)
         Future.successful(!stop && cur.isDefined)
       }
 
@@ -131,7 +130,7 @@ class QueryableIndex[K, V](c: IndexContext)(override implicit val ec: ExecutionC
       }
 
       override def hasNext(): Future[Boolean] = {
-        if(!firstTime) return Future.successful(root.isDefined)
+        if(!firstTime) return Future.successful(ctx.root.isDefined)
         Future.successful(!stop && cur.isDefined)
       }
 
@@ -213,7 +212,7 @@ class QueryableIndex[K, V](c: IndexContext)(override implicit val ec: ExecutionC
       }
 
       override def hasNext(): Future[Boolean] = {
-        if(!firstTime) return Future.successful(root.isDefined)
+        if(!firstTime) return Future.successful(ctx.root.isDefined)
         Future.successful(!stop && cur.isDefined)
       }
 
@@ -298,7 +297,7 @@ class QueryableIndex[K, V](c: IndexContext)(override implicit val ec: ExecutionC
       }
 
       override def hasNext(): Future[Boolean] = {
-        if(!firstTime) return Future.successful(root.isDefined)
+        if(!firstTime) return Future.successful(ctx.root.isDefined)
         Future.successful(!stop && cur.isDefined)
       }
 
@@ -376,7 +375,7 @@ class QueryableIndex[K, V](c: IndexContext)(override implicit val ec: ExecutionC
         }
 
       override def hasNext(): Future[Boolean] = {
-        if(!firstTime) return Future.successful(root.isDefined)
+        if(!firstTime) return Future.successful(ctx.root.isDefined)
         Future.successful(!stop && cur.isDefined)
       }
 
@@ -461,7 +460,7 @@ class QueryableIndex[K, V](c: IndexContext)(override implicit val ec: ExecutionC
         }
 
       override def hasNext(): Future[Boolean] = {
-        if(!firstTime) return Future.successful(root.isDefined)
+        if(!firstTime) return Future.successful(ctx.root.isDefined)
         Future.successful(!stop && cur.isDefined)
       }
 
@@ -533,7 +532,7 @@ class QueryableIndex[K, V](c: IndexContext)(override implicit val ec: ExecutionC
     new RichAsyncIterator[K, V] {
 
       override def hasNext(): Future[Boolean] = {
-        if(!firstTime) return Future.successful(root.isDefined)
+        if(!firstTime) return Future.successful(ctx.root.isDefined)
         Future.successful(!stop && cur.isDefined)
       }
 
@@ -597,7 +596,7 @@ class QueryableIndex[K, V](c: IndexContext)(override implicit val ec: ExecutionC
 
     new RichAsyncIterator[K, V] {
       override def hasNext(): Future[Boolean] = {
-        if(!firstTime) return Future.successful(root.isDefined)
+        if(!firstTime) return Future.successful(ctx.root.isDefined)
         Future.successful(!stop && cur.isDefined)
       }
 
