@@ -83,6 +83,15 @@ package object index {
       }
     }
 
+    implicit val dbCtxSerializer = new Serializer[DBContext] {
+      override def serialize(t: DBContext): Bytes = {
+        Any.pack(t).toByteArray
+      }
+      override def deserialize(b: Bytes): DBContext = {
+        Any.parseFrom(b).unpack(DBContext)
+      }
+    }
+
     implicit val longSerializer = new Serializer[Long] {
       override def serialize(t: Long): Bytes = {
         ByteBuffer.allocate(8).putLong(t).array()
