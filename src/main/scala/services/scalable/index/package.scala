@@ -69,6 +69,11 @@ package object index {
       override def deserialize(b: Array[Byte]): Bytes = b
     }
 
+    implicit val dbContextSerializer = new Serializer[DBContext] {
+      override def serialize(t: DBContext): Array[Byte] = Any.pack(t).toByteArray
+      override def deserialize(b: Array[Byte]): DBContext = Any.parseFrom(b).unpack(DBContext)
+    }
+
     implicit val ctxSerializer = new Serializer[IndexView] {
       override def serialize(t: IndexView): Bytes = {
         Any.pack(t).toByteArray
