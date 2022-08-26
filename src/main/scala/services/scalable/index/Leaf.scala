@@ -156,6 +156,11 @@ class Leaf[K, V](override val id: String,
     Some(tuples(pos))
   }
 
+  def findPath(k: K)(implicit ord: Ordering[K]): (Boolean, Tuple[K, V]) = {
+    val (found, pos) = binSearch(k)
+    found -> tuples(if(pos == tuples.length) pos - 1 else pos)
+  }
+
   def lt(k: K, include: Boolean = false)(implicit ord: Ordering[K]): Seq[Tuple[K,V]] = {
     if(include) return tuples.filter{case (k1, _) => ord.lteq(k1, k)}.reverse
     tuples.filter{case (k1, _) => ord.lt(k1, k)}.reverse
