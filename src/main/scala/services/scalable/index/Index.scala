@@ -470,7 +470,7 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
     remove()
   }
 
-  protected def updateLeaf(left: Leaf[K,V], data: Seq[Tuple[K,V]])(implicit ord: Ordering[K]): Future[Int] = {
+  protected def updateLeaf(left: Leaf[K,V], data: Seq[Tuple3[K,V, String]])(implicit ord: Ordering[K]): Future[Int] = {
     val result = left.update(data)
 
     if(result.isFailure) return Future.failed(result.failed.get)
@@ -478,11 +478,11 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
     recursiveCopy(left).map(_ => result.get)
   }
 
-  def update(data: Seq[Tuple[K,V]])(implicit ord: Ordering[K]): Future[Int] = {
+  def update(data: Seq[Tuple3[K, V, String]])(implicit ord: Ordering[K]): Future[Int] = {
 
     val sorted = data.sortBy(_._1)
 
-    if(sorted.exists{case (k, _) => sorted.count{case (k1,_) => ord.equiv(k, k1)} > 1}){
+    if(sorted.exists{case (k, _, _) => sorted.count{case (k1,_, _) => ord.equiv(k, k1)} > 1}){
       return Future.failed(Errors.DUPLICATE_KEYS(sorted))
     }
 
@@ -493,13 +493,13 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
       if(len == pos) return Future.successful(sorted.length)
 
       var list = sorted.slice(pos, len)
-      val (k, _) = list(0)
+      val (k, _, _) = list(0)
 
       findPath(k).flatMap {
         case None => Future.failed(Errors.KEY_NOT_FOUND(k))
         case Some(leaf) =>
 
-          val idx = list.indexWhere{case (k, _) => ord.gt(k, leaf.last)}
+          val idx = list.indexWhere{case (k, _, _) => ord.gt(k, leaf.last)}
           if(idx > 0) list = list.slice(0, idx)
 
           updateLeaf(leaf.copy(), list)
