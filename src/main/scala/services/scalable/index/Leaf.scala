@@ -11,14 +11,14 @@ class Leaf[K, V](override val id: String,
 
   val logger = LoggerFactory.getLogger(this.getClass)
 
-  var tuples = Seq.empty[Tuple[K,V]]
+  var tuples = Seq.empty[Tuple[K, V]]
 
   override def last: K = tuples.last._1
   override def first: K = tuples.head._1
 
   override def nSubtree: Long = tuples.length.toLong
 
-  def insert(data: Seq[Tuple[K,V]], upsert: Boolean)(implicit ord: Ordering[K]): Try[Int] = {
+  def insert(data: Seq[Tuple[K, V]], upsert: Boolean)(implicit ord: Ordering[K]): Try[Int] = {
     
     if(isFull()) return Failure(Errors.LEAF_BLOCK_FULL)
 
@@ -27,12 +27,12 @@ class Leaf[K, V](override val id: String,
 
     val len = slice.length
 
-    if(slice.exists{case (k, _) => tuples.exists{case (k1, _) => ord.equiv(k, k1)}}){
+    if(slice.exists{case (k, _, _) => tuples.exists{case (k1, _, _) => ord.equiv(k, k1)}}){
       if(!upsert){
         return Failure(Errors.LEAF_DUPLICATE_KEY(inOrder(), slice))
       }
 
-      slice = slice.filterNot{case (k, _) => tuples.exists{case (k1, _) => ord.equiv(k, k1)}}
+      slice = slice.filterNot{case (k, _, _) => tuples.exists{case (k1, _, _) => ord.equiv(k, k1)}}
     }
 
     tuples = (tuples ++ slice).sortBy(_._1)
@@ -41,24 +41,30 @@ class Leaf[K, V](override val id: String,
   }
 
   def remove(keys: Seq[K])(implicit ord: Ordering[K]): Try[Int] = {
-    if(keys.exists{ k => !tuples.exists{ case (k1, _) => ord.equiv(k1, k) }}){
+    if(keys.exists{ k => !tuples.exists{ case (k1, _, _) => ord.equiv(k1, k) }}){
       return Failure(Errors.LEAF_KEY_NOT_FOUND[K](keys))
     }
 
-    tuples = tuples.filterNot{case (k, _) => keys.exists{ k1 => ord.equiv(k, k1)}}
+    tuples = tuples.filterNot{case (k, _, _) => keys.exists{ k1 => ord.equiv(k, k1)}}
 
     Success(keys.length)
   }
 
-  def update(data: Seq[Tuple[K,V]])(implicit ord: Ordering[K]): Try[Int] = {
+  def update(data: Seq[Tuple[K, V]], version: String)(implicit ord: Ordering[K]): Try[Int] = {
 
-    if(data.exists{ case (k, _) => !tuples.exists{case (k1, _) => ord.equiv(k1, k) }}){
+    if(data.exists{ case (k, _, _) => !tuples.exists{case (k1, _, _) => ord.equiv(k1, k) }}){
       return Failure(Errors.LEAF_KEY_NOT_FOUND(data.map(_._1)))
     }
 
-    val notin = tuples.filterNot{case (k1, _) => data.exists{ case (k, _) => ord.equiv(k, k1)}}
+    val versionsChanged = data.filter{case (k0, _, vs0) => tuples.exists{case (k1, _, vs1) => ord.equiv(k0, k1) && !vs0.equals(vs1)}}
 
-    tuples = (notin ++ data).sortBy(_._1)
+    if (!versionsChanged.isEmpty) {
+      return Failure(Errors.VERSION_CHANGED(versionsChanged))
+    }
+
+    val notin = tuples.filterNot{case (k1, _, _) => data.exists{ case (k, _, _) => ord.equiv(k, k1)}}
+
+    tuples = (notin ++ data.map{case (k, v, _) => Tuple3(k, v, version)}).sortBy(_._1)
 
     Success(data.length)
   }
@@ -113,8 +119,8 @@ class Leaf[K, V](override val id: String,
     val len = tuples.length
 
     for(i<-0 until len){
-      val (k, v) = tuples(i)
-      copy.tuples = copy.tuples :+ k -> v
+      val (k, v, vs) = tuples(i)
+      copy.tuples = copy.tuples :+ Tuple3(k, v, vs)
     }
 
     copy.level = level
@@ -162,8 +168,8 @@ class Leaf[K, V](override val id: String,
   }
 
   def lt(k: K, include: Boolean = false)(implicit ord: Ordering[K]): Seq[Tuple[K,V]] = {
-    if(include) return tuples.filter{case (k1, _) => ord.lteq(k1, k)}.reverse
-    tuples.filter{case (k1, _) => ord.lt(k1, k)}.reverse
+    if(include) return tuples.filter{case (k1, _, _) => ord.lteq(k1, k)}.reverse
+    tuples.filter{case (k1, _, _) => ord.lt(k1, k)}.reverse
   }
 
   def lte(k: K)(implicit ord: Ordering[K]): Seq[Tuple[K,V]] = {
@@ -171,8 +177,8 @@ class Leaf[K, V](override val id: String,
   }
 
   def gt(k: K, include: Boolean = false)(implicit ord: Ordering[K]): Seq[Tuple[K,V]] = {
-    if(include) return tuples.filter{case (k1, _) => ord.gteq(k1, k)}
-    tuples.filter{case (k1, _) => ord.gt(k1, k)}
+    if(include) return tuples.filter{case (k1, _, _) => ord.gteq(k1, k)}
+    tuples.filter{case (k1, _, _) => ord.gt(k1, k)}
   }
 
   def gte(k: K)(implicit ord: Ordering[K]): Seq[Tuple[K,V]] = {
@@ -180,7 +186,7 @@ class Leaf[K, V](override val id: String,
   }
 
   def interval(lower: K, upper: K, includeLower: Boolean = false, includeUpper: Boolean = false)(implicit ord: Ordering[K]): Seq[Tuple[K,V]] = {
-    tuples.filter{case (k, _) => (if(includeLower) ord.gteq(k, lower) else ord.gt(k, lower)) && (if(includeUpper) ord.lteq(k, upper) else ord.lt(k, upper))}
+    tuples.filter{case (k, _, _) => (if(includeLower) ord.gteq(k, lower) else ord.gt(k, lower)) && (if(includeUpper) ord.lteq(k, upper) else ord.lt(k, upper))}
   }
 
   def min()(implicit ord: Ordering[K]): Option[Tuple[K,V]] = {
@@ -202,7 +208,7 @@ class Leaf[K, V](override val id: String,
     sb ++= Console.RESET
 
     for(i<-0 until tuples.length - 1){
-      val (k, v) = tuples(i)
+      val (k, v, _) = tuples(i)
       sb ++= kf(k)
 
       sb ++= "->"
@@ -212,7 +218,7 @@ class Leaf[K, V](override val id: String,
     }
 
     sb ++= Console.RED_B
-    val (k, v) = tuples(tuples.length - 1)
+    val (k, v, _) = tuples(tuples.length - 1)
     sb ++= kf(k)
     sb ++= Console.RESET
 

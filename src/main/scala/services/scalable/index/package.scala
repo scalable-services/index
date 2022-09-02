@@ -15,7 +15,7 @@ import scala.concurrent.{ExecutionContext, Future}
 package object index {
 
   type Bytes = Array[Byte]
-  type Tuple[K, V] = Tuple2[K, V]
+  type Tuple[K, V] = Tuple3[K, V, String]
   //type Pointer[K] = Tuple2[K, (String, String)]
 
   case class Pointer(partition: String, id: String, nElements: Long = 0L, level: Int = 0) {

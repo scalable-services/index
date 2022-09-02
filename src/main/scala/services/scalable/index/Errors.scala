@@ -18,7 +18,7 @@ object Errors {
 
   case class BLOCK_NOT_FOUND(id: String) extends RuntimeException(s"Block ${id} not found!") with IndexError
 
-  case class DUPLICATE_KEYS[K,V](keys: Seq[Tuple[K,V]]) extends RuntimeException("Duplicate keys") with IndexError
+  case class DUPLICATE_KEYS[K,V](keys: Seq[K]) extends RuntimeException("Duplicate keys") with IndexError
 
   case class KEY_NOT_FOUND[K](k: K) extends RuntimeException(s"Key not found!") with IndexError
 
@@ -33,4 +33,5 @@ object Errors {
   case class INDEX_ALREADY_EXISTS(id: String) extends RuntimeException(s"Index ${id} already exists!") with IndexError
   case class DB_ALREADY_EXISTS(id: String) extends RuntimeException(s"DB ${id} already exists!") with DBError
 
+  case class VERSION_CHANGED[K, V](data: Seq[Tuple[K, V]]) extends RuntimeException(s"Key version for ${data} has changed!") with IndexError
 }

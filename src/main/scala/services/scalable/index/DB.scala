@@ -95,7 +95,7 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
               .withLatest(view)
               .withHistory(history.snapshot())
 
-            history.execute(Seq(Commands.Insert(history.ctx.indexId, Seq(time -> view))))
+            history.execute(Seq(Commands.Insert(history.ctx.indexId, Seq(Tuple2(time, view)))))
         }
     }
   }

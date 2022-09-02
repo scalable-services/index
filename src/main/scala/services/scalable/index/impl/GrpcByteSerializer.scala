@@ -25,8 +25,12 @@ final class GrpcByteSerializer[K, V](implicit val ks: Serializer[K], val vs: Ser
       val input = block match {
         case leaf: Leaf[K,V] =>
 
-          Any.pack(LeafBlock(leaf.id, leaf.partition, leaf.tuples.map { case (k, v) =>
-            KVPair(ByteString.copyFrom(ks.serialize(k)), ByteString.copyFrom(vs.serialize(v)))
+          Any.pack(LeafBlock(leaf.id, leaf.partition, leaf.tuples.map { case (k, v, version) =>
+            KVPair(
+              ByteString.copyFrom(ks.serialize(k)),
+              ByteString.copyFrom(vs.serialize(v)),
+              version
+            )
           }, block.MIN, block.MAX,
             if(leaf.root.isDefined){
               val (partition, id) = leaf.root.get
@@ -74,7 +78,7 @@ final class GrpcByteSerializer[K, V](implicit val ks: Serializer[K], val vs: Ser
 
         val leaf = parsed.unpack(LeafBlock)
 
-        val tuples = Array(leaf.tuples.map { t => ks.deserialize(t.key.toByteArray) -> vs.deserialize(t.value.toByteArray) }: _*)
+        val tuples = Array[Tuple3[K, V, String]](leaf.tuples.map { t => Tuple3(ks.deserialize(t.key.toByteArray), vs.deserialize(t.value.toByteArray), t.version) }: _*)
 
         val block = new Leaf[K,V](leaf.id, leaf.partition, leaf.min, leaf.max, bytes.length)
 

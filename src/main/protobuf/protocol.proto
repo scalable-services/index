@@ -20,6 +20,7 @@ option (scalapb.options) = {
 message KVPair {
   bytes key = 1;
   bytes value = 2;
+  string version = 3;
 }
 
 message Link {
@@ -84,6 +85,7 @@ message InsertCommand {
   option (scalapb.message).extends = "services.scalable.index.grpc.IndexCommand";
 
   repeated KVPair list = 1;
+  bool upsert = 2;
 }
 
 message RemoveCommand {

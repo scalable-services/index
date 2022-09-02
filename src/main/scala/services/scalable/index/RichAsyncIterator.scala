@@ -26,7 +26,7 @@ abstract class RichAsyncIterator[K, V]() extends AsyncIterator[Seq[Tuple[K, V]]]
     this.filter = f
   }
 
-  def checkCounter(filtered: Seq[Tuple[K, V]]): Seq[Tuple2[K, V]] = synchronized {
+  def checkCounter(filtered: Seq[Tuple[K, V]]): Seq[Tuple[K, V]] = synchronized {
     val len = filtered.length
 
     if(counter + len >= limit){
