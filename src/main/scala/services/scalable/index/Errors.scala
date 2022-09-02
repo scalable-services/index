@@ -33,4 +33,5 @@ object Errors {
   case class INDEX_ALREADY_EXISTS(id: String) extends RuntimeException(s"Index ${id} already exists!") with IndexError
   case class DB_ALREADY_EXISTS(id: String) extends RuntimeException(s"DB ${id} already exists!") with DBError
 
+  case class VERSION_CHANGED[K, V](data: Seq[Tuple[K, V]]) extends RuntimeException(s"Key version for ${data} has changed!") with IndexError
 }
