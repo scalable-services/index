@@ -53,7 +53,7 @@ class DBSpec extends Repeatable {
 
     def insert(): Seq[Commands.Command[K, V]] = {
       val n = 100//rand.nextInt(1, 100)
-      var list = Seq.empty[Tuple[K, V]]
+      var list = Seq.empty[Tuple2[K, V]]
 
       for(i<-0 until n){
         val k = RandomStringUtils.randomAlphanumeric(5, 10).getBytes(Charsets.UTF_8)
@@ -95,11 +95,11 @@ class DBSpec extends Repeatable {
 
     val latest = Await.result(TestHelper.all(db.indexes("main").inOrder()), Duration.Inf)
 
-    logger.debug(s"${Console.GREEN_B}t0: ${t0list.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
-    logger.debug(s"${Console.MAGENTA_B}t1: ${t1list.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
-    logger.debug(s"${Console.YELLOW_B}latest: ${latest.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
+    logger.debug(s"${Console.GREEN_B}t0: ${t0list.map{case (k, v, _) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
+    logger.debug(s"${Console.MAGENTA_B}t1: ${t1list.map{case (k, v, _) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
+    logger.debug(s"${Console.YELLOW_B}latest: ${latest.map{case (k, v, _) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
 
-    logger.debug(s"${Console.CYAN_B}db2 main: ${list.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
+    logger.debug(s"${Console.CYAN_B}db2 main: ${list.map{case (k, v, _) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
   }
 
 }

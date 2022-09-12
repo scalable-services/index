@@ -149,7 +149,7 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
                            (implicit ord: Ordering[K]): Future[Int] = {
     val leaf = ctx.createLeaf()
 
-    leaf.insert(data.map{case (k, v) => Tuple3(k, v, version)}, upsert) match {
+    leaf.insert(data, upsert, version) match {
       case Success(n) =>
 
         ctx.levels += 1
@@ -234,12 +234,12 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
         list = list.takeWhile{case (k, _) => ord.lt(k, rightLast)}
       }
 
-      val rn = right.insert(list.map{case (k, v) => Tuple3(k, v, version)}, upsert)
+      val rn = right.insert(list, upsert, version)
 
       return handleParent(left, right).map(_ => rn.get)
     }
 
-    val ln = left.insert(list.takeWhile{case (k, _) => ord.lt(k, leftLast)}.map{case (k, v) => Tuple3(k, v, version)}, upsert)
+    val ln = left.insert(list.takeWhile{case (k, _) => ord.lt(k, leftLast)}, upsert, version)
 
     handleParent(left, right).map{_ => ln.get}
   }
@@ -256,7 +256,7 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
       return splitLeaf(left, data, upsert, version)
     }
 
-    left.insert(data.map{case (k, v) => Tuple3(k, v, version)}, upsert) match {
+    left.insert(data, upsert, version) match {
       case Success(n) => recursiveCopy(left).map{_ => n}
       case Failure(ex) => Future.failed(ex)
     }

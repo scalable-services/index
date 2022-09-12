@@ -33,7 +33,6 @@ class LoadDBFromStorageSpec extends Repeatable {
     val NUM_META_ENTRIES = 32
 
     val dbId = TestConfig.DATABASE
-    val indexId = "main"
 
     import services.scalable.index.DefaultSerializers._
 
@@ -68,9 +67,9 @@ class LoadDBFromStorageSpec extends Repeatable {
 
     val latest = Await.result(TestHelper.all(db.indexes("main").inOrder()), Duration.Inf)
 
-    logger.debug(s"${Console.GREEN_B}t0: ${t0list.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
-    logger.debug(s"${Console.MAGENTA_B}t1: ${t1list.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
-    logger.debug(s"${Console.YELLOW_B}latest: ${latest.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
+    logger.debug(s"${Console.GREEN_B}t0: ${t0list.map{case (k, v, _) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
+    logger.debug(s"${Console.MAGENTA_B}t1: ${t1list.map{case (k, v, _) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
+    logger.debug(s"${Console.YELLOW_B}latest: ${latest.map{case (k, v, _) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
   }
 
 }

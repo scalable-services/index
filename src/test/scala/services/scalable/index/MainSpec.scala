@@ -50,7 +50,7 @@ class MainSpec extends Repeatable {
 
     def insert(): Unit = {
       val n = 100//rand.nextInt(1, 100)
-      var list = Seq.empty[Tuple[K, V]]
+      var list = Seq.empty[Tuple2[K, V]]
 
       for(i<-0 until n){
         val k = RandomStringUtils.randomAlphanumeric(5, 10).getBytes(Charsets.UTF_8)
@@ -79,7 +79,7 @@ class MainSpec extends Repeatable {
     logger.info(Await.result(index.save(), Duration.Inf).toString)
 
     val dlist = data.sortBy(_._1)
-    val ilist = Await.result(TestHelper.all(index.inOrder()), Duration.Inf)
+    val ilist = Await.result(TestHelper.all(index.inOrder()), Duration.Inf).map{case (k, v, _) => k -> v}
 
     logger.debug(s"${Console.GREEN_B}tdata: ${dlist.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
     logger.debug(s"${Console.MAGENTA_B}idata: ${ilist.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")

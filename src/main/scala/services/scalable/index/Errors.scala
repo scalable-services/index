@@ -8,7 +8,7 @@ object Errors {
   case object LEAF_BLOCK_FULL extends RuntimeException("Leaf is full!") with IndexError
   case object META_BLOCK_FULL extends RuntimeException("Meta is full!") with IndexError
 
-  case class LEAF_DUPLICATE_KEY[K,V](keys: Seq[Tuple[K,V]], inserting: Seq[Tuple[K,V]]) extends RuntimeException(s"Duplicate elements on leaf!")
+  case class LEAF_DUPLICATE_KEY[K,V](keys: Seq[Tuple2[K,V]], inserting: Seq[Tuple2[K,V]]) extends RuntimeException(s"Duplicate elements on leaf!")
     with IndexError
   case class LEAF_KEY_NOT_FOUND[K](keys: Seq[K]) extends RuntimeException(s"Missing key on leaf") with IndexError
 
