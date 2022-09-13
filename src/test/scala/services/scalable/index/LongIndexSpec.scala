@@ -1,17 +1,14 @@
 package services.scalable.index
 
-import com.google.common.base.Charsets
 import io.netty.util.internal.ThreadLocalRandom
-import org.apache.commons.lang3.RandomStringUtils
 import org.slf4j.LoggerFactory
 import services.scalable.index.impl._
 
-import java.math.MathContext
 import java.util.UUID
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
 
-class IntIndexSpec extends Repeatable {
+class LongIndexSpec extends Repeatable {
 
   override val times: Int = 1
 
