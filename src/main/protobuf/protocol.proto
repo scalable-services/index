@@ -99,3 +99,9 @@ message UpdateCommand {
 
   repeated KVPair list = 1;
 }
+
+message DecimalValue {
+  uint32 scale = 1;
+  uint32 precision = 2;
+  bytes value = 3;
+}

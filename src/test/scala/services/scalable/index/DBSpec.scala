@@ -59,7 +59,7 @@ class DBSpec extends Repeatable {
         val k = RandomStringUtils.randomAlphanumeric(5, 10).getBytes(Charsets.UTF_8)
         val v = RandomStringUtils.randomAlphanumeric(5).getBytes(Charsets.UTF_8)
 
-        if(!data.exists{case (k1, _) => ord.equiv(k, k1)}){
+        if(!data.exists{case (k1, _) => ord.equiv(k, k1)} && !list.exists{case (k1, _) => ord.equiv(k, k1)}){
           list = list :+ (k -> v)
         }
       }
