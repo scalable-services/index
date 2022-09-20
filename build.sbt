@@ -3,7 +3,7 @@ name := "index"
 
 version := "0.16"
 
-scalaVersion := "2.13.6"
+scalaVersion := "2.13.8"
 
 libraryDependencies ++= Seq(
   "org.scalactic" %% "scalactic" % "3.1.0",
@@ -26,9 +26,10 @@ libraryDependencies ++= Seq(
   "org.apache.commons" % "commons-compress" % "1.21"
 )
 
+
 libraryDependencies += "com.thesamet.scalapb" %% "scalapb-runtime" % scalapb.compiler.Version.scalapbVersion % "protobuf"
 
-addCommandAlias("history-test", "testOnly services.scalable.index.HistorySpec")
+//addCommandAlias("history-test", "testOnly services.scalable.index.HistorySpec")
 addCommandAlias("main-test", "testOnly services.scalable.index.MainSpec")
 
 enablePlugins(AkkaGrpcPlugin)

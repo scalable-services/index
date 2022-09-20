@@ -1,10 +1,5 @@
 syntax = "proto3";
 
-//#options
-option java_multiple_files = true;
-option java_package = "services.scalable.index.grpc";
-option java_outer_classname = "ClientServiceProto";
-
 import "scalapb/scalapb.proto";
 import "google/protobuf/wrappers.proto";
 

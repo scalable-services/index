@@ -14,10 +14,10 @@ trait Storage {
   def createIndex(id: String, num_leaf_entries: Int, num_meta_entries: Int): Future[IndexContext]
 
   def loadOrCreateDB(id: String): Future[DBContext]
-  def loadDB(id: String): Future[DBContext]
+  def loadDB(id: String): Future[Option[DBContext]]
 
   def loadOrCreateIndex(id: String, num_leaf_entries: Int, num_meta_entries: Int): Future[IndexContext]
-  def loadIndex(id: String): Future[IndexContext]
+  def loadIndex(id: String): Future[Option[IndexContext]]
 
   def close(): Future[Unit]
 

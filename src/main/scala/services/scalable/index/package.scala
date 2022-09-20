@@ -11,8 +11,8 @@ import java.math.{BigInteger, MathContext}
 import java.nio.ByteBuffer
 import java.util.UUID
 import java.util.concurrent.CompletionStage
-import scala.compat.java8.FutureConverters.toScala
 import scala.concurrent.{ExecutionContext, Future}
+import scala.jdk.FutureConverters.CompletionStageOps
 
 package object index {
 
@@ -24,7 +24,7 @@ package object index {
     def unique_id: (String, String) = (partition, id)
   }
 
-  implicit def toScalaFuture[T](cs: CompletionStage[T]) = toScala[T](cs)
+  implicit def toScalaFuture[T](cs: CompletionStage[T]) = cs.asScala
 
   def serialiseFutures[A, B](l: Iterable[A])(fn: A ⇒ Future[B])(implicit ec: ExecutionContext): Future[List[B]] =
     l.foldLeft(Future(List.empty[B])) {
@@ -172,14 +172,14 @@ package object index {
 
     implicit val bigDecimalSerializer = new Serializer[BigDecimal] {
       override def serialize(t: BigDecimal): Bytes = {
-        Any.pack(DecimalValue()
+        DecimalValue.toByteArray(DecimalValue()
           .withScale(t.scale)
           .withPrecision(t.precision)
-          .withValue(ByteString.copyFrom(t.toString().getBytes("UTF-8")))).toByteArray
+          .withValue(ByteString.copyFrom(t.toString().getBytes("UTF-8"))))
       }
 
       override def deserialize(b: Bytes): BigDecimal = {
-        val dec = Any.parseFrom(b).unpack(DecimalValue)
+        val dec = DecimalValue.parseFrom(b)
         val mc = new MathContext(dec.scale)
         BigDecimal(dec.value.toString("UTF-8"), mc)
       }
@@ -205,10 +205,10 @@ package object index {
 
     implicit val ctxSerializer = new Serializer[IndexView] {
       override def serialize(t: IndexView): Bytes = {
-        Any.pack(t).toByteArray
+        IndexView.toByteArray(t)
       }
       override def deserialize(b: Bytes): IndexView = {
-        Any.parseFrom(b).unpack(IndexView)
+        IndexView.parseFrom(b)
       }
     }
 

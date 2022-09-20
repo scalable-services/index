@@ -72,7 +72,7 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
       }
     }
 
-    val groups = cmds.groupBy(_.id)
+    val groups = cmds.groupBy(_.indexId)
 
     Future.sequence(groups.map{ case (id, cmds) => exec(id, cmds)}).flatMap {
       case results if results.exists(_.isEmpty) => Future.successful(false)
@@ -102,7 +102,7 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
 
   def save(): Future[DBContext] = {
     /*val ictxs = indexes.map{case (id, i) => id -> i.snapshot()}
-    val view = ctx.latest.withIndexes(indexes.map{case (id, i) => id -> ictxs(id)})*/
+    val view = ctx.latest.withIndexes(indexes.map{case (id, i) => id -> ictxs(id)}.toMap)*/
 
     if(history.isEmpty) {
       /*ctx = ctx

@@ -62,45 +62,45 @@ class CassandraStorage(val KEYSPACE: String,
   }
 
   override def loadOrCreateDB(id: String): Future[DBContext] = {
-    loadDB(id).recoverWith {
-      case e: Errors.DB_NOT_FOUND => createDB(id)
-      case e => Future.failed(e)
+    loadDB(id).flatMap {
+      case None => createDB(id)
+      case Some(db) => Future.successful(db)
     }
   }
 
   override def loadOrCreateIndex(id: String, num_leaf_entries: Int, num_meta_entries: Int): Future[IndexContext] = {
-    loadIndex(id).recoverWith {
-      case e: Errors.INDEX_NOT_FOUND => createIndex(id, num_leaf_entries, num_meta_entries)
-      case e => Future.failed(e)
+    loadIndex(id).flatMap {
+      case None => createIndex(id, num_leaf_entries, num_meta_entries)
+      case Some(index) => Future.successful(index)
     }
   }
 
-  override def loadDB(id: String): Future[DBContext] = {
+  override def loadDB(id: String): Future[Option[DBContext]] = {
     session.executeAsync(SELECT_DB.bind().setString(0, id)).flatMap { rs =>
       val one = rs.one()
 
       if(one == null){
-        Future.failed(Errors.DB_NOT_FOUND(id))
+        Future.successful(None)
       } else {
         val r = one.getByteBuffer("buf")
         val db = Any.parseFrom(r.array()).unpack(DBContext)
 
-        Future.successful(db)
+        Future.successful(Some(db))
       }
     }
   }
 
-  override def loadIndex(id: String): Future[IndexContext] = {
+  override def loadIndex(id: String): Future[Option[IndexContext]] = {
     session.executeAsync(SELECT_INDEX.bind().setString(0, id)).flatMap { rs =>
       val one = rs.one()
 
       if(one == null){
-        Future.failed(Errors.INDEX_NOT_FOUND(id))
+        Future.successful(None)
       } else {
         val r = one.getByteBuffer("buf")
         val index = Any.parseFrom(r.array()).unpack(IndexContext)
 
-        Future.successful(index)
+        Future.successful(Some(index))
       }
     }
   }
@@ -114,6 +114,7 @@ class CassandraStorage(val KEYSPACE: String,
   }
 
   protected def updateDB(db: DBContext): Future[Boolean] = {
+    //val buf = ByteBuffer.wrap(DBContext.toByteArray(db))
     val buf = ByteBuffer.wrap(Any.pack(db).toByteArray)
 
     session.executeAsync(UPDATE_DB.bind().setByteBuffer(0, buf)
@@ -121,6 +122,7 @@ class CassandraStorage(val KEYSPACE: String,
   }
 
   protected def updateIndex(index: IndexContext): Future[Boolean] = {
+    //val buf = ByteBuffer.wrap(IndexContext.toByteArray(index))
     val buf = ByteBuffer.wrap(Any.pack(index).toByteArray)
 
     session.executeAsync(UPDATE_INDEX.bind().setByteBuffer(0, buf)

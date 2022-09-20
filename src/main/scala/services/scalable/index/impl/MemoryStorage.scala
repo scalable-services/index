@@ -40,17 +40,17 @@ class MemoryStorage(val NUM_LEAF_ENTRIES: Int, val NUM_META_ENTRIES: Int)(implic
     Future.successful(true)
   }
 
-  override def loadDB(id: String): Future[DBContext] = {
+  override def loadDB(id: String): Future[Option[DBContext]] = {
     databases.get(id) match {
-      case None => Future.failed(Errors.DB_NOT_FOUND(id))
-      case Some(db) => Future.successful(db)
+      case None => Future.successful(None)
+      case Some(db) => Future.successful(Some(db))
     }
   }
 
-  override def loadIndex(id: String): Future[IndexContext] = {
+  override def loadIndex(id: String): Future[Option[IndexContext]] = {
     indexes.get(id) match {
       case None => Future.failed(Errors.INDEX_NOT_FOUND(id))
-      case Some(index) => Future.successful(index)
+      case Some(index) => Future.successful(Some(index))
     }
   }
 
@@ -77,16 +77,16 @@ class MemoryStorage(val NUM_LEAF_ENTRIES: Int, val NUM_META_ENTRIES: Int)(implic
   }
 
   override def loadOrCreateDB(name: String): Future[DBContext] = {
-    loadDB(name).recoverWith {
-      case e: Errors.DB_NOT_FOUND => createDB(name)
-      case e => Future.failed(e)
+    loadDB(name).flatMap {
+      case None => Future.failed(Errors.INDEX_NOT_FOUND(name))
+      case Some(index) => Future.successful(index)
     }
   }
 
   override def loadOrCreateIndex(name: String, num_leaf_entries: Int, num_meta_entries: Int): Future[IndexContext] = {
-    loadIndex(name).recoverWith {
-      case e: Errors.INDEX_NOT_FOUND => createIndex(name, num_leaf_entries, num_meta_entries)
-      case e => Future.failed(e)
+    loadIndex(name).flatMap {
+      case None => createIndex(name, num_leaf_entries, num_meta_entries)
+      case Some(index) => Future.successful(index)
     }
   }
 
