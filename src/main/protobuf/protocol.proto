@@ -74,6 +74,9 @@ message DBContext {
   string id = 1;
   IndexView latest = 2 [(scalapb.field).no_box = true];
   IndexContext history = 3;
+
+  int32 numLeafEntries = 4;
+  int32 numMetaEntries = 5;
 }
 
 message InsertCommand {
