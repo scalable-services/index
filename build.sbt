@@ -1,0 +1,35 @@
+organization := "services.scalable"
+name := "index"
+
+version := "0.16"
+
+scalaVersion := "2.13.8"
+
+libraryDependencies ++= Seq(
+  "org.scalactic" %% "scalactic" % "3.1.0",
+  "org.scalatest" %% "scalatest" % "3.1.0" % "test",
+
+  "ch.qos.logback" % "logback-classic" % "1.2.10",
+  "org.slf4j" % "slf4j-api" % "1.7.33",
+
+  "com.google.guava" % "guava" % "27.1-jre",
+  "org.apache.commons" % "commons-lang3" % "3.8.1",
+
+  "com.google.guava" % "guava" % "30.1-jre",
+
+  "com.github.ben-manes.caffeine" % "caffeine" % "2.8.8",
+
+  "com.datastax.oss" % "java-driver-core" % "4.13.0",
+
+  "org.scala-lang.modules" %% "scala-collection-compat" % "2.1.6",
+
+  "org.apache.commons" % "commons-compress" % "1.21"
+)
+
+
+libraryDependencies += "com.thesamet.scalapb" %% "scalapb-runtime" % scalapb.compiler.Version.scalapbVersion % "protobuf"
+
+//addCommandAlias("history-test", "testOnly services.scalable.index.HistorySpec")
+addCommandAlias("main-test", "testOnly services.scalable.index.MainSpec")
+
+enablePlugins(AkkaGrpcPlugin)
