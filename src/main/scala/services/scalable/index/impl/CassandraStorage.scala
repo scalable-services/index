@@ -108,6 +108,11 @@ class CassandraStorage(val KEYSPACE: String,
   override def get(id: (String, String)): Future[Array[Byte]] = {
     session.executeAsync(SELECT.bind().setString(0, id._1).setString(1, id._2)).map { rs =>
       val one = rs.one()
+
+      if(one == null){
+        println(id)
+      }
+
       val buf = one.getByteBuffer("bin")
       buf.array()
     }
@@ -130,25 +135,19 @@ class CassandraStorage(val KEYSPACE: String,
   }
 
   override def save(db: DBContext, blocks: Map[(String, String), Array[Byte]]): Future[Boolean] = {
-    val stm = BatchStatement.builder(DefaultBatchType.LOGGED)
-
-    blocks.map { case ((partition, id), bin) =>
-      stm.addStatement(INSERT
-        .bind()
-        .setString(0, partition)
-        .setString(1, id)
-        .setByteBuffer(2, ByteBuffer.wrap(bin))
-        .setInt(3, bin.length)
-      )
-    }
-
-    session.executeAsync(stm.build()).flatMap{ ok =>
-      if(ok.wasApplied()) updateDB(db) else Future.successful(false)
+    save(blocks).flatMap { ok =>
+      if (ok) updateDB(db) else Future.successful(false)
     }
   }
 
   override def save(index: IndexContext, blocks: Map[(String, String), Array[Byte]]): Future[Boolean] = {
-    val stm = BatchStatement.builder(DefaultBatchType.LOGGED)
+    save(blocks).flatMap { ok =>
+      if(ok) updateIndex(index) else Future.successful(false)
+    }
+  }
+
+  override def save(blocks: Map[(String, String), Array[Byte]]): Future[Boolean] = {
+    /*val stm = BatchStatement.builder(DefaultBatchType.LOGGED)
 
     blocks.map { case ((partition, id), bin) =>
       stm.addStatement(INSERT
@@ -160,9 +159,19 @@ class CassandraStorage(val KEYSPACE: String,
       )
     }
 
-    session.executeAsync(stm.build()).flatMap{ ok =>
-      if(ok.wasApplied()) updateIndex(index) else Future.successful(false)
-    }
+    session.executeAsync(stm.build()).map(_.wasApplied())*/
+
+    Future.sequence(blocks.map { case ((partition, id), bin) =>
+      session.executeAsync(INSERT
+        .bind()
+        .setString(0, partition)
+        .setString(1, id)
+        .setByteBuffer(2, ByteBuffer.wrap(bin))
+        .setInt(3, bin.length)).map(res => (partition, id) -> res.wasApplied())
+    }).map{ r =>
+      println(s"block ids not saved: ${r}")
+      r
+    }.map(r => !r.exists(_._2 == false))
   }
 
   override def close(): Future[Unit] = {

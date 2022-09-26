@@ -10,6 +10,8 @@ trait Storage {
   def save(index: IndexContext, blocks: Map[(String, String), Array[Byte]]): Future[Boolean]
   def save(db: DBContext, blocks: Map[(String, String), Array[Byte]]): Future[Boolean]
 
+  def save(blocks: Map[(String, String), Array[Byte]]): Future[Boolean]
+
   def createDB(id: String): Future[DBContext]
   def createIndex(id: String, num_leaf_entries: Int, num_meta_entries: Int): Future[IndexContext]
 

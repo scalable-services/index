@@ -29,6 +29,9 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
                                       val ord: Ordering[K],
                                       val idGenerator: IdGenerator){
 
+  assert(ictx.numLeafItems >= 4 && ictx.numMetaItems >= 4,
+    "Number of leaf and meta elements must be greater or equal to 4!")
+
   val logger = LoggerFactory.getLogger(this.getClass)
 
   implicit val ctx = Context.fromIndexContext(ictx)

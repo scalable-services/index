@@ -111,7 +111,7 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
       return storage.save(ctx, indexes.map(_._2.ctx.getBlocks()).foldLeft(TrieMap.empty[(String, String), Block[K, V]]){ case (p, n) =>
         p ++ n
       }.map{case (id, block) => id -> serializer.serialize(block)}.toMap).map { r =>
-        indexes.foreach(_._2.ctx.clear())
+       // indexes.foreach(_._2.ctx.clear())
         ctx
       }
     }
@@ -124,7 +124,7 @@ class DB[K, V](var ctx: DBContext = DBContext())(implicit val ec: ExecutionConte
         p ++ n
       }.map{case (id, block) => id -> serializer.serialize(block)}.toMap
         ++ history.get.ctx.getBlocks().map{case (id, block) => id -> grpcHistorySerializer.serialize(block)}).map { r =>
-        indexes.foreach(_._2.ctx.clear())
+        //indexes.foreach(_._2.ctx.clear())
         ctx
       }
   }

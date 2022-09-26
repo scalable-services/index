@@ -78,7 +78,7 @@ class MemoryStorage(val NUM_LEAF_ENTRIES: Int, val NUM_META_ENTRIES: Int)(implic
 
   override def loadOrCreateDB(name: String): Future[DBContext] = {
     loadDB(name).flatMap {
-      case None => Future.failed(Errors.INDEX_NOT_FOUND(name))
+      case None => createDB(name)
       case Some(index) => Future.successful(index)
     }
   }
@@ -88,6 +88,14 @@ class MemoryStorage(val NUM_LEAF_ENTRIES: Int, val NUM_META_ENTRIES: Int)(implic
       case None => createIndex(name, num_leaf_entries, num_meta_entries)
       case Some(index) => Future.successful(index)
     }
+  }
+
+  override def save(blocks: Map[(String, String), Array[Byte]]): Future[Boolean] = {
+    blocks.foreach { case (id, b) =>
+      this.blocks.put(id, b)
+    }
+
+    Future.successful(true)
   }
 
   override def close(): Future[Unit] = Future.successful()
