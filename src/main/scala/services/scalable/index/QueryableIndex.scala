@@ -1,7 +1,8 @@
 package services.scalable.index
 
-import services.scalable.index.grpc.IndexContext
+import services.scalable.index.grpc.{IndexContext, RootRef}
 
+import java.util.UUID
 import scala.concurrent.{ExecutionContext, Future}
 
 /**
@@ -11,7 +12,7 @@ import scala.concurrent.{ExecutionContext, Future}
  * order[T].compare(k, term): the first parameter of the compare function is the key being compared. The second one is
  * the pattern to be compared to.
  */
-class QueryableIndex[K, V](c: IndexContext)(override implicit val ec: ExecutionContext,
+class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: ExecutionContext,
                                                   override val storage: Storage,
                                                   override val serializer: Serializer[Block[K, V]],
                                                   override val cache: Cache,
@@ -666,6 +667,67 @@ class QueryableIndex[K, V](c: IndexContext)(override implicit val ec: ExecutionC
 
   def lt(prefix: K, term: K, inclusive: Boolean, reverse: Boolean)(prefixOrd: Ordering[K], order: Ordering[K]): RichAsyncIterator[K, V] = {
     lt(Some(prefix), term, inclusive, reverse)(Some(prefixOrd), order)
+  }
+
+  def split(): Future[QueryableIndex[K, V]] = {
+
+    (for {
+      leftRoot <- ctx.getMeta(ctx.root.get).map(_.copy())
+      rightRoot = leftRoot.split()
+
+      leftMeta <- if (leftRoot.length == 1) ctx.get(leftRoot.pointers(0)._2.unique_id) else
+        Future.successful(leftRoot)
+
+      rightMeta <- if (rightRoot.length == 1) ctx.get(rightRoot.pointers(0)._2.unique_id) else
+        Future.successful(rightRoot)
+
+      leftIndexCtx = IndexContext(ctx.id)
+        .withNumLeafItems(ctx.NUM_LEAF_ENTRIES)
+        .withNumMetaItems(ctx.NUM_META_ENTRIES)
+        .withNumElements(leftMeta.nSubtree)
+        .withLevels(leftMeta.level)
+        .withRoot(RootRef(leftMeta.unique_id._1, leftMeta.unique_id._2))
+
+      rightIndexCtx = IndexContext(UUID.randomUUID.toString)
+        .withNumLeafItems(ctx.NUM_LEAF_ENTRIES)
+        .withNumMetaItems(ctx.NUM_META_ENTRIES)
+        .withNumElements(rightMeta.nSubtree)
+        .withLevels(rightMeta.level)
+        .withRoot(RootRef(rightMeta.unique_id._1, rightMeta.unique_id._2))
+
+      //snapshot = snapshot()
+
+      /*leftIndex = new QueryableIndex[K, V](leftIndexCtx)(this.ec, this.storage, this.serializer,
+        this.cache, this.ord, this.idGenerator)
+
+     this.c = leftIndexCtx
+      this.ctx = Context.fromIndexContext(c)(this.ec, this.storage, this.serializer,
+        this.cache, this.ord, this.idGenerator)*/
+
+      /*this.c = leftIndexCtx
+      this.ctx = Context.fromIndexContext[K, V](this.c)(this.ec, this.storage, this.serializer,
+        this.cache, this.ord, this.idGenerator)
+
+      rightIndex = new QueryableIndex[K, V](rightIndexCtx)(this.ec, this.storage, this.serializer,
+      this.cache, this.ord, this.idGenerator)*/
+
+    } yield {
+      (leftIndexCtx, rightIndexCtx)
+    }).flatMap { case (lctx, rctx) =>
+
+      this.ctx = Context.fromIndexContext[K, V](lctx)(this.ec, this.storage, this.serializer,
+        this.cache, this.ord, this.idGenerator)
+
+      val rightIndex = new QueryableIndex[K, V](rctx)(this.ec, this.storage, this.serializer,
+        this.cache, this.ord, this.idGenerator)
+
+      Future.successful(rightIndex)
+    }
+  }
+
+  def copy(): QueryableIndex[K, V] = {
+    new QueryableIndex[K, V](snapshot().withId(UUID.randomUUID.toString))(this.ec, this.storage, this.serializer,
+      this.cache, this.ord, this.idGenerator)
   }
 
 }

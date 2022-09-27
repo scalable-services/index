@@ -34,7 +34,7 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
 
   val logger = LoggerFactory.getLogger(this.getClass)
 
-  implicit val ctx = Context.fromIndexContext(ictx)
+  implicit var ctx = Context.fromIndexContext(ictx)
   val $this = this
 
   /**
@@ -45,11 +45,11 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
     ctx.snapshot()
   }
 
-  def save(): Future[IndexContext] = {
+  def save(clear: Boolean = true): Future[IndexContext] = {
     val snapshot = ctx.snapshot()
 
     storage.save(snapshot, ctx.getBlocks().map{case (id, block) => id -> serializer.serialize(block)}.toMap).map { r =>
-      ctx.clear()
+      if(clear) ctx.clear()
       snapshot
     }
   }
