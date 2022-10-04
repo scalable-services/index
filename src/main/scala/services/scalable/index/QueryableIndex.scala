@@ -669,17 +669,31 @@ class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: Execut
     lt(Some(prefix), term, inclusive, reverse)(Some(prefixOrd), order)
   }
 
+  def isFull(): Boolean = {
+    ctx.num_elements >= c.maxNItems
+  }
+
+  def hasMinimum(): Boolean = {
+    ctx.num_elements >= c.maxNItems/2
+  }
+
   def split(): Future[QueryableIndex[K, V]] = {
 
     (for {
-      leftRoot <- ctx.getMeta(ctx.root.get).map(_.copy())
+      leftRoot <- ctx.get(ctx.root.get).map(_.copy())
       rightRoot = leftRoot.split()
 
-      leftMeta <- if (leftRoot.length == 1) ctx.get(leftRoot.pointers(0)._2.unique_id) else
-        Future.successful(leftRoot)
+      leftMeta <- leftRoot match {
+        case leaf: Leaf[K, V] => Future.successful(leaf)
+        case meta: Meta[K, V] => if (meta.length == 1) ctx.get(meta.pointers(0)._2.unique_id) else
+          Future.successful(leftRoot)
+      }
 
-      rightMeta <- if (rightRoot.length == 1) ctx.get(rightRoot.pointers(0)._2.unique_id) else
-        Future.successful(rightRoot)
+      rightMeta <- rightRoot match {
+        case leaf: Leaf[K, V] => Future.successful(leaf)
+        case meta: Meta[K, V] => if (meta.length == 1) ctx.get(meta.pointers(0)._2.unique_id) else
+          Future.successful(rightRoot)
+      }
 
       leftIndexCtx = IndexContext(ctx.id)
         .withNumLeafItems(ctx.NUM_LEAF_ENTRIES)
@@ -694,22 +708,6 @@ class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: Execut
         .withNumElements(rightMeta.nSubtree)
         .withLevels(rightMeta.level)
         .withRoot(RootRef(rightMeta.unique_id._1, rightMeta.unique_id._2))
-
-      //snapshot = snapshot()
-
-      /*leftIndex = new QueryableIndex[K, V](leftIndexCtx)(this.ec, this.storage, this.serializer,
-        this.cache, this.ord, this.idGenerator)
-
-     this.c = leftIndexCtx
-      this.ctx = Context.fromIndexContext(c)(this.ec, this.storage, this.serializer,
-        this.cache, this.ord, this.idGenerator)*/
-
-      /*this.c = leftIndexCtx
-      this.ctx = Context.fromIndexContext[K, V](this.c)(this.ec, this.storage, this.serializer,
-        this.cache, this.ord, this.idGenerator)
-
-      rightIndex = new QueryableIndex[K, V](rightIndexCtx)(this.ec, this.storage, this.serializer,
-      this.cache, this.ord, this.idGenerator)*/
 
     } yield {
       (leftIndexCtx, rightIndexCtx)

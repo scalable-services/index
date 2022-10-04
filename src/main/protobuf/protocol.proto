@@ -60,6 +60,8 @@ message IndexContext {
   optional RootRef root = 4;
   int32 levels = 5;
   int64 num_elements = 6;
+
+  int32 maxNItems = 7;
 }
 
 message IndexView {

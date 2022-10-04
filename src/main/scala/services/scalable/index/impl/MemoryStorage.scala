@@ -41,17 +41,11 @@ class MemoryStorage(val NUM_LEAF_ENTRIES: Int, val NUM_META_ENTRIES: Int)(implic
   }
 
   override def loadDB(id: String): Future[Option[DBContext]] = {
-    databases.get(id) match {
-      case None => Future.successful(None)
-      case Some(db) => Future.successful(Some(db))
-    }
+    Future.successful(databases.get(id))
   }
 
   override def loadIndex(id: String): Future[Option[IndexContext]] = {
-    indexes.get(id) match {
-      case None => Future.failed(Errors.INDEX_NOT_FOUND(id))
-      case Some(index) => Future.successful(Some(index))
-    }
+    Future.successful(indexes.get(id))
   }
 
   override def createDB(id: String): Future[DBContext] = {

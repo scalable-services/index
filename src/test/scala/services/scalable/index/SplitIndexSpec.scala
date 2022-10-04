@@ -14,7 +14,7 @@ import scala.concurrent.{Await, Future}
 
 class SplitIndexSpec extends Repeatable {
 
-  override val times: Int = 1000
+  override val times: Int = 1
 
   "operations" should " run successfully" in {
 
@@ -38,8 +38,12 @@ class SplitIndexSpec extends Repeatable {
 
     val txId = UUID.randomUUID().toString
 
+    val MAX_ITEMS = 250
+
     val index = new QueryableIndex[K, V](IndexContext("test-index")
-    .withNumLeafItems(NUM_LEAF_ENTRIES).withNumMetaItems(NUM_META_ENTRIES))
+      .withMaxNItems(MAX_ITEMS)
+      .withNumLeafItems(NUM_LEAF_ENTRIES)
+      .withNumMetaItems(NUM_META_ENTRIES))
 
     var data = Seq.empty[(Bytes, Bytes)]
 
@@ -80,44 +84,9 @@ class SplitIndexSpec extends Repeatable {
     println()
     println(s"ilist: ${Console.MAGENTA_B}${fullList}${Console.RESET}")
 
+    println(s"is index full: ${index.isFull()}")
+
     assert(dlist == fullList)
-
-    /*def split(index: QueryableIndex[K, V]): Future[(QueryableIndex[K, V], QueryableIndex[K, V])] = {
-      implicit val ctx = index.ctx
-
-      for {
-        leftRoot <- ctx.getMeta(ctx.root.get).map(_.copy())
-        rightRoot = leftRoot.split()
-
-        leftMeta <- if(leftRoot.length == 1) ctx.get(leftRoot.pointers(0)._2.unique_id) else
-            Future.successful(leftRoot)
-
-        rightMeta <- if(rightRoot.length == 1) ctx.get(rightRoot.pointers(0)._2.unique_id) else
-            Future.successful(rightRoot)
-
-        leftIndexCtx = IndexContext(index.ctx.id)
-          .withNumLeafItems(index.ctx.NUM_LEAF_ENTRIES)
-          .withNumMetaItems(index.ctx.NUM_META_ENTRIES)
-          .withNumElements(leftMeta.nSubtree)
-          .withLevels(leftMeta.level)
-          .withRoot(RootRef(leftMeta.unique_id._1, leftMeta.unique_id._2))
-
-        rightIndexCtx = IndexContext(UUID.randomUUID.toString)
-          .withNumLeafItems(index.ctx.NUM_LEAF_ENTRIES)
-          .withNumMetaItems(index.ctx.NUM_META_ENTRIES)
-          .withNumElements(rightMeta.nSubtree)
-          .withLevels(rightMeta.level)
-          .withRoot(RootRef(rightMeta.unique_id._1, rightMeta.unique_id._2))
-
-        snapshot = index.snapshot()
-
-        leftIndex = new QueryableIndex[K, V](leftIndexCtx)
-        rightIndex = new QueryableIndex[K, V](rightIndexCtx)
-
-      } yield {
-        (leftIndex, rightIndex)
-      }
-    }*/
 
     val left = index.copy()
     val right = Await.result(left.split(), Duration.Inf)
@@ -133,6 +102,7 @@ class SplitIndexSpec extends Repeatable {
     println(s"right: ${Console.MAGENTA_B}${rightList}${Console.RESET}")
 
     assert(fullList == (leftList ++ rightList))
+
 
   }
 
