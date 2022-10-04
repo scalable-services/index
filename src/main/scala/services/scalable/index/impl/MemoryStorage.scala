@@ -59,8 +59,8 @@ class MemoryStorage(val NUM_LEAF_ENTRIES: Int, val NUM_META_ENTRIES: Int)(implic
     Future.successful(db)
   }
 
-  override def createIndex(id: String, num_leaf_entries: Int, num_meta_entries: Int): Future[IndexContext] = {
-    val index = IndexContext(id, num_leaf_entries, num_meta_entries)
+  override def createIndex(id: String, nle: Int, nme: Int): Future[IndexContext] = {
+    val index = IndexContext(id, nle, nme)
 
     if(indexes.isDefinedAt(id)){
       return Future.failed(Errors.INDEX_ALREADY_EXISTS(id))
