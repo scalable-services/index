@@ -16,5 +16,4 @@ trait Cache {
   def putNewBlock[K, V](ctxId: String, block: Block[K, V]): Unit
 
   val newBlocks = TrieMap.empty[(String, String), Block[_, _]]
-
 }

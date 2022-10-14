@@ -93,4 +93,14 @@ class MemoryStorage(val NUM_LEAF_ENTRIES: Int, val NUM_META_ENTRIES: Int)(implic
   }
 
   override def close(): Future[Unit] = Future.successful()
+
+  override def save(ctx: IndexContext): Future[Boolean] = {
+    indexes.put(ctx.id, ctx)
+    Future.successful(true)
+  }
+
+  override def save(ctx: DBContext): Future[Boolean] = {
+    databases.put(ctx.id, ctx)
+    Future.successful(true)
+  }
 }

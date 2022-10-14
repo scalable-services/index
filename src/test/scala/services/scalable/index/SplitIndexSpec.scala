@@ -33,22 +33,25 @@ class SplitIndexSpec extends Repeatable {
     }
 
     implicit val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
-    implicit val storage = new MemoryStorage(NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
-    //implicit val storage = new CassandraStorage("history", NUM_LEAF_ENTRIES, NUM_META_ENTRIES, false)
+    //implicit val storage = new MemoryStorage(NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+    implicit val storage = new CassandraStorage("history", NUM_LEAF_ENTRIES, NUM_META_ENTRIES, false)
 
     val txId = UUID.randomUUID().toString
 
     val MAX_ITEMS = 250
 
-    val index = new QueryableIndex[K, V](IndexContext("test-index")
+    val ctx = Await.result(storage.loadOrCreateIndex("test-index", NUM_LEAF_ENTRIES, NUM_META_ENTRIES),
+      Duration.Inf)
       .withMaxNItems(MAX_ITEMS)
       .withNumLeafItems(NUM_LEAF_ENTRIES)
-      .withNumMetaItems(NUM_META_ENTRIES))
+      .withNumMetaItems(NUM_META_ENTRIES)
+
+    val index = new QueryableIndex[K, V](ctx)
 
     var data = Seq.empty[(Bytes, Bytes)]
 
     def insert(): Commands.Command[K, V] = {
-      val n = rand.nextInt(1000, 2000) //rand.nextInt(1, 1000)
+      val n = 3000//rand.nextInt(1000, 2000) //rand.nextInt(1, 1000)
 
       var list = Seq.empty[(Bytes, Bytes)]
 
@@ -72,9 +75,7 @@ class SplitIndexSpec extends Repeatable {
 
     println(s"inserted: ${n}")
 
-    val ctx = Await.result(index.save(), Duration.Inf)
-
-    println(ctx)
+    //Await.result(index.save(), Duration.Inf)
 
     val dlist = data.sortBy(_._1).map { case (k, v) => new String(k) }.toList
     val fullList = Await.result(TestHelper.all(index.inOrder()), Duration.Inf)
@@ -88,21 +89,31 @@ class SplitIndexSpec extends Repeatable {
 
     assert(dlist == fullList)
 
-    val left = index.copy()
-    val right = Await.result(left.split(), Duration.Inf)
+    //Await.result(index.save(false), Duration.Inf)
 
-    val leftList = Await.result(TestHelper.all(left.inOrder()), Duration.Inf)
-      .map { case (k, v, _) => new String(k) }.toList
+    println("index saving", Await.result(storage.save(index.ctx.snapshot()), Duration.Inf))
 
-    val rightList = Await.result(TestHelper.all(right.inOrder()), Duration.Inf)
-      .map { case (k, v, _) => new String(k) }.toList
+    val l = index.copy()
+    val r = Await.result(l.split(), Duration.Inf)
 
-    println(s"left: ${Console.GREEN_B}${leftList}${Console.RESET}")
-    println()
-    println(s"right: ${Console.MAGENTA_B}${rightList}${Console.RESET}")
+    println("left id", l.ctx.indexId, "right id", r.ctx.indexId)
 
-    assert(fullList == (leftList ++ rightList))
+    Await.result(storage.loadOrCreateIndex(l.ctx.indexId, NUM_LEAF_ENTRIES,
+      NUM_META_ENTRIES), Duration.Inf)
 
+    Await.result(storage.loadOrCreateIndex(r.ctx.indexId, NUM_LEAF_ENTRIES,
+      NUM_META_ENTRIES), Duration.Inf)
+
+    /*println("left saving", Await.result(l.save(true), Duration.Inf))
+    println("right saving", Await.result(r.save(true), Duration.Inf))*/
+
+    println("left saving", Await.result(storage.save(l.ctx.snapshot()), Duration.Inf))
+    println("right saving", Await.result(storage.save(r.ctx.snapshot()), Duration.Inf))
+
+    Await.result(storage.save(cache.newBlocks.map{case (id, block) => id -> grpcBytesSerializer.serialize(block.asInstanceOf[Block[K, V]])}.toMap),
+      Duration.Inf)
+
+    Await.result(storage.close(), Duration.Inf)
 
   }
 

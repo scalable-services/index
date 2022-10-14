@@ -140,6 +140,14 @@ class CassandraStorage(val KEYSPACE: String,
     }
   }
 
+  override def save(db: DBContext): Future[Boolean] = {
+    updateDB(db)
+  }
+
+  override def save(idx: IndexContext): Future[Boolean] = {
+    updateIndex(idx)
+  }
+
   override def save(index: IndexContext, blocks: Map[(String, String), Array[Byte]]): Future[Boolean] = {
     save(blocks).flatMap { ok =>
       if(ok) updateIndex(index) else Future.successful(false)

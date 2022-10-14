@@ -3,7 +3,8 @@ package services.scalable.index
 import services.scalable.index.grpc.{IndexContext, RootRef}
 
 import java.util.UUID
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, ExecutionContext, Future}
 
 /**
  * All 'term' parameters in the functions should be provided along the prefix.
@@ -679,6 +680,10 @@ class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: Execut
 
   def split(): Future[QueryableIndex[K, V]] = {
 
+    println(s"original index root: ", ctx.root)
+
+    val originalRoot = ctx.root
+
     (for {
       leftRoot <- ctx.get(ctx.root.get).map(_.copy())
       rightRoot = leftRoot.split()
@@ -713,19 +718,108 @@ class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: Execut
       (leftIndexCtx, rightIndexCtx)
     }).flatMap { case (lctx, rctx) =>
 
+      println(s"left root: ${lctx.root.get} right root: ${rctx.root.get}")
+
+      // This fixes it .... IDKW...
+      //Await.result(storage.save(ctx.getBlocks().map{case (id, block) => id -> serializer.serialize(block)}.toMap), Duration.Inf)
+
+      val lr = lctx.root.get
+      val rr = rctx.root.get
+
+      val oldCtx = this.ctx
+
+      var leftParents = Await.result(ctx.getMeta(lr.partition -> lr.id), Duration.Inf)
+        .pointers.map(_._2).map(_.unique_id)
+
+      if(lctx.root.isDefined){
+        leftParents = leftParents :+ lctx.root.get.partition -> lctx.root.get.id
+      }
+
+      var rightParents = Await.result(ctx.getMeta(rr.partition -> rr.id), Duration.Inf)
+        .pointers.map(_._2).map(_.unique_id)
+
+      if (rctx.root.isDefined) {
+        rightParents = rightParents :+ rctx.root.get.partition -> rctx.root.get.id
+      }
+
+      var refs = Seq.empty[(String, String)]
+
+      this.ctx.blockReferences.foreach { id =>
+        refs :+= id
+      }
+
+      def isParentOf(id: (String, String), parents: Seq[(String, String)]): Boolean = {
+
+        if(parents.exists(p => id == p)) return true
+
+        val par = oldCtx.getParent(id)
+
+        if(par.isEmpty) return false
+
+        if(par.get._1.isEmpty) return false
+
+        isParentOf(par.get._1.get, parents)
+      }
+
       this.ctx = Context.fromIndexContext[K, V](lctx)(this.ec, this.storage, this.serializer,
         this.cache, this.ord, this.idGenerator)
 
+      /*refs.foreach { id =>
+        this.ctx.blockReferences :+= id
+      }*/
+
       val rightIndex = new QueryableIndex[K, V](rctx)(this.ec, this.storage, this.serializer,
         this.cache, this.ord, this.idGenerator)
+
+      //refs = refs.filterNot{x => !oldCtx.parents.isDefinedAt(x)}
+
+      refs = refs.filter { id =>
+        val isLeft = isParentOf(id, leftParents)
+        val isRight = isParentOf(id, rightParents)
+
+        // Removing orphan blocks...
+        if(isLeft || isRight){
+          println("id is from parent ", id, " left: ", isLeft, "right: ", isRight,
+            oldCtx.parents.get(id), this.ctx.parents.get(id), rightIndex.ctx.parents.get(id))
+
+          assert((isLeft && !isRight) || (isRight && !isLeft))
+
+          if (isLeft) {
+            this.ctx.blockReferences :+= id
+          } else {
+            rightIndex.ctx.blockReferences :+= id
+          }
+
+          true
+        } else {
+          false
+        }
+      }
+
+      if(this.ctx.root.isDefined){
+        this.ctx.blockReferences :+= this.ctx.root.get
+      }
+
+      if(rightIndex.ctx.root.isDefined){
+        rightIndex.ctx.blockReferences :+= rightIndex.ctx.root.get
+      }
 
       Future.successful(rightIndex)
     }
   }
 
   def copy(): QueryableIndex[K, V] = {
-    new QueryableIndex[K, V](snapshot().withId(UUID.randomUUID.toString))(this.ec, this.storage, this.serializer,
+
+    val copy = new QueryableIndex[K, V](snapshot().withId(UUID.randomUUID.toString))(this.ec, this.storage, this.serializer,
       this.cache, this.ord, this.idGenerator)
+
+    if(!ctx.blockReferences.isEmpty){
+      ctx.blockReferences.foreach { id =>
+        copy.ctx.blockReferences :+= id
+      }
+    }
+
+    copy
   }
 
 }

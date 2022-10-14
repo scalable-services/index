@@ -86,6 +86,7 @@ sealed class Context[K, V](val indexId: String,
     val leaf = new Leaf[K,V](idGenerator.generateId(this), idGenerator.generatePartition(this), LEAF_MIN, LEAF_MAX)
 
     cache.newBlocks += leaf.unique_id -> leaf
+
     blockReferences :+= leaf.unique_id
     setParent(leaf.unique_id, 0, None)
 
@@ -96,6 +97,7 @@ sealed class Context[K, V](val indexId: String,
     val meta = new Meta[K,V](idGenerator.generateId(this), idGenerator.generatePartition(this), META_MIN, META_MAX)
 
     cache.newBlocks += meta.unique_id -> meta
+
     blockReferences :+= meta.unique_id
     setParent(meta.unique_id, 0, None)
 
