@@ -11,6 +11,7 @@ sealed class Context[K, V](val indexId: String,
                     var root: Option[(String, String)],
                     var num_elements: Long,
                     var levels: Int,
+                    val maxNItems: Int,
                     val NUM_LEAF_ENTRIES: Int,
                     val NUM_META_ENTRIES: Int)
                    (implicit val ec: ExecutionContext,
@@ -139,11 +140,12 @@ sealed class Context[K, V](val indexId: String,
 
     logger.info(s"\nSAVING $indexId: ${root.map{r => RootRef(r._1, r._2)}}\n")
 
-    IndexContext(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, root.map{r => RootRef(r._1, r._2)}, levels, num_elements)
+    IndexContext(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, root.map{r => RootRef(r._1, r._2)}, levels,
+      num_elements, maxNItems)
   }
 
   def copy(): Context[K, V] = {
-    new Context[K, V](indexId, root, num_elements, levels, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)(ec, storage,
+    new Context[K, V](indexId, root, num_elements, levels, maxNItems, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)(ec, storage,
       serializer, cache, ord, idGenerator)
   }
 
@@ -162,6 +164,6 @@ object Context {
                                                  ord: Ordering[K],
                                                  idGenerator: IdGenerator): Context[K, V] = {
     new Context[K, V](ictx.id, ictx.root.map{ r => (r.partition, r.id)}, ictx.numElements,
-      ictx.levels, ictx.numLeafItems, ictx.numMetaItems)
+      ictx.levels, ictx.maxNItems, ictx.numLeafItems, ictx.numMetaItems)
   }
 }

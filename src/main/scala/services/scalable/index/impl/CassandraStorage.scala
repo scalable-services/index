@@ -176,10 +176,7 @@ class CassandraStorage(val KEYSPACE: String,
         .setString(1, id)
         .setByteBuffer(2, ByteBuffer.wrap(bin))
         .setInt(3, bin.length)).map(res => (partition, id) -> res.wasApplied())
-    }).map{ r =>
-      println(s"block ids not saved: ${r}")
-      r
-    }.map(r => !r.exists(_._2 == false))
+    }).map(r => !r.exists(_._2 == false))
   }
 
   override def close(): Future[Unit] = {

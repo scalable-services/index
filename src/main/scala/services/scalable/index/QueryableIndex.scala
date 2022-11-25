@@ -705,6 +705,7 @@ class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: Execut
         .withNumMetaItems(ctx.NUM_META_ENTRIES)
         .withNumElements(leftMeta.nSubtree)
         .withLevels(leftMeta.level)
+        .withMaxNItems(c.maxNItems)
         .withRoot(RootRef(leftMeta.unique_id._1, leftMeta.unique_id._2))
 
       rightIndexCtx = IndexContext(UUID.randomUUID.toString)
@@ -712,6 +713,7 @@ class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: Execut
         .withNumMetaItems(ctx.NUM_META_ENTRIES)
         .withNumElements(rightMeta.nSubtree)
         .withLevels(rightMeta.level)
+        .withMaxNItems(c.maxNItems)
         .withRoot(RootRef(rightMeta.unique_id._1, rightMeta.unique_id._2))
 
     } yield {
