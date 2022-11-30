@@ -1,18 +1,15 @@
 package services.scalable.index.impl
 
 import com.datastax.oss.driver.api.core.CqlSession
-import com.datastax.oss.driver.api.core.cql.{BatchStatement, DefaultBatchType}
 import com.google.protobuf.any.Any
 import org.slf4j.LoggerFactory
 import services.scalable.index._
-import services.scalable.index.grpc.{DBContext, IndexContext}
+import services.scalable.index.grpc.{IndexContext, TemporalContext}
 
 import java.nio.ByteBuffer
 import scala.concurrent.{ExecutionContext, Future}
 
 class CassandraStorage(val KEYSPACE: String,
-                       val NUM_LEAF_ENTRIES: Int,
-                       val NUM_META_ENTRIES: Int,
                        val truncate: Boolean = true)(implicit val ec: ExecutionContext) extends Storage {
 
   val logger = LoggerFactory.getLogger(this.getClass)
@@ -24,66 +21,50 @@ class CassandraStorage(val KEYSPACE: String,
     .build()
 
   val INSERT = session.prepare("insert into blocks(partition, id, bin, size) values (?, ?, ?, ?);")
-  val SELECT_DB = session.prepare("select buf from databases where id=?;")
+  val SELECT_TEMPORAL_INDEX = session.prepare("select buf from temporal_indexes where id=?;")
   val SELECT_INDEX = session.prepare("select buf from indexes where id=?;")
-  val INSERT_DB = session.prepare("insert into databases(id, buf) VALUES(?,?) IF NOT EXISTS;")
+  val INSERT_DB = session.prepare("insert into temporal_indexes(id, buf) VALUES(?,?) IF NOT EXISTS;")
   val INSERT_INDEX = session.prepare("insert into indexes(id, buf) VALUES(?,?) IF NOT EXISTS;")
   val SELECT = session.prepare("select * from blocks where partition=? and id=?;")
-  val UPDATE_DB = session.prepare("update databases set buf=? where id = ? IF EXISTS;")
+  val UPDATE_TEMPORAL_INDEX = session.prepare("update temporal_indexes set buf=? where id = ? IF EXISTS;")
   val UPDATE_INDEX = session.prepare("update indexes set buf=? where id = ? IF EXISTS;")
 
   if(truncate){
-    logger.debug(s"TRUNCATED BLOCKS: ${session.execute("TRUNCATE table databases;").wasApplied()}\n")
+    logger.debug(s"TRUNCATED BLOCKS: ${session.execute("TRUNCATE table temporal_indexes;").wasApplied()}\n")
     logger.debug(s"TRUNCATED META: ${session.execute("TRUNCATE table blocks;").wasApplied()}\n")
   }
 
-  override def createDB(id: String): Future[DBContext] = {
-    val db = DBContext(id)
-    val buf = ByteBuffer.wrap(Any.pack(db).toByteArray)
+  override def createTemporalIndex(tctx: TemporalContext): Future[Boolean] = {
+    val buf = ByteBuffer.wrap(Any.pack(tctx).toByteArray)
 
     session.executeAsync(INSERT_DB.bind()
-      .setString(0, db.id)
+      .setString(0, tctx.id)
       .setByteBuffer(1, buf)).flatMap {
-      case r if r.wasApplied() => Future.successful(db)
-      case _ => Future.failed(Errors.DB_ALREADY_EXISTS(db.id))
+      case r if r.wasApplied() => Future.successful(true)
+      case _ => Future.failed(Errors.TEMPORAL_INDEX_ALREADY_EXISTS(tctx.id))
     }
   }
 
-  override def createIndex(id: String, num_leaf_entries: Int, num_meta_entries: Int): Future[IndexContext] = {
-    val index = IndexContext(id, num_leaf_entries, num_meta_entries)
-    val buf = ByteBuffer.wrap(Any.pack(index).toByteArray)
+  override def createIndex(ictx: IndexContext): Future[Boolean] = {
+    val buf = ByteBuffer.wrap(Any.pack(ictx).toByteArray)
 
     session.executeAsync(INSERT_INDEX.bind()
-      .setString(0, index.id)
+      .setString(0, ictx.id)
       .setByteBuffer(1, buf)).flatMap {
-      case r if r.wasApplied() => Future.successful(index)
-      case _ => Future.failed(Errors.INDEX_ALREADY_EXISTS(index.id))
+      case r if r.wasApplied() => Future.successful(true)
+      case _ => Future.failed(Errors.INDEX_ALREADY_EXISTS(ictx.id))
     }
   }
 
-  override def loadOrCreateDB(id: String): Future[DBContext] = {
-    loadDB(id).flatMap {
-      case None => createDB(id)
-      case Some(db) => Future.successful(db)
-    }
-  }
-
-  override def loadOrCreateIndex(id: String, num_leaf_entries: Int, num_meta_entries: Int): Future[IndexContext] = {
-    loadIndex(id).flatMap {
-      case None => createIndex(id, num_leaf_entries, num_meta_entries)
-      case Some(index) => Future.successful(index)
-    }
-  }
-
-  override def loadDB(id: String): Future[Option[DBContext]] = {
-    session.executeAsync(SELECT_DB.bind().setString(0, id)).flatMap { rs =>
+  override def loadTemporalIndex(id: String): Future[Option[TemporalContext]] = {
+    session.executeAsync(SELECT_TEMPORAL_INDEX.bind().setString(0, id)).flatMap { rs =>
       val one = rs.one()
 
       if(one == null){
         Future.successful(None)
       } else {
         val r = one.getByteBuffer("buf")
-        val db = Any.parseFrom(r.array()).unpack(DBContext)
+        val db = Any.parseFrom(r.array()).unpack(TemporalContext)
 
         Future.successful(Some(db))
       }
@@ -118,11 +99,11 @@ class CassandraStorage(val KEYSPACE: String,
     }
   }
 
-  protected def updateDB(db: DBContext): Future[Boolean] = {
+  protected def updateDB(db: TemporalContext): Future[Boolean] = {
     //val buf = ByteBuffer.wrap(DBContext.toByteArray(db))
     val buf = ByteBuffer.wrap(Any.pack(db).toByteArray)
 
-    session.executeAsync(UPDATE_DB.bind().setByteBuffer(0, buf)
+    session.executeAsync(UPDATE_TEMPORAL_INDEX.bind().setByteBuffer(0, buf)
       .setString(1, db.id)).map(_.wasApplied())
   }
 
@@ -134,13 +115,13 @@ class CassandraStorage(val KEYSPACE: String,
       .setString(1, index.id)).map(_.wasApplied())
   }
 
-  override def save(db: DBContext, blocks: Map[(String, String), Array[Byte]]): Future[Boolean] = {
+  override def save(db: TemporalContext, blocks: Map[(String, String), Array[Byte]]): Future[Boolean] = {
     save(blocks).flatMap { ok =>
       if (ok) updateDB(db) else Future.successful(false)
     }
   }
 
-  override def save(db: DBContext): Future[Boolean] = {
+  override def save(db: TemporalContext): Future[Boolean] = {
     updateDB(db)
   }
 

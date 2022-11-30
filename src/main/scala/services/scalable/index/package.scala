@@ -4,10 +4,10 @@ import com.datastax.oss.driver.api.core.config.{DefaultDriverOption, DriverConfi
 import com.google.common.primitives.UnsignedBytes
 import com.google.protobuf.ByteString
 import com.google.protobuf.any.Any
-import services.scalable.index.grpc.{DBContext, DecimalValue, IndexView}
+import services.scalable.index.grpc.{DecimalValue, IndexContext, TemporalContext}
 import services.scalable.index.impl.GrpcByteSerializer
 
-import java.math.{BigInteger, MathContext}
+import java.math.MathContext
 import java.nio.ByteBuffer
 import java.util.UUID
 import java.util.concurrent.CompletionStage
@@ -198,22 +198,18 @@ package object index {
       }
     }
 
-    implicit val dbContextSerializer = new Serializer[DBContext] {
-      override def serialize(t: DBContext): Array[Byte] = Any.pack(t).toByteArray
-      override def deserialize(b: Array[Byte]): DBContext = Any.parseFrom(b).unpack(DBContext)
+    implicit val dbContextSerializer = new Serializer[TemporalContext] {
+      override def serialize(t: TemporalContext): Array[Byte] = Any.pack(t).toByteArray
+      override def deserialize(b: Array[Byte]): TemporalContext = Any.parseFrom(b).unpack(TemporalContext)
     }
 
-    implicit val ctxSerializer = new Serializer[IndexView] {
-      override def serialize(t: IndexView): Bytes = {
-        IndexView.toByteArray(t)
-      }
-      override def deserialize(b: Bytes): IndexView = {
-        IndexView.parseFrom(b)
-      }
+    implicit val indexContextSerializer = new Serializer[IndexContext] {
+      override def serialize(t: IndexContext): Array[Byte] = Any.pack(t).toByteArray
+      override def deserialize(b: Array[Byte]): IndexContext = Any.parseFrom(b).unpack(IndexContext)
     }
 
-    implicit val grpcHistorySerializer = new GrpcByteSerializer[Long, IndexView]()
+    implicit val grpcIndexSerializer = new GrpcByteSerializer[Long, IndexContext]()
+    implicit val grpcHistorySerializer = new GrpcByteSerializer[Long, TemporalContext]()
     implicit val grpcBytesSerializer = new GrpcByteSerializer[Bytes, Bytes]()
-    implicit val grpcDBContextSerializer = new GrpcByteSerializer[Bytes, DBContext]()
   }
 }

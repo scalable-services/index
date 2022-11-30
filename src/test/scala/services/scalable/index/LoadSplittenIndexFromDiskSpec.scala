@@ -3,7 +3,7 @@ package services.scalable.index
 import org.apache.commons.lang3.RandomStringUtils
 import services.scalable.index.DefaultComparators.ord
 import services.scalable.index.DefaultSerializers._
-import services.scalable.index.grpc.IndexContext
+import services.scalable.index.grpc.{IndexContext, TemporalContext}
 import services.scalable.index.impl._
 
 import java.util.UUID
@@ -33,14 +33,15 @@ class LoadSplittenIndexFromDiskSpec extends Repeatable {
     }
 
     implicit val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
-    //implicit val storage = new MemoryStorage(NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
-    implicit val storage = new CassandraStorage("history", NUM_LEAF_ENTRIES, NUM_META_ENTRIES, false)
+    //implicit val storage = new MemoryStorage()
+    implicit val storage = new CassandraStorage("history", false)
 
     val txId = UUID.randomUUID().toString
 
     val MAX_ITEMS = 250
 
-    val ctx = Await.result(storage.loadIndex("test-index"), Duration.Inf)
+    val tctx = IndexContext("index", NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+    val ctx = Await.result(TestHelper.loadOrCreateIndex(tctx), Duration.Inf)
 
     val lctx = Await.result(storage.loadIndex("d4a53d67-6d4e-4d0f-8815-b7d388ea4daf"), Duration.Inf)
     val rctx = Await.result(storage.loadIndex("79b6eab6-5b5f-434f-a83e-9ac361003248"), Duration.Inf)

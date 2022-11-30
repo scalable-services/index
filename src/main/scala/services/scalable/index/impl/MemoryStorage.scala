@@ -7,11 +7,11 @@ import services.scalable.index.grpc._
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.{ExecutionContext, Future}
 
-class MemoryStorage(val NUM_LEAF_ENTRIES: Int, val NUM_META_ENTRIES: Int)(implicit val ec: ExecutionContext) extends Storage {
+class MemoryStorage()(implicit val ec: ExecutionContext) extends Storage {
 
   val logger = LoggerFactory.getLogger(this.getClass)
 
-  val databases = TrieMap.empty[String, DBContext]
+  val history = TrieMap.empty[String, TemporalContext]
   val indexes = TrieMap.empty[String, IndexContext]
   val blocks = TrieMap.empty[(String, String), Array[Byte]]
 
@@ -20,8 +20,8 @@ class MemoryStorage(val NUM_LEAF_ENTRIES: Int, val NUM_META_ENTRIES: Int)(implic
     Future.successful(buf)
   }
 
-  override def save(db: DBContext, blocks: Map[(String, String), Array[Byte]]): Future[Boolean] = {
-    databases.put(db.id, db)
+  override def save(db: TemporalContext, blocks: Map[(String, String), Array[Byte]]): Future[Boolean] = {
+    history.put(db.id, db)
 
     blocks.foreach { case (id, b) =>
       this.blocks.put(id, b)
@@ -40,48 +40,30 @@ class MemoryStorage(val NUM_LEAF_ENTRIES: Int, val NUM_META_ENTRIES: Int)(implic
     Future.successful(true)
   }
 
-  override def loadDB(id: String): Future[Option[DBContext]] = {
-    Future.successful(databases.get(id))
+  override def loadTemporalIndex(id: String): Future[Option[TemporalContext]] = {
+    Future.successful(history.get(id))
   }
 
   override def loadIndex(id: String): Future[Option[IndexContext]] = {
     Future.successful(indexes.get(id))
   }
 
-  override def createDB(id: String): Future[DBContext] = {
-    val db = DBContext(id)
-
-    if(databases.isDefinedAt(id)){
-      return Future.failed(Errors.DB_ALREADY_EXISTS(id))
+  override def createIndex(ictx: IndexContext): Future[Boolean] = {
+    if(indexes.isDefinedAt(ictx.id)){
+      return Future.failed(Errors.INDEX_ALREADY_EXISTS(ictx.id))
     }
 
-    databases.put(id, db)
-    Future.successful(db)
+    indexes.put(ictx.id, ictx)
+    Future.successful(true)
   }
 
-  override def createIndex(id: String, nle: Int, nme: Int): Future[IndexContext] = {
-    val index = IndexContext(id, nle, nme)
-
-    if(indexes.isDefinedAt(id)){
-      return Future.failed(Errors.INDEX_ALREADY_EXISTS(id))
+  override def createTemporalIndex(tctx: TemporalContext): Future[Boolean] = {
+    if (history.isDefinedAt(tctx.id)) {
+      return Future.failed(Errors.TEMPORAL_INDEX_ALREADY_EXISTS(tctx.id))
     }
 
-    indexes.put(id, index)
-    Future.successful(index)
-  }
-
-  override def loadOrCreateDB(name: String): Future[DBContext] = {
-    loadDB(name).flatMap {
-      case None => createDB(name)
-      case Some(index) => Future.successful(index)
-    }
-  }
-
-  override def loadOrCreateIndex(name: String, num_leaf_entries: Int, num_meta_entries: Int): Future[IndexContext] = {
-    loadIndex(name).flatMap {
-      case None => createIndex(name, num_leaf_entries, num_meta_entries)
-      case Some(index) => Future.successful(index)
-    }
+    history.put(tctx.id, tctx)
+    Future.successful(true)
   }
 
   override def save(blocks: Map[(String, String), Array[Byte]]): Future[Boolean] = {
@@ -99,8 +81,8 @@ class MemoryStorage(val NUM_LEAF_ENTRIES: Int, val NUM_META_ENTRIES: Int)(implic
     Future.successful(true)
   }
 
-  override def save(ctx: DBContext): Future[Boolean] = {
-    databases.put(ctx.id, ctx)
+  override def save(ctx: TemporalContext): Future[Boolean] = {
+    history.put(ctx.id, ctx)
     Future.successful(true)
   }
 }

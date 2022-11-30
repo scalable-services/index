@@ -33,15 +33,15 @@ class SplitIndexSpec extends Repeatable {
     }
 
     implicit val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
-    //implicit val storage = new MemoryStorage(NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
-    implicit val storage = new CassandraStorage("history", NUM_LEAF_ENTRIES, NUM_META_ENTRIES, false)
+    //implicit val storage = new MemoryStorage()
+    implicit val storage = new CassandraStorage("history", false)
 
     val txId = UUID.randomUUID().toString
 
     val MAX_ITEMS = 250
 
-    val ctx = Await.result(storage.loadOrCreateIndex("test-index", NUM_LEAF_ENTRIES, NUM_META_ENTRIES),
-      Duration.Inf)
+    val ctx = Await.result(TestHelper.loadOrCreateIndex(IndexContext("test-index", NUM_LEAF_ENTRIES, NUM_META_ENTRIES)),
+      Duration.Inf).get
       .withMaxNItems(MAX_ITEMS)
       .withNumLeafItems(NUM_LEAF_ENTRIES)
       .withNumMetaItems(NUM_META_ENTRIES)
@@ -98,11 +98,11 @@ class SplitIndexSpec extends Repeatable {
 
     println("left id", l.ctx.indexId, "right id", r.ctx.indexId)
 
-    Await.result(storage.loadOrCreateIndex(l.ctx.indexId, NUM_LEAF_ENTRIES,
-      NUM_META_ENTRIES), Duration.Inf)
+    Await.result(TestHelper.loadOrCreateIndex(IndexContext(l.ctx.indexId, NUM_LEAF_ENTRIES,
+      NUM_META_ENTRIES)), Duration.Inf).get
 
-    Await.result(storage.loadOrCreateIndex(r.ctx.indexId, NUM_LEAF_ENTRIES,
-      NUM_META_ENTRIES), Duration.Inf)
+    Await.result(TestHelper.loadOrCreateIndex(IndexContext(r.ctx.indexId, NUM_LEAF_ENTRIES,
+      NUM_META_ENTRIES)), Duration.Inf).get
 
     /*println("left saving", Await.result(l.save(true), Duration.Inf))
     println("right saving", Await.result(r.save(true), Duration.Inf))*/

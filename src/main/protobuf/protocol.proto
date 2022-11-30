@@ -64,21 +64,10 @@ message IndexContext {
   int32 maxNItems = 7;
 }
 
-message IndexView {
-  int64 time = 1;
-  map<string, IndexContext> indexes = 2;
-}
-
-/**
- * A DBContext is a historical representation of a database (one or more indexes)
- */
-message DBContext {
+message TemporalContext {
   string id = 1;
-  IndexView latest = 2 [(scalapb.field).no_box = true];
-  IndexContext history = 3;
-
-  int32 numLeafEntries = 4;
-  int32 numMetaEntries = 5;
+  IndexContext latest = 2 [(scalapb.field).no_box = true];
+  IndexContext history = 3 [(scalapb.field).no_box = true];
 }
 
 message InsertCommand {

@@ -1,8 +1,23 @@
 package services.scalable.index
 
+import services.scalable.index.grpc.{IndexContext, TemporalContext}
 import scala.concurrent.{ExecutionContext, Future}
 
 object TestHelper {
+
+  def loadOrCreateTemporalIndex(tctx: TemporalContext)(implicit storage: Storage, ec: ExecutionContext): Future[Option[TemporalContext]] = {
+    storage.loadTemporalIndex(tctx.id).flatMap {
+      case None => storage.createTemporalIndex(tctx).map(_ => Some(tctx))
+      case Some(t) => Future.successful(Some(t))
+    }
+  }
+
+  def loadOrCreateIndex(tctx: IndexContext)(implicit storage: Storage, ec: ExecutionContext): Future[Option[IndexContext]] = {
+    storage.loadIndex(tctx.id).flatMap {
+      case None => storage.createIndex(tctx).map(_ => Some(tctx))
+      case Some(t) => Future.successful(Some(t))
+    }
+  }
 
   def all[K, V](it: AsyncIterator[Seq[Tuple[K, V]]])(implicit ec: ExecutionContext): Future[Seq[Tuple[K, V]]] = {
     it.hasNext().flatMap {
