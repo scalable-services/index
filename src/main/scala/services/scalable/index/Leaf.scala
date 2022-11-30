@@ -18,7 +18,7 @@ class Leaf[K, V](override val id: String,
 
   override def nSubtree: Long = tuples.length.toLong
 
-  def insert(data: Seq[Tuple[K, V]], upsert: Boolean)(implicit ord: Ordering[K]): Try[Int] = {
+  def insert(data: Seq[Tuple2[K, V]], upsert: Boolean, version: String)(implicit ord: Ordering[K]): Try[Int] = {
     
     if(isFull()) return Failure(Errors.LEAF_BLOCK_FULL)
 
@@ -27,15 +27,15 @@ class Leaf[K, V](override val id: String,
 
     val len = slice.length
 
-    if(slice.exists{case (k, _, _) => tuples.exists{case (k1, _, _) => ord.equiv(k, k1)}}){
+    if(slice.exists{case (k, _) => tuples.exists{case (k1, _, _) => ord.equiv(k, k1)}}){
       if(!upsert){
-        return Failure(Errors.LEAF_DUPLICATE_KEY(inOrder(), slice))
+        return Failure(Errors.LEAF_DUPLICATE_KEY(inOrder().map{case (k, v, _) => k -> v}, slice))
       }
 
-      slice = slice.filterNot{case (k, _, _) => tuples.exists{case (k1, _, _) => ord.equiv(k, k1)}}
+      slice = slice.filterNot{case (k, _) => tuples.exists{case (k1, _, _) => ord.equiv(k, k1)}}
     }
 
-    tuples = (tuples ++ slice).sortBy(_._1)
+    tuples = (tuples ++ slice.map{case (k, v) => Tuple3(k, v, version)}).sortBy(_._1)
 
     Success(len)
   }
@@ -232,5 +232,4 @@ class Leaf[K, V](override val id: String,
 
     sb.toString()
   }
-
 }

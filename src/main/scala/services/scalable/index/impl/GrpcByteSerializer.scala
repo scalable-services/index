@@ -32,22 +32,20 @@ final class GrpcByteSerializer[K, V](implicit val ks: Serializer[K], val vs: Ser
               version
             )
           }, block.MIN, block.MAX,
-            if(leaf.root.isDefined){
+            if (leaf.root.isDefined) {
               val (partition, id) = leaf.root.get
               Some(RootRef(partition, id))
             } else None,
             leaf.level
           )).toByteArray
 
-        case meta: Meta[K,V] =>
-
-          Any.pack(MetaBlock(meta.id, meta.partition, meta.pointers.map { case (k, p) =>
-            Link(ByteString.copyFrom(ks.serialize(k)), p.partition, p.id, p.nElements, p.level)
-          }, meta.MIN, meta.MAX, if(meta.root.isDefined) {
-            val (partition, id) = meta.root.get
-            Some(RootRef(partition, id))
-          }
-          else None, meta.level)).toByteArray
+        case meta: Meta[K,V] => Any.pack(MetaBlock(meta.id, meta.partition, meta.pointers.map { case (k, p) =>
+          Link(ByteString.copyFrom(ks.serialize(k)), p.partition, p.id, p.nElements, p.level)
+        }, meta.MIN, meta.MAX, if (meta.root.isDefined) {
+          val (partition, id) = meta.root.get
+          Some(RootRef(partition, id))
+        }
+        else None, meta.level)).toByteArray
       }
 
       lz4Out.write(input)
@@ -69,7 +67,8 @@ final class GrpcByteSerializer[K, V](implicit val ks: Serializer[K], val vs: Ser
       val is = new ByteArrayInputStream(bytes)
       val lz4In = factory.createCompressorInputStream(CompressorStreamFactory.getLZ4Block, is)
 
-      val parsed = Any.parseFrom(lz4In.readAllBytes())
+      val buf = lz4In.readAllBytes()
+      val parsed = Any.parseFrom(buf)
 
       is.close()
       lz4In.close()

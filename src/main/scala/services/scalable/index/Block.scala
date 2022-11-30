@@ -1,5 +1,7 @@
 package services.scalable.index
 
+import scala.reflect.runtime.universe.typeOf
+
 trait Block[K, V] {
 
   val id: String
@@ -38,5 +40,4 @@ trait Block[K, V] {
   def hasMinimum(): Boolean
 
   def print()(implicit kf: K => String, vf: V => String): String
-
 }

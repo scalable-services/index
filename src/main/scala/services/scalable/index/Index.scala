@@ -29,9 +29,12 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
                                       val ord: Ordering[K],
                                       val idGenerator: IdGenerator){
 
+  assert(ictx.numLeafItems >= 4 && ictx.numMetaItems >= 4,
+    "Number of leaf and meta elements must be greater or equal to 4!")
+
   val logger = LoggerFactory.getLogger(this.getClass)
 
-  implicit val ctx = Context.fromIndexContext(ictx)
+  implicit var ctx = Context.fromIndexContext(ictx)
   val $this = this
 
   /**
@@ -42,11 +45,11 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
     ctx.snapshot()
   }
 
-  def save(): Future[IndexContext] = {
+  def save(clear: Boolean = true): Future[IndexContext] = {
     val snapshot = ctx.snapshot()
 
     storage.save(snapshot, ctx.getBlocks().map{case (id, block) => id -> serializer.serialize(block)}.toMap).map { r =>
-      ctx.clear()
+      if(clear) ctx.clear()
       snapshot
     }
   }
@@ -149,7 +152,7 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
                            (implicit ord: Ordering[K]): Future[Int] = {
     val leaf = ctx.createLeaf()
 
-    leaf.insert(data.map{case (k, v) => Tuple3(k, v, version)}, upsert) match {
+    leaf.insert(data, upsert, version) match {
       case Success(n) =>
 
         ctx.levels += 1
@@ -234,12 +237,12 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
         list = list.takeWhile{case (k, _) => ord.lt(k, rightLast)}
       }
 
-      val rn = right.insert(list.map{case (k, v) => Tuple3(k, v, version)}, upsert)
+      val rn = right.insert(list, upsert, version)
 
       return handleParent(left, right).map(_ => rn.get)
     }
 
-    val ln = left.insert(list.takeWhile{case (k, _) => ord.lt(k, leftLast)}.map{case (k, v) => Tuple3(k, v, version)}, upsert)
+    val ln = left.insert(list.takeWhile{case (k, _) => ord.lt(k, leftLast)}, upsert, version)
 
     handleParent(left, right).map{_ => ln.get}
   }
@@ -256,7 +259,7 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
       return splitLeaf(left, data, upsert, version)
     }
 
-    left.insert(data.map{case (k, v) => Tuple3(k, v, version)}, upsert) match {
+    left.insert(data, upsert, version) match {
       case Success(n) => recursiveCopy(left).map{_ => n}
       case Failure(ex) => Future.failed(ex)
     }

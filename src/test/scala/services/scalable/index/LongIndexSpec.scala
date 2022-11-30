@@ -1,17 +1,15 @@
 package services.scalable.index
 
-import com.google.common.base.Charsets
 import io.netty.util.internal.ThreadLocalRandom
-import org.apache.commons.lang3.RandomStringUtils
 import org.slf4j.LoggerFactory
-import services.scalable.index.grpc._
+import services.scalable.index.grpc.IndexContext
 import services.scalable.index.impl._
 
 import java.util.UUID
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
 
-class MainSpec extends Repeatable {
+class LongIndexSpec extends Repeatable {
 
   override val times: Int = 1
 
@@ -22,8 +20,8 @@ class MainSpec extends Repeatable {
     val rand = ThreadLocalRandom.current()
     import scala.concurrent.ExecutionContext.Implicits.global
 
-    type K = Bytes
-    type V = Bytes
+    type K = Long
+    type V = Long
 
     import services.scalable.index.DefaultComparators._
 
@@ -43,11 +41,11 @@ class MainSpec extends Repeatable {
     implicit val storage = new MemoryStorage()
     //implicit val storage = new CassandraStorage(TestConfig.KEYSPACE, false)
 
-    val indexContext = Await.result(TestHelper.loadOrCreateIndex(IndexContext(
-      indexId,
-      NUM_LEAF_ENTRIES,
-      NUM_META_ENTRIES
-    )), Duration.Inf).get
+    val indexContext = Await.result(TestHelper.loadOrCreateIndex(
+      IndexContext(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
+    ), Duration.Inf).get
+
+    implicit val longLongBlockSerializer = new GrpcByteSerializer[Long, Long]()
 
     var data = Seq.empty[(K, V)]
     val index = new QueryableIndex[K, V](indexContext)
@@ -57,11 +55,11 @@ class MainSpec extends Repeatable {
       var list = Seq.empty[Tuple2[K, V]]
 
       for(i<-0 until n){
-        val k = RandomStringUtils.randomAlphanumeric(5, 10).getBytes(Charsets.UTF_8)
-        val v = RandomStringUtils.randomAlphanumeric(5).getBytes(Charsets.UTF_8)
+        val k = rand.nextLong(0, 10000)
+        val v = rand.nextLong(0, 10000)
 
-        if(!data.exists { case (k1, _) => ord.equiv(k, k1) } &&
-          !list.exists { case (k1, _) => ord.equiv(k, k1) }){
+        if(!data.exists{case (k1, _) => ordLong.equiv(k, k1)} &&
+          !list.exists{case (k1, _) => ordLong.equiv(k, k1)}){
           list = list :+ (k -> v)
         }
       }
@@ -88,8 +86,8 @@ class MainSpec extends Repeatable {
     val dlist = data.sortBy(_._1)
     val ilist = Await.result(TestHelper.all(index.inOrder()), Duration.Inf).map{case (k, v, _) => k -> v}
 
-    logger.debug(s"${Console.GREEN_B}tdata: ${dlist.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
-    logger.debug(s"${Console.MAGENTA_B}idata: ${ilist.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
+    logger.debug(s"${Console.GREEN_B}tdata: ${dlist}${Console.RESET}\n")
+    logger.debug(s"${Console.MAGENTA_B}idata: ${ilist}${Console.RESET}\n")
 
     assert(TestHelper.isColEqual(dlist, ilist))
   }

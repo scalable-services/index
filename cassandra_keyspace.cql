@@ -1,18 +1,14 @@
 CREATE KEYSPACE history WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '1'}  AND durable_writes = true;
 
-CREATE TABLE history.databases (
+CREATE TABLE history.temporal_indexes (
     id text PRIMARY KEY,
-    buf blob,
-    num_leaf_entries int,
-    num_meta_entries int
+    buf blob
 ) WITH default_time_to_live = 0
     AND transactions = {'enabled': 'false'};
 
 CREATE TABLE history.indexes (
     id text PRIMARY KEY,
-    buf blob,
-    num_leaf_entries int,
-    num_meta_entries int
+    buf blob
 ) WITH default_time_to_live = 0
     AND transactions = {'enabled': 'false'};
 

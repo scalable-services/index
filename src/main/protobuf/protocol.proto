@@ -1,10 +1,5 @@
 syntax = "proto3";
 
-//#options
-option java_multiple_files = true;
-option java_package = "services.scalable.index.grpc";
-option java_outer_classname = "ClientServiceProto";
-
 import "scalapb/scalapb.proto";
 import "google/protobuf/wrappers.proto";
 
@@ -65,20 +60,14 @@ message IndexContext {
   optional RootRef root = 4;
   int32 levels = 5;
   int64 num_elements = 6;
+
+  int32 maxNItems = 7;
 }
 
-message IndexView {
-  int64 time = 1;
-  map<string, IndexContext> indexes = 2;
-}
-
-/**
- * A DBContext is a historical representation of a database (one or more indexes)
- */
-message DBContext {
+message TemporalContext {
   string id = 1;
-  IndexView latest = 2 [(scalapb.field).no_box = true];
-  IndexContext history = 3;
+  IndexContext latest = 2 [(scalapb.field).no_box = true];
+  IndexContext history = 3 [(scalapb.field).no_box = true];
 }
 
 message InsertCommand {
@@ -98,4 +87,10 @@ message UpdateCommand {
   option (scalapb.message).extends = "services.scalable.index.grpc.IndexCommand";
 
   repeated KVPair list = 1;
+}
+
+message DecimalValue {
+  uint32 scale = 1;
+  uint32 precision = 2;
+  bytes value = 3;
 }

@@ -1,8 +1,10 @@
 package services.scalable.index
 
-import services.scalable.index.grpc.IndexContext
+import services.scalable.index.grpc.{IndexContext, RootRef}
 
-import scala.concurrent.{ExecutionContext, Future}
+import java.util.UUID
+import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, ExecutionContext, Future}
 
 /**
  * All 'term' parameters in the functions should be provided along the prefix.
@@ -11,7 +13,7 @@ import scala.concurrent.{ExecutionContext, Future}
  * order[T].compare(k, term): the first parameter of the compare function is the key being compared. The second one is
  * the pattern to be compared to.
  */
-class QueryableIndex[K, V](c: IndexContext)(override implicit val ec: ExecutionContext,
+class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: ExecutionContext,
                                                   override val storage: Storage,
                                                   override val serializer: Serializer[Block[K, V]],
                                                   override val cache: Cache,
@@ -666,6 +668,160 @@ class QueryableIndex[K, V](c: IndexContext)(override implicit val ec: ExecutionC
 
   def lt(prefix: K, term: K, inclusive: Boolean, reverse: Boolean)(prefixOrd: Ordering[K], order: Ordering[K]): RichAsyncIterator[K, V] = {
     lt(Some(prefix), term, inclusive, reverse)(Some(prefixOrd), order)
+  }
+
+  def isFull(): Boolean = {
+    ctx.num_elements >= c.maxNItems
+  }
+
+  def hasMinimum(): Boolean = {
+    ctx.num_elements >= c.maxNItems/2
+  }
+
+  def split(): Future[QueryableIndex[K, V]] = {
+
+    println(s"original index root: ", ctx.root)
+
+    val originalRoot = ctx.root
+
+    (for {
+      leftRoot <- ctx.get(ctx.root.get).map(_.copy())
+      rightRoot = leftRoot.split()
+
+      leftMeta <- leftRoot match {
+        case leaf: Leaf[K, V] => Future.successful(leaf)
+        case meta: Meta[K, V] => if (meta.length == 1) ctx.get(meta.pointers(0)._2.unique_id) else
+          Future.successful(leftRoot)
+      }
+
+      rightMeta <- rightRoot match {
+        case leaf: Leaf[K, V] => Future.successful(leaf)
+        case meta: Meta[K, V] => if (meta.length == 1) ctx.get(meta.pointers(0)._2.unique_id) else
+          Future.successful(rightRoot)
+      }
+
+      leftIndexCtx = IndexContext(ctx.id)
+        .withNumLeafItems(ctx.NUM_LEAF_ENTRIES)
+        .withNumMetaItems(ctx.NUM_META_ENTRIES)
+        .withNumElements(leftMeta.nSubtree)
+        .withLevels(leftMeta.level)
+        .withMaxNItems(c.maxNItems)
+        .withRoot(RootRef(leftMeta.unique_id._1, leftMeta.unique_id._2))
+
+      rightIndexCtx = IndexContext(UUID.randomUUID.toString)
+        .withNumLeafItems(ctx.NUM_LEAF_ENTRIES)
+        .withNumMetaItems(ctx.NUM_META_ENTRIES)
+        .withNumElements(rightMeta.nSubtree)
+        .withLevels(rightMeta.level)
+        .withMaxNItems(c.maxNItems)
+        .withRoot(RootRef(rightMeta.unique_id._1, rightMeta.unique_id._2))
+
+    } yield {
+      (leftIndexCtx, rightIndexCtx)
+    }).flatMap { case (lctx, rctx) =>
+
+      println(s"left root: ${lctx.root.get} right root: ${rctx.root.get}")
+
+      // This fixes it .... IDKW...
+      //Await.result(storage.save(ctx.getBlocks().map{case (id, block) => id -> serializer.serialize(block)}.toMap), Duration.Inf)
+
+      val lr = lctx.root.get
+      val rr = rctx.root.get
+
+      val oldCtx = this.ctx
+
+      var leftParents = Await.result(ctx.getMeta(lr.partition -> lr.id), Duration.Inf)
+        .pointers.map(_._2).map(_.unique_id)
+
+      if(lctx.root.isDefined){
+        leftParents = leftParents :+ lctx.root.get.partition -> lctx.root.get.id
+      }
+
+      var rightParents = Await.result(ctx.getMeta(rr.partition -> rr.id), Duration.Inf)
+        .pointers.map(_._2).map(_.unique_id)
+
+      if (rctx.root.isDefined) {
+        rightParents = rightParents :+ rctx.root.get.partition -> rctx.root.get.id
+      }
+
+      var refs = Seq.empty[(String, String)]
+
+      this.ctx.blockReferences.foreach { id =>
+        refs :+= id
+      }
+
+      def isParentOf(id: (String, String), parents: Seq[(String, String)]): Boolean = {
+
+        if(parents.exists(p => id == p)) return true
+
+        val par = oldCtx.getParent(id)
+
+        if(par.isEmpty) return false
+
+        if(par.get._1.isEmpty) return false
+
+        isParentOf(par.get._1.get, parents)
+      }
+
+      this.ctx = Context.fromIndexContext[K, V](lctx)(this.ec, this.storage, this.serializer,
+        this.cache, this.ord, this.idGenerator)
+
+      /*refs.foreach { id =>
+        this.ctx.blockReferences :+= id
+      }*/
+
+      val rightIndex = new QueryableIndex[K, V](rctx)(this.ec, this.storage, this.serializer,
+        this.cache, this.ord, this.idGenerator)
+
+      //refs = refs.filterNot{x => !oldCtx.parents.isDefinedAt(x)}
+
+      refs = refs.filter { id =>
+        val isLeft = isParentOf(id, leftParents)
+        val isRight = isParentOf(id, rightParents)
+
+        // Removing orphan blocks...
+        if(isLeft || isRight){
+          println("id is from parent ", id, " left: ", isLeft, "right: ", isRight,
+            oldCtx.parents.get(id), this.ctx.parents.get(id), rightIndex.ctx.parents.get(id))
+
+          assert((isLeft && !isRight) || (isRight && !isLeft))
+
+          if (isLeft) {
+            this.ctx.blockReferences :+= id
+          } else {
+            rightIndex.ctx.blockReferences :+= id
+          }
+
+          true
+        } else {
+          false
+        }
+      }
+
+      if(this.ctx.root.isDefined){
+        this.ctx.blockReferences :+= this.ctx.root.get
+      }
+
+      if(rightIndex.ctx.root.isDefined){
+        rightIndex.ctx.blockReferences :+= rightIndex.ctx.root.get
+      }
+
+      Future.successful(rightIndex)
+    }
+  }
+
+  def copy(): QueryableIndex[K, V] = {
+
+    val copy = new QueryableIndex[K, V](snapshot().withId(UUID.randomUUID.toString))(this.ec, this.storage, this.serializer,
+      this.cache, this.ord, this.idGenerator)
+
+    if(!ctx.blockReferences.isEmpty){
+      ctx.blockReferences.foreach { id =>
+        copy.ctx.blockReferences :+= id
+      }
+    }
+
+    copy
   }
 
 }
