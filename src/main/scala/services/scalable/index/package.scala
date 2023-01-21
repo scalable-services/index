@@ -208,8 +208,9 @@ package object index {
       override def deserialize(b: Array[Byte]): IndexContext = Any.parseFrom(b).unpack(IndexContext)
     }
 
-    implicit val grpcIndexSerializer = new GrpcByteSerializer[Long, IndexContext]()
-    implicit val grpcHistorySerializer = new GrpcByteSerializer[Long, TemporalContext]()
-    implicit val grpcBytesSerializer = new GrpcByteSerializer[Bytes, Bytes]()
+    implicit val grpcLongIndexContextSerializer = new GrpcByteSerializer[Long, IndexContext]()
+    implicit val grpcLongTemporalContextSerializer = new GrpcByteSerializer[Long, TemporalContext]()
+    implicit val grpcBytesIndexContextSerializer = new GrpcByteSerializer[Bytes, IndexContext]()
+    implicit val grpcBytesBytesSerializer = new GrpcByteSerializer[Bytes, Bytes]()
   }
 }

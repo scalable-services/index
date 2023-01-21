@@ -1,9 +1,9 @@
 syntax = "proto3";
 
+package services.scalable.index.grpc;
+
 import "scalapb/scalapb.proto";
 import "google/protobuf/wrappers.proto";
-
-package services.scalable.index.grpc;
 
 option (scalapb.options) = {
   single_file: true

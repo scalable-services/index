@@ -50,7 +50,7 @@ class TemporalIndex[K, V](private val tctx: TemporalContext)(implicit val ec: Ex
     val blocks = index.ctx.getBlocks().map { case (id, block) =>
       id -> serializer.serialize(block)
     } ++ history.ctx.getBlocks().map { case (id, block) =>
-      id -> grpcIndexSerializer.serialize(block)
+      id -> grpcLongIndexContextSerializer.serialize(block)
     }
 
     storage.save(ctx, blocks).map { _ =>
