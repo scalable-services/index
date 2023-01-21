@@ -1,9 +1,11 @@
 organization := "services.scalable"
 name := "index"
 
-version := "0.17"
+version := "0.18"
 
 scalaVersion := "2.13.8"
+
+lazy val root = (project in file("."))
 
 libraryDependencies ++= Seq(
   "org.scalactic" %% "scalactic" % "3.1.0",
