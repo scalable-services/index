@@ -680,145 +680,78 @@ class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: Execut
 
   def split(): Future[QueryableIndex[K, V]] = {
 
-    println(s"original index root: ", ctx.root)
-
-    val originalRoot = ctx.root
-
-    (for {
-      leftRoot <- ctx.get(ctx.root.get).map(_.copy())
-      rightRoot = leftRoot.split()
-
-      leftMeta <- leftRoot match {
-        case leaf: Leaf[K, V] => Future.successful(leaf)
-        case meta: Meta[K, V] => if (meta.length == 1) ctx.get(meta.pointers(0)._2.unique_id) else
-          Future.successful(leftRoot)
+    for {
+      leftR <- ctx.getMeta(ctx.root.get).flatMap {
+        case block if block.length == 1 => ctx.getMeta(block.pointers(0)._2.unique_id)
+        case block => Future.successful(block)
       }
-
-      rightMeta <- rightRoot match {
-        case leaf: Leaf[K, V] => Future.successful(leaf)
-        case meta: Meta[K, V] => if (meta.length == 1) ctx.get(meta.pointers(0)._2.unique_id) else
-          Future.successful(rightRoot)
-      }
-
-      leftIndexCtx = IndexContext(ctx.id)
-        .withNumLeafItems(ctx.NUM_LEAF_ENTRIES)
-        .withNumMetaItems(ctx.NUM_META_ENTRIES)
-        .withNumElements(leftMeta.nSubtree)
-        .withLevels(leftMeta.level)
-        .withMaxNItems(c.maxNItems)
-        .withRoot(RootRef(leftMeta.unique_id._1, leftMeta.unique_id._2))
-
-      rightIndexCtx = IndexContext(UUID.randomUUID.toString)
-        .withNumLeafItems(ctx.NUM_LEAF_ENTRIES)
-        .withNumMetaItems(ctx.NUM_META_ENTRIES)
-        .withNumElements(rightMeta.nSubtree)
-        .withLevels(rightMeta.level)
-        .withMaxNItems(c.maxNItems)
-        .withRoot(RootRef(rightMeta.unique_id._1, rightMeta.unique_id._2))
-
     } yield {
-      (leftIndexCtx, rightIndexCtx)
-    }).flatMap { case (lctx, rctx) =>
 
-      println(s"left root: ${lctx.root.get} right root: ${rctx.root.get}")
+      val leftN = leftR.pointers.slice(0, leftR.length / 2).map { case (_, ptr) =>
+        ptr.nElements
+      }.sum
 
-      // This fixes it .... IDKW...
-      //Await.result(storage.save(ctx.getBlocks().map{case (id, block) => id -> serializer.serialize(block)}.toMap), Duration.Inf)
+      val rightN = leftR.pointers.slice(leftR.length / 2, leftR.length).map { case (_, ptr) =>
+        ptr.nElements
+      }.sum
 
-      val lr = lctx.root.get
-      val rr = rctx.root.get
+      val leftICtx = c
+        .withId(ctx.id)
+        .withMaxNItems(c.maxNItems)
+        .withNumElements(leftN)
+        .withLevels(leftR.level)
+        .withNumLeafItems(c.numLeafItems)
+        .withNumMetaItems(c.numMetaItems)
 
-      val oldCtx = this.ctx
+      val rightICtx = c
+        .withId(UUID.randomUUID().toString)
+        .withMaxNItems(c.maxNItems)
+        .withNumElements(rightN)
+        .withLevels(leftR.level)
+        .withNumLeafItems(c.numLeafItems)
+        .withNumMetaItems(c.numMetaItems)
 
-      var leftParents = Await.result(ctx.getMeta(lr.partition -> lr.id), Duration.Inf)
-        .pointers.map(_._2).map(_.unique_id)
+      val refs = ctx.blockReferences
 
-      if(lctx.root.isDefined){
-        leftParents = leftParents :+ lctx.root.get.partition -> lctx.root.get.id
-      }
+      ctx = Context.fromIndexContext(leftICtx)(this.ec,
+        this.storage, this.serializer, this.cache, this.ord, this.idGenerator)
 
-      var rightParents = Await.result(ctx.getMeta(rr.partition -> rr.id), Duration.Inf)
-        .pointers.map(_._2).map(_.unique_id)
+      ctx.blockReferences ++= refs
 
-      if (rctx.root.isDefined) {
-        rightParents = rightParents :+ rctx.root.get.partition -> rctx.root.get.id
-      }
+      val rindex = new QueryableIndex[K, V](rightICtx)(this.ec,
+        this.storage, this.serializer, this.cache, this.ord, this.idGenerator)
 
-      var refs = Seq.empty[(String, String)]
+      val leftRoot = leftR.copy()(ctx)
+      ctx.root = Some(leftRoot.unique_id)
 
-      this.ctx.blockReferences.foreach { id =>
-        refs :+= id
-      }
+      val rightRoot = leftRoot.split()(rindex.ctx)
+      rindex.ctx.root = Some(rightRoot.unique_id)
 
-      def isParentOf(id: (String, String), parents: Seq[(String, String)]): Boolean = {
+      /*val ileft = Await.result(TestHelper.all(left.inOrder()), Duration.Inf).map { case (k, v, _) => k -> v }
+        logger.debug(s"${Console.BLUE_B}idata data: ${ileft.map { case (k, v) => new String(k, Charsets.UTF_8) -> new String(v) }}${Console.RESET}\n")
 
-        if(parents.exists(p => id == p)) return true
+        val idataL = Await.result(TestHelper.all(lindex.inOrder()), Duration.Inf).map { case (k, v, _) => k -> v }
+        logger.debug(s"${Console.GREEN_B}idataL data: ${idataL.map { case (k, v) => new String(k, Charsets.UTF_8) -> new String(v) }}${Console.RESET}\n")
 
-        val par = oldCtx.getParent(id)
+        val idataR = Await.result(TestHelper.all(rindex.inOrder()), Duration.Inf).map { case (k, v, _) => k -> v }
+        logger.debug(s"${Console.GREEN_B}idataR data: ${idataR.map { case (k, v) => new String(k, Charsets.UTF_8) -> new String(v) }}${Console.RESET}\n")
 
-        if(par.isEmpty) return false
+        assert(idataR.slice(0, idataL.length) != idataL)
+        assert(ileft == (idataL ++ idataR))*/
 
-        if(par.get._1.isEmpty) return false
-
-        isParentOf(par.get._1.get, parents)
-      }
-
-      this.ctx = Context.fromIndexContext[K, V](lctx)(this.ec, this.storage, this.serializer,
-        this.cache, this.ord, this.idGenerator)
-
-      /*refs.foreach { id =>
-        this.ctx.blockReferences :+= id
-      }*/
-
-      val rightIndex = new QueryableIndex[K, V](rctx)(this.ec, this.storage, this.serializer,
-        this.cache, this.ord, this.idGenerator)
-
-      //refs = refs.filterNot{x => !oldCtx.parents.isDefinedAt(x)}
-
-      refs = refs.filter { id =>
-        val isLeft = isParentOf(id, leftParents)
-        val isRight = isParentOf(id, rightParents)
-
-        // Removing orphan blocks...
-        if(isLeft || isRight){
-          println("id is from parent ", id, " left: ", isLeft, "right: ", isRight,
-            oldCtx.parents.get(id), this.ctx.parents.get(id), rightIndex.ctx.parents.get(id))
-
-          assert((isLeft && !isRight) || (isRight && !isLeft))
-
-          if (isLeft) {
-            this.ctx.blockReferences :+= id
-          } else {
-            rightIndex.ctx.blockReferences :+= id
-          }
-
-          true
-        } else {
-          false
-        }
-      }
-
-      if(this.ctx.root.isDefined){
-        this.ctx.blockReferences :+= this.ctx.root.get
-      }
-
-      if(rightIndex.ctx.root.isDefined){
-        rightIndex.ctx.blockReferences :+= rightIndex.ctx.root.get
-      }
-
-      Future.successful(rightIndex)
+      rindex
     }
   }
 
   def copy(): QueryableIndex[K, V] = {
+    val context = IndexContext(UUID.randomUUID.toString, c.numLeafItems, c.numMetaItems,
+      ctx.root.map { r => RootRef(r._1, r._2) }, levels, ctx.num_elements, c.maxNItems)
 
-    val copy = new QueryableIndex[K, V](snapshot().withId(UUID.randomUUID.toString))(this.ec, this.storage, this.serializer,
-      this.cache, this.ord, this.idGenerator)
+    val copy = new QueryableIndex[K, V](context)(this.ec,
+      this.storage, this.serializer, this.cache, this.ord, this.idGenerator)
 
-    if(!ctx.blockReferences.isEmpty){
-      ctx.blockReferences.foreach { id =>
-        copy.ctx.blockReferences :+= id
-      }
+    ctx.blockReferences.foreach { case (id, _) =>
+      copy.ctx.blockReferences += id -> id
     }
 
     copy
