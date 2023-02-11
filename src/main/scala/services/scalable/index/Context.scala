@@ -33,7 +33,7 @@ sealed class Context[K, V](val indexId: String,
   val META_MIN = META_MAX/2
 
   //val blocks = TrieMap.empty[(String, String), Block[K,V]]
-  var blockReferences = Seq.empty[(String, String)]
+  val blockReferences = TrieMap.empty[(String, String), (String, String)]
   val parents = TrieMap.empty[(String, String), (Option[(String, String)], Int)]
 
   if(root.isDefined) {
@@ -70,7 +70,7 @@ sealed class Context[K, V](val indexId: String,
   }
 
   def getBlocks(): Map[(String, String), Block[K, V]] = {
-    blockReferences.map { id =>
+    blockReferences.map { case (id, _) =>
       id -> cache.newBlocks.get(id).get.asInstanceOf[Block[K, V]]
     }.toMap
   }
@@ -88,7 +88,7 @@ sealed class Context[K, V](val indexId: String,
 
     cache.newBlocks += leaf.unique_id -> leaf
 
-    blockReferences :+= leaf.unique_id
+    blockReferences += leaf.unique_id -> leaf.unique_id
     setParent(leaf.unique_id, 0, None)
 
     leaf
@@ -99,7 +99,7 @@ sealed class Context[K, V](val indexId: String,
 
     cache.newBlocks += meta.unique_id -> meta
 
-    blockReferences :+= meta.unique_id
+    blockReferences += meta.unique_id -> meta.unique_id
     setParent(meta.unique_id, 0, None)
 
     meta
@@ -144,13 +144,28 @@ sealed class Context[K, V](val indexId: String,
       num_elements, maxNItems)
   }
 
+  def snapshot(clearNewBlocks: Boolean): IndexContext = {
+
+    if(clearNewBlocks){
+      cache.newBlocks.filter(_._2.isNew).foreach { case (_, b) =>
+        b.root = root
+        b.isNew = false
+      }
+    }
+
+    logger.info(s"\nSAVING $indexId: ${root.map { r => RootRef(r._1, r._2) }}\n")
+
+    IndexContext(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, root.map { r => RootRef(r._1, r._2) }, levels,
+      num_elements, maxNItems)
+  }
+
   def copy(): Context[K, V] = {
     new Context[K, V](indexId, root, num_elements, levels, maxNItems, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)(ec, storage,
       serializer, cache, ord, idGenerator)
   }
 
   def clear(): Unit = {
-    blockReferences.foreach { id =>
+    blockReferences.foreach { case (id, _) =>
       cache.newBlocks.remove(id)
     }
   }
