@@ -1,7 +1,7 @@
 organization := "services.scalable"
 name := "index"
 
-version := "0.19"
+version := "0.20"
 
 scalaVersion := "2.13.8"
 
@@ -35,3 +35,13 @@ libraryDependencies += "com.thesamet.scalapb" %% "scalapb-runtime" % scalapb.com
 addCommandAlias("main-test", "testOnly services.scalable.index.MainSpec")
 
 enablePlugins(AkkaGrpcPlugin)
+
+// Run in a separate JVM, to make sure sbt waits until all threads have
+// finished before returning.
+// If you want to keep the application running while executing other
+// sbt tasks, consider https://github.com/spray/sbt-revolver/
+fork := true
+
+import sbtprotoc.ProtocPlugin._
+
+javaSource in ProtobufConfig := (Compile / sourceDirectory) / "generated"

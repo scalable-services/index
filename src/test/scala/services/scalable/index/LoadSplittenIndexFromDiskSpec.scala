@@ -1,9 +1,8 @@
 package services.scalable.index
 
-import org.apache.commons.lang3.RandomStringUtils
 import services.scalable.index.DefaultComparators.ord
 import services.scalable.index.DefaultSerializers._
-import services.scalable.index.grpc.{IndexContext, TemporalContext}
+import services.scalable.index.grpc.IndexContext
 import services.scalable.index.impl._
 
 import java.util.UUID

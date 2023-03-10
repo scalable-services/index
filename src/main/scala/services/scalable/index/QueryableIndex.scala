@@ -1,10 +1,10 @@
 package services.scalable.index
 
 import services.scalable.index.grpc.{IndexContext, RootRef}
+import services.scalable.index.impl.RichAsyncIterator
 
 import java.util.UUID
-import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{ExecutionContext, Future}
 
 /**
  * All 'term' parameters in the functions should be provided along the prefix.
@@ -25,7 +25,6 @@ class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: Execut
 
   protected def ltr(fromPrefix: Option[K], fromWord: K, inclusiveFrom: Boolean,
                     prefixOrd: Option[Ordering[K]], order: Ordering[K]): RichAsyncIterator[K, V] = {
-
     new RichAsyncIterator[K, V] {
 
       val sord = if(inclusiveFrom) new Ordering[K]{
@@ -78,7 +77,7 @@ class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: Execut
               if(filtered.isEmpty){
                 next()
               } else {
-                Future.successful(checkCounter(filtered.filter{case (k, v, _) => filter(k, v)}))
+                Future.successful(checkCounter(filtered.filter(filter)))
               }
           }
         }
@@ -94,11 +93,7 @@ class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: Execut
             val filtered = b.tuples.filter{case (k, _, _) => check(k) }.reverse
             stop = filtered.isEmpty
 
-            /*if(fromWord.isInstanceOf[Datom])
-              println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => k.asInstanceOf[Datom]}.map(d => printDatom(d, d.getA))} filtered: ${filtered.length}${Console.RESET}\n")
-            else println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k.asInstanceOf[Bytes])}} filtered: ${filtered.length}${Console.RESET}\n")
-*/
-            checkCounter(filtered.filter{case (k, v, _) => filter(k, v) })
+            checkCounter(filtered.filter(filter))
         }
       }
     }
@@ -155,17 +150,7 @@ class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: Execut
               val filtered = b.tuples.filter{case (k, _, _) => check(k) }
               stop = filtered.isEmpty
 
-              /*if(fromWord.isInstanceOf[Datom])
-                println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => k.asInstanceOf[Datom]}.map(d => printDatom(d, d.getA))} filtered: ${filtered.length}${Console.RESET}\n")
-              else println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k.asInstanceOf[Bytes])}} filtered: ${filtered.length}${Console.RESET}\n")
-*/
-              /*if(filtered.isEmpty){
-                next()
-              } else {
-                Future.successful(checkCounter(filtered.filter{case (k, v) => filter(k, v)}))
-              }*/
-
-              Future.successful(checkCounter(filtered.filter{case (k, v, _) => filter(k, v)}))
+              Future.successful(checkCounter(filtered.filter(filter)))
           }
         }
 
@@ -180,11 +165,7 @@ class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: Execut
             val filtered = b.tuples.filter{case (k, _, _) => check(k) }
             stop = filtered.isEmpty
 
-            /* if(fromWord.isInstanceOf[Datom])
-               println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => k.asInstanceOf[Datom]}.map(d => printDatom(d, d.getA))} filtered: ${filtered.length}${Console.RESET}\n")
-             else println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k.asInstanceOf[Bytes])}} filtered: ${filtered.length}${Console.RESET}\n")
- */
-            checkCounter(filtered.filter{case (k, v, _) => filter(k, v) })
+            checkCounter(filtered.filter(filter))
         }
       }
     }
@@ -237,14 +218,10 @@ class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: Execut
               val filtered = b.tuples.filter{case (k, _, _) => check(k) }.reverse
               stop = filtered.isEmpty
 
-              /*if(fromWord.isInstanceOf[Datom])
-                println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => k.asInstanceOf[Datom]}.map(d => printDatom(d, d.getA))} filtered: ${filtered.length}${Console.RESET}\n")
-              else println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k.asInstanceOf[Bytes])}} filtered: ${filtered.length}${Console.RESET}\n")
-*/
               if(filtered.isEmpty){
                 next()
               } else {
-                Future.successful(checkCounter(filtered.filter{case (k, v, _) => filter(k, v)}))
+                Future.successful(checkCounter(filtered.filter(filter)))
               }
           }
         }
@@ -260,11 +237,7 @@ class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: Execut
             val filtered = b.tuples.filter{case (k, _, _) => check(k) }.reverse
             stop = filtered.isEmpty
 
-            /*if(fromWord.isInstanceOf[Datom])
-              println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => k.asInstanceOf[Datom]}.map(d => printDatom(d, d.getA))} filtered: ${filtered.length}${Console.RESET}\n")
-            else println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k.asInstanceOf[Bytes])}} filtered: ${filtered.length}${Console.RESET}\n")
-*/
-            checkCounter(filtered.filter{case (k, v, _) => filter(k, v) })
+            checkCounter(filtered.filter(filter))
         }
       }
     }
@@ -328,7 +301,7 @@ class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: Execut
                 Future.successful(checkCounter(filtered.filter{case (k, v) => filter(k, v)}))
               }*/
 
-              Future.successful(checkCounter(filtered.filter{case (k, v, _) => filter(k, v)}))
+              Future.successful(checkCounter(filtered.filter(filter)))
           }
         }
 
@@ -347,7 +320,7 @@ class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: Execut
               println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => k.asInstanceOf[Datom]}.map(d => printDatom(d, d.getA))} filtered: ${filtered.length}${Console.RESET}\n")
               else println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k.asInstanceOf[Bytes])}} filtered: ${filtered.length}${Console.RESET}\n")
 */
-            checkCounter(filtered.filter{case (k, v, _) => filter(k, v) })
+            checkCounter(filtered.filter(filter))
         }
       }
     }
@@ -408,7 +381,7 @@ class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: Execut
               if(filtered.isEmpty){
                 next()
               } else {
-                Future.successful(checkCounter(filtered.filter{case (k, v, _) => filter(k, v)}))
+                Future.successful(checkCounter(filtered.filter(filter)))
               }
           }
         }
@@ -428,13 +401,13 @@ class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: Execut
               println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => k.asInstanceOf[Datom]}.map(d => printDatom(d, d.getA))} filtered: ${filtered.length}${Console.RESET}\n")
             else println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k.asInstanceOf[Bytes])}} filtered: ${filtered.length}${Console.RESET}\n")
 */
-            checkCounter(filtered.filter{case (k, v, _) => filter(k, v) })
+            checkCounter(filtered.filter(filter))
         }
       }
     }
   }
 
-  def range(fromWord: K, toWord: K, inclusiveFrom: Boolean, inclusiveTo: Boolean, reverse: Boolean)(order: Ordering[K]): RichAsyncIterator[K, V] = {
+  def range(fromWord: K, toWord: K, inclusiveFrom: Boolean, inclusiveTo: Boolean, reverse: Boolean)(implicit order: Ordering[K]): RichAsyncIterator[K, V] = {
 
     if(reverse){
       return ranger(fromWord, toWord, inclusiveFrom, inclusiveTo, order)
@@ -493,7 +466,7 @@ class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: Execut
               if(filtered.isEmpty){
                 next()
               } else {
-                Future.successful(checkCounter(filtered.filter{case (k, v, _) => filter(k, v)}))
+                Future.successful(checkCounter(filtered.filter(filter)))
               }
           }
         }
@@ -513,13 +486,13 @@ class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: Execut
               println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => k.asInstanceOf[Datom]}.map(d => printDatom(d, d.getA))} filtered: ${filtered.length}${Console.RESET}\n")
             else println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k.asInstanceOf[Bytes])}} filtered: ${filtered.length}${Console.RESET}\n")
 */
-            checkCounter(filtered.filter{case (k, v, _) => filter(k, v) })
+            checkCounter(filtered.filter(filter))
         }
       }
     }
   }
 
-  protected def findr(word: K)(order: Ordering[K]): RichAsyncIterator[K, V] = {
+  protected def findr(word: K)(implicit order: Ordering[K]): RichAsyncIterator[K, V] = {
 
     val sord = new Ordering[K]{
       override def compare(word: K, y: K): Int = {
@@ -564,7 +537,7 @@ class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: Execut
               if(filtered.isEmpty){
                 next()
               } else {
-                Future.successful(checkCounter(filtered.filter{case (k, v, _) => filter(k, v)}))
+                Future.successful(checkCounter(filtered.filter(filter)))
               }
           }
         }
@@ -584,13 +557,13 @@ class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: Execut
               println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => k.asInstanceOf[Datom]}.map(d => printDatom(d, d.getA))} filtered: ${filtered.length}${Console.RESET}\n")
             else println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k.asInstanceOf[Bytes])}} filtered: ${filtered.length}${Console.RESET}\n")
 */
-            checkCounter(filtered.filter{case (k, v, _) => filter(k, v) })
+            checkCounter(filtered.filter(filter))
         }
       }
     }
   }
 
-  def find(word: K, reverse: Boolean)(order: Ordering[K]): RichAsyncIterator[K, V] = {
+  def find(word: K, reverse: Boolean)(implicit order: Ordering[K]): RichAsyncIterator[K, V] = {
 
     if(reverse){
       return findr(word)(order)
@@ -628,7 +601,7 @@ class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: Execut
               if(filtered.isEmpty){
                 next()
               } else {
-                Future.successful(checkCounter(filtered.filter{case (k, v, _) => filter(k, v)}))
+                Future.successful(checkCounter(filtered.filter(filter)))
               }
           }
         }
@@ -648,13 +621,13 @@ class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: Execut
               println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => k.asInstanceOf[Datom]}.map(d => printDatom(d, d.getA))} filtered: ${filtered.length}${Console.RESET}\n")
             else println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k.asInstanceOf[Bytes])}} filtered: ${filtered.length}${Console.RESET}\n")
 */
-            checkCounter(filtered.filter{case (k, v, _) => filter(k, v) })
+            checkCounter(filtered.filter(filter))
         }
       }
     }
   }
 
-  def gt(term: K, inclusive: Boolean, reverse: Boolean)(order: Ordering[K]): RichAsyncIterator[K, V] = {
+  def gt(term: K, inclusive: Boolean, reverse: Boolean)(implicit order: Ordering[K]): RichAsyncIterator[K, V] = {
     gt(None, term, inclusive, reverse)(None, order)
   }
 
@@ -662,7 +635,7 @@ class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: Execut
     gt(Some(prefix), term, inclusive, reverse)(Some(prefixOrd), order)
   }
 
-  def lt(term: K, inclusive: Boolean, reverse: Boolean)(order: Ordering[K]): RichAsyncIterator[K, V] = {
+  def lt(term: K, inclusive: Boolean, reverse: Boolean)(implicit order: Ordering[K]): RichAsyncIterator[K, V] = {
     lt(None, term, inclusive, reverse)(None, order)
   }
 

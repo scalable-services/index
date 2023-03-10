@@ -3,6 +3,7 @@ package services.scalable.index
 import org.slf4j.LoggerFactory
 import services.scalable.index.Commands._
 import services.scalable.index.grpc.IndexContext
+import services.scalable.index.impl.RichAsyncIterator
 
 import java.util.concurrent.atomic.AtomicInteger
 import scala.collection.concurrent.TrieMap
@@ -22,7 +23,7 @@ import scala.util.{Failure, Success}
  * the context. Once you done, the resulting context can be saved and passed to future instances of the class representing another set of
  * operations.
  */
-class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
+class Index[K, V](val ictx: IndexContext)(implicit val ec: ExecutionContext,
                                       val storage: Storage,
                                       val serializer: Serializer[Block[K, V]],
                                       val cache: Cache,
@@ -476,16 +477,19 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
     remove()
   }
 
-  protected def updateLeaf(left: Leaf[K,V], data: Seq[Tuple3[K, V, String]], version: String)
+  protected def updateLeaf(left: Leaf[K,V], data: Seq[Tuple3[K, V, String]], version: String,
+                           mappingF: Tuple[K, V] => Tuple[K, V])
                           (implicit ord: Ordering[K]): Future[Int] = {
-    val result = left.update(data, version)
+    val result = left.update(data, version, mappingF)
 
     if(result.isFailure) return Future.failed(result.failed.get)
 
     recursiveCopy(left).map(_ => result.get)
   }
 
-  def update(data: Seq[Tuple[K, V]], version: String = this.ctx.id)(implicit ord: Ordering[K]): Future[Int] = {
+  def update(data: Seq[Tuple[K, V]], version: String = this.ctx.id,
+             mappingF: Tuple[K, V] => Tuple[K, V] = (t: Tuple[K, V]) => t)
+            (implicit ord: Ordering[K]): Future[Int] = {
 
     val sorted = data.sortBy(_._1)
 
@@ -509,7 +513,7 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
           val idx = list.indexWhere{case (k, _, _) => ord.gt(k, leaf.last)}
           if(idx > 0) list = list.slice(0, idx)
 
-          updateLeaf(leaf.copy(), list, version)
+          updateLeaf(leaf.copy(), list, version, mappingF)
       }.flatMap { n =>
         pos += n
         update()
@@ -556,10 +560,7 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
     }
   }*/
 
-  def inOrder()(implicit ord: Ordering[K]): AsyncIterator[Seq[Tuple[K, V]]] = new AsyncIterator[Seq[Tuple[K, V]]] {
-
-    var cur: Option[Leaf[K, V]] = None
-    var firstTime = false
+  def inOrder(f: Tuple[K, V] => Boolean = _ => true)(implicit ord: Ordering[K]): AsyncIterator[Seq[Tuple[K, V]]] = new RichAsyncIterator[K, V](f) {
 
     override def hasNext(): Future[Boolean] = {
       if(!firstTime) return Future.successful(ctx.root.isDefined)
@@ -577,7 +578,7 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
 
           case Some(b) =>
             cur = Some(b)
-            b.inOrder()
+            b.inOrder().filter(f)
         }
       }
 
@@ -588,15 +589,12 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
 
         case Some(b) =>
           cur = Some(b)
-          b.inOrder()
+          b.inOrder().filter(f)
       }
     }
   }
 
-  def reverse()(implicit ord: Ordering[K]): AsyncIterator[Seq[Tuple[K, V]]] = new AsyncIterator[Seq[Tuple[K, V]]] {
-
-    var cur: Option[Leaf[K, V]] = None
-    var firstTime = false
+  def reverse(f: Tuple[K, V] => Boolean = _ => true)(implicit ord: Ordering[K]): AsyncIterator[Seq[Tuple[K, V]]] = new RichAsyncIterator[K, V](f) {
 
     override def hasNext(): Future[Boolean] = {
       if(!firstTime) return Future.successful(ctx.root.isDefined)
@@ -614,7 +612,7 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
 
           case Some(b) =>
             cur = Some(b)
-            b.inOrder().reverse
+            b.inOrder().reverse.filter(f)
         }
       }
 
@@ -625,7 +623,7 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
 
         case Some(b) =>
           cur = Some(b)
-          b.inOrder().reverse
+          b.inOrder().reverse.filter(f)
       }
     }
   }

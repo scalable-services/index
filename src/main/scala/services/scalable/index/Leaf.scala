@@ -50,7 +50,7 @@ class Leaf[K, V](override val id: String,
     Success(keys.length)
   }
 
-  def update(data: Seq[Tuple[K, V]], version: String)(implicit ord: Ordering[K]): Try[Int] = {
+  def update(data: Seq[Tuple[K, V]], version: String, mappingF: Tuple[K, V] => Tuple[K, V])(implicit ord: Ordering[K]): Try[Int] = {
 
     if(data.exists{ case (k, _, _) => !tuples.exists{case (k1, _, _) => ord.equiv(k1, k) }}){
       return Failure(Errors.LEAF_KEY_NOT_FOUND(data.map(_._1)))
@@ -64,7 +64,7 @@ class Leaf[K, V](override val id: String,
 
     val notin = tuples.filterNot{case (k1, _, _) => data.exists{ case (k, _, _) => ord.equiv(k, k1)}}
 
-    tuples = (notin ++ data.map{case (k, v, _) => Tuple3(k, v, version)}).sortBy(_._1)
+    tuples = (notin ++ data.map(mappingF).map{case (k, v, _) => Tuple3(k, v, version)}).sortBy(_._1)
 
     Success(data.length)
   }
