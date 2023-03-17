@@ -1,7 +1,7 @@
-package services.scalable.index
+package services.scalable.index.test
 
 import org.scalatest.flatspec.AnyFlatSpec
-import services.scalable.index.grpc.LeafBlock
+import services.scalable.index.{Bytes, DefaultSerializers, Leaf}
 
 import java.util.UUID
 
@@ -13,8 +13,8 @@ class SerializationSpec extends AnyFlatSpec {
 
     val leaf = new Leaf[Bytes, Bytes](UUID.randomUUID.toString, UUID.randomUUID.toString, 3, 3)
 
-    val buf = grpcBytesSerializer.serialize(leaf)
-    val leafBack = grpcBytesSerializer.deserialize(buf).asInstanceOf[Leaf[Bytes, Bytes]]
+    val buf = grpcBytesBytesSerializer.serialize(leaf)
+    val leafBack = grpcBytesBytesSerializer.deserialize(buf).asInstanceOf[Leaf[Bytes, Bytes]]
 
     println(leafBack.inOrder().map{case (k, v, _) => new String(k)})
 

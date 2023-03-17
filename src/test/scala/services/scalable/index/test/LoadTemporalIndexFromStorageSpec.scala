@@ -1,9 +1,10 @@
-package services.scalable.index
+package services.scalable.index.test
 
 import io.netty.util.internal.ThreadLocalRandom
 import org.slf4j.LoggerFactory
 import services.scalable.index.grpc.TemporalContext
 import services.scalable.index.impl._
+import services.scalable.index.{Context, IdGenerator, TemporalIndex}
 
 import java.util.UUID
 import scala.concurrent.Await

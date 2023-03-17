@@ -33,5 +33,5 @@ object Errors {
   case class INDEX_ALREADY_EXISTS(id: String) extends RuntimeException(s"Index ${id} already exists!") with IndexError
   case class TEMPORAL_INDEX_ALREADY_EXISTS(id: String) extends RuntimeException(s"Temporal Index ${id} already exists!") with TemporalIndexError
 
-  case class VERSION_CHANGED[K, V](data: Seq[Tuple[K, V]]) extends RuntimeException(s"Key version for ${data} has changed!") with IndexError
+  case class VERSION_CHANGED[K, V](data: Seq[Tuple2[K, Option[String]]]) extends RuntimeException(s"Key version for ${data} has changed!") with IndexError
 }

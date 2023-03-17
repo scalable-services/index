@@ -3,6 +3,7 @@ package services.scalable.index
 import org.slf4j.LoggerFactory
 import services.scalable.index.Commands._
 import services.scalable.index.grpc.IndexContext
+import services.scalable.index.impl.RichAsyncIterator
 
 import java.util.concurrent.atomic.AtomicInteger
 import scala.collection.concurrent.TrieMap
@@ -22,7 +23,7 @@ import scala.util.{Failure, Success}
  * the context. Once you done, the resulting context can be saved and passed to future instances of the class representing another set of
  * operations.
  */
-class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
+class Index[K, V](val ictx: IndexContext)(implicit val ec: ExecutionContext,
                                       val storage: Storage,
                                       val serializer: Serializer[Block[K, V]],
                                       val cache: Cache,
@@ -148,11 +149,11 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
     }
   }
 
-  protected def insertEmpty(data: Seq[Tuple2[K, V]], upsert: Boolean, version: String)
+  protected def insertEmpty(data: Seq[Tuple3[K, V, Boolean]], version: String)
                            (implicit ord: Ordering[K]): Future[Int] = {
     val leaf = ctx.createLeaf()
 
-    leaf.insert(data, upsert, version) match {
+    leaf.insert(data, version) match {
       case Success(n) =>
 
         ctx.levels += 1
@@ -221,10 +222,10 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
     }
   }
 
-  protected def splitLeaf(left: Leaf[K,V], data: Seq[Tuple2[K, V]], upsert: Boolean, version: String)(implicit ord: Ordering[K]): Future[Int] = {
+  protected def splitLeaf(left: Leaf[K, V], data: Seq[Tuple3[K, V, Boolean]], version: String)(implicit ord: Ordering[K]): Future[Int] = {
     val right = left.split()
 
-    val (k, _) = data(0)
+    val (k, _, _) = data(0)
     val leftLast = left.last
     val rightLast = right.last
 
@@ -234,20 +235,20 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
     if(ord.gt(k, leftLast)){
 
       if(!ord.gt(k, rightLast)){
-        list = list.takeWhile{case (k, _) => ord.lt(k, rightLast)}
+        list = list.takeWhile{case (k, _, _) => ord.lt(k, rightLast)}
       }
 
-      val rn = right.insert(list, upsert, version)
+      val rn = right.insert(list, version)
 
       return handleParent(left, right).map(_ => rn.get)
     }
 
-    val ln = left.insert(list.takeWhile{case (k, _) => ord.lt(k, leftLast)}, upsert, version)
+    val ln = left.insert(list.takeWhile{case (k, _, _) => ord.lt(k, leftLast)}, version)
 
     handleParent(left, right).map{_ => ln.get}
   }
 
-  protected def insertLeaf(left: Leaf[K, V], data: Seq[Tuple2[K, V]], upsert: Boolean, version: String)
+  protected def insertLeaf(left: Leaf[K, V], data: Seq[Tuple3[K, V, Boolean]], version: String)
                           (implicit ord: Ordering[K]): Future[Int] = {
     if(left.isFull()){
 
@@ -256,21 +257,27 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
       /*val right = left.split()
       return handleParent(left, right).map{_ => 0}*/
 
-      return splitLeaf(left, data, upsert, version)
+      return splitLeaf(left, data, version)
     }
 
-    left.insert(data, upsert, version) match {
+    left.insert(data, version) match {
       case Success(n) => recursiveCopy(left).map{_ => n}
       case Failure(ex) => Future.failed(ex)
     }
   }
 
-  def insert(data: Seq[Tuple2[K, V]], upsert: Boolean = false, version: String = this.ctx.id)
+  /**
+   * @param data (key, value, upsert)
+   * @param version
+   * @param ord
+   * @return
+   */
+  def insert(data: Seq[Tuple3[K, V, Boolean]], version: String = this.ctx.id)
             (implicit ord: Ordering[K]): Future[Int] = {
 
     val sorted = data.sortBy(_._1)
 
-    if(sorted.exists{case (k, _) => sorted.count{case (k1, _) => ord.equiv(k, k1)} > 1}){
+    if(sorted.exists{case (k, _, _) => sorted.count{case (k1, _, _) => ord.equiv(k, k1)} > 1}){
       //throw new RuntimeException(s"Repeated elements: ${sorted.map{case (k, v) => new String(k.asInstanceOf[Bytes])}}")
       return Future.failed(Errors.DUPLICATE_KEYS(data))
     }
@@ -282,16 +289,16 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
       if(pos == len) return Future.successful(sorted.length)
 
       var list = sorted.slice(pos, len)
-      val (k, _) = list(0)
+      val (k, _, _) = list(0)
 
       findPath(k).flatMap {
-        case None => insertEmpty(list, upsert, version)
+        case None => insertEmpty(list, version)
         case Some(leaf) =>
 
-          val idx = list.indexWhere{case (k, _) => ord.gt(k, leaf.last)}
+          val idx = list.indexWhere{case (k, _, _) => ord.gt(k, leaf.last)}
           if(idx > 0) list = list.slice(0, idx)
 
-          insertLeaf(leaf.copy(), list, upsert, version)
+          insertLeaf(leaf.copy(), list, version)
       }.flatMap { n =>
         pos += n
 
@@ -406,7 +413,7 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
     borrowLeft(target, left, right, parent, pos)
   }
 
-  protected def removeFromLeaf(target: Leaf[K,V], keys: Seq[K])(implicit ord: Ordering[K]): Future[Int] = {
+  protected def removeFromLeaf(target: Leaf[K, V], keys: Seq[Tuple2[K, Option[String]]])(implicit ord: Ordering[K]): Future[Int] = {
     val result = target.remove(keys)
 
     if(result.isFailure) return Future.failed(result.failed.get)
@@ -444,8 +451,13 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
     }
   }
 
-  def remove(keys: Seq[K])(implicit ord: Ordering[K]): Future[Int] = {
-    val sorted = keys.distinct.sorted
+  /**
+   * @param keys (key, compare_version_change?)
+   * @param ord
+   * @return
+   */
+  def remove(keys: Seq[Tuple2[K, Option[String]]])(implicit ord: Ordering[K]): Future[Int] = {
+    val sorted = keys.distinct.sortBy(_._1)
 
     val len = sorted.length
     var pos = 0
@@ -457,13 +469,13 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
       }
 
       var list = sorted.slice(pos, len)
-      val k = list(0)
+      val (k, _) = list(0)
 
       findPath(k).flatMap {
         case None => Future.failed(Errors.KEY_NOT_FOUND[K](k))
         case Some(leaf) =>
 
-          val idx = list.indexWhere {k => ord.gt(k, leaf.last)}
+          val idx = list.indexWhere { case (k, _) => ord.gt(k, leaf.last)}
           list = if(idx > 0) list.slice(0, idx) else list
 
           removeFromLeaf(leaf.copy(), list)
@@ -476,20 +488,31 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
     remove()
   }
 
-  protected def updateLeaf(left: Leaf[K,V], data: Seq[Tuple3[K, V, String]], version: String)
+  protected def updateLeaf(left: Leaf[K, V], data: Seq[Tuple3[K, V, Option[String]]], version: String,
+                           mappingF: Tuple3[K, V, Option[String]] => Tuple3[K, V, Option[String]])
                           (implicit ord: Ordering[K]): Future[Int] = {
-    val result = left.update(data, version)
+    val result = left.update(data, version, mappingF)
 
-    if(result.isFailure) return Future.failed(result.failed.get)
+    if (result.isFailure) return Future.failed(result.failed.get)
 
     recursiveCopy(left).map(_ => result.get)
   }
 
-  def update(data: Seq[Tuple[K, V]], version: String = this.ctx.id)(implicit ord: Ordering[K]): Future[Int] = {
+  /**
+   * @param data (key, value, compare_version_change?)
+   * @param version
+   * @param mappingF
+   * @param ord
+   * @return
+   */
+  def update(data: Seq[Tuple3[K, V, Option[String]]], version: String = this.ctx.id,
+             mappingF: Tuple3[K, V, Option[String]] => Tuple3[K, V, Option[String]] =
+             (t: Tuple3[K, V, Option[String]]) => t)
+            (implicit ord: Ordering[K]): Future[Int] = {
 
     val sorted = data.sortBy(_._1)
 
-    if(sorted.exists{case (k, _, _) => sorted.count{case (k1,_, _) => ord.equiv(k, k1)} > 1}){
+    if(sorted.exists{case (k, _, _) => sorted.count{case (k1, _, _) => ord.equiv(k, k1)} > 1}){
       return Future.failed(Errors.DUPLICATE_KEYS(sorted))
     }
 
@@ -509,7 +532,7 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
           val idx = list.indexWhere{case (k, _, _) => ord.gt(k, leaf.last)}
           if(idx > 0) list = list.slice(0, idx)
 
-          updateLeaf(leaf.copy(), list, version)
+          updateLeaf(leaf.copy(), list, version, mappingF)
       }.flatMap { n =>
         pos += n
         update()
@@ -519,47 +542,7 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
     update()
   }
 
-  /*def inOrder(start: Block[K,V]): Future[Seq[Tuple[K,V]]] = {
-    start match {
-      case leaf: Leaf[K,V] => Future.successful(leaf.inOrder())
-      case meta: Meta[K,V] =>
-
-        val pointers = meta.pointers
-        val len = pointers.length
-
-        var data = Seq.empty[(Int, Future[Seq[Tuple[K,V]]])]
-
-        for(i<-0 until len){
-          val (_, c) = pointers(i)
-
-          //ctx.setParent(c, i, Some(meta))
-
-          data = data :+ i -> ctx.get(c).flatMap{b => inOrder(b)}
-        }
-
-        //meta.setPointers()
-
-        Future.sequence(data.sortBy(_._1).map(_._2)).map { results =>
-          results.flatten
-        }
-    }
-  }
-
-  def inOrder(): Future[Seq[Tuple[K,V]]] = {
-    ctx.root match {
-      case None => Future.successful(Seq.empty[Tuple[K,V]])
-      case Some(start) =>
-
-        //ctx.setParent(start, 0, None)
-
-        ctx.get(start).flatMap{b => inOrder(b)}
-    }
-  }*/
-
-  def inOrder()(implicit ord: Ordering[K]): AsyncIterator[Seq[Tuple[K, V]]] = new AsyncIterator[Seq[Tuple[K, V]]] {
-
-    var cur: Option[Leaf[K, V]] = None
-    var firstTime = false
+  def inOrder(f: Tuple[K, V] => Boolean = _ => true)(implicit ord: Ordering[K]): AsyncIterator[Seq[Tuple[K, V]]] = new RichAsyncIterator[K, V](f) {
 
     override def hasNext(): Future[Boolean] = {
       if(!firstTime) return Future.successful(ctx.root.isDefined)
@@ -577,7 +560,7 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
 
           case Some(b) =>
             cur = Some(b)
-            b.inOrder()
+            b.inOrder().filter(f)
         }
       }
 
@@ -588,15 +571,12 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
 
         case Some(b) =>
           cur = Some(b)
-          b.inOrder()
+          b.inOrder().filter(f)
       }
     }
   }
 
-  def reverse()(implicit ord: Ordering[K]): AsyncIterator[Seq[Tuple[K, V]]] = new AsyncIterator[Seq[Tuple[K, V]]] {
-
-    var cur: Option[Leaf[K, V]] = None
-    var firstTime = false
+  def reverse(f: Tuple[K, V] => Boolean = _ => true)(implicit ord: Ordering[K]): AsyncIterator[Seq[Tuple[K, V]]] = new RichAsyncIterator[K, V](f) {
 
     override def hasNext(): Future[Boolean] = {
       if(!firstTime) return Future.successful(ctx.root.isDefined)
@@ -614,7 +594,7 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
 
           case Some(b) =>
             cur = Some(b)
-            b.inOrder().reverse
+            b.inOrder().reverse.filter(f)
         }
       }
 
@@ -625,7 +605,7 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
 
         case Some(b) =>
           cur = Some(b)
-          b.inOrder().reverse
+          b.inOrder().reverse.filter(f)
       }
     }
   }
@@ -851,50 +831,6 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
     levels.size -> num_data_blocks
   }
 
-  /*protected[index] def getNumLevels(root: Option[String] = ctx.root, timeout: Duration = Duration.Inf): Int = {
-
-    val levels = scala.collection.mutable.Map[Int, scala.collection.mutable.ArrayBuffer[Block[K,V]]]()
-    var num_data_blocks = 0
-
-    def inOrder(start: Block[K,V], level: Int): Unit = {
-
-      val opt = levels.get(level)
-      var l: scala.collection.mutable.ArrayBuffer[Block[K,V]] = null
-
-      if(opt.isEmpty){
-        l = scala.collection.mutable.ArrayBuffer[Block[K,V]]()
-        levels  += level -> l
-      } else {
-        l = opt.get
-      }
-
-      start match {
-        case data: Leaf[K,V] =>
-          num_data_blocks += 1
-          l += data
-
-        case meta: Meta[K,V] =>
-
-          l += meta
-
-          val length = meta.pointers.length
-          val pointers = meta.pointers
-
-          for(i<-0 until length){
-            inOrder(Await.result(ctx.get(pointers(i)._2), timeout), level + 1)
-          }
-
-      }
-    }
-
-    root match {
-      case Some(id) => inOrder(Await.result(ctx.get(id), timeout), 0)
-      case _ =>
-    }
-
-    levels.size
-  }*/
-
   protected[index] def getNumLevels(root: Option[(String, String)] = ctx.root): Future[Int] = {
 
     val levels = TrieMap.empty[Int, scala.collection.mutable.ArrayBuffer[Block[K,V]]]
@@ -951,7 +887,7 @@ class Index[K, V](ictx: IndexContext)(implicit val ec: ExecutionContext,
       val cmd = cmds(pos)
 
       (cmd match {
-        case cmd: Insert[K, V] => insert(cmd.list, cmd.upsert, version).map(_ == cmd.list.length)
+        case cmd: Insert[K, V] => insert(cmd.list, version).map(_ == cmd.list.length)
         case cmd: Remove[K, V] => remove(cmd.keys).map(_ == cmd.keys.length)
         case cmd: Update[K, V] => update(cmd.list, version).map(_ == cmd.list.length)
       }).flatMap(ok => process(pos + 1, ok))

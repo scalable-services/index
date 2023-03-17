@@ -1,4 +1,4 @@
-package services.scalable.index
+package services.scalable.index.test
 
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.{Outcome, Succeeded}

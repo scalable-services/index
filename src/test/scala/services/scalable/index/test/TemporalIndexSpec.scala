@@ -1,9 +1,10 @@
-package services.scalable.index
+package services.scalable.index.test
 
 import io.netty.util.internal.ThreadLocalRandom
 import org.slf4j.LoggerFactory
 import services.scalable.index.grpc.{IndexContext, TemporalContext}
 import services.scalable.index.impl._
+import services.scalable.index.{Commands, Context, IdGenerator, TemporalIndex}
 
 import java.util.UUID
 import scala.concurrent.Await
@@ -51,18 +52,18 @@ class TemporalIndexSpec extends Repeatable {
     )), Duration.Inf).get
 
     val hDB = new TemporalIndex[K, V](tctx)
-    var data = Seq.empty[(K, V)]
+    var data = Seq.empty[(K, V, Boolean)]
 
     def insert(): Seq[Commands.Command[K, V]] = {
       val n = 100//rand.nextInt(1, 100)
-      var list = Seq.empty[Tuple2[K, V]]
+      var list = Seq.empty[Tuple3[K, V, Boolean]]
 
       for(i<-0 until n){
         val k = rand.nextLong()
         val v = rand.nextLong()//RandomStringUtils.randomAlphanumeric(5).getBytes(Charsets.UTF_8)
 
-        if(!data.exists{case (k1, _) => ordLong.equiv(k, k1)} && !list.exists{case (k1, _) => ordLong.equiv(k, k1)}){
-          list = list :+ (k -> v)
+        if(!data.exists{case (k1, _, _) => ordLong.equiv(k, k1)} && !list.exists{case (k1, _, _) => ordLong.equiv(k, k1)}){
+          list = list :+ (k, v, false)
         }
       }
 

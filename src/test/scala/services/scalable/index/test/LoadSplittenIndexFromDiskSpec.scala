@@ -1,10 +1,10 @@
-package services.scalable.index
+package services.scalable.index.test
 
-import org.apache.commons.lang3.RandomStringUtils
 import services.scalable.index.DefaultComparators.ord
 import services.scalable.index.DefaultSerializers._
-import services.scalable.index.grpc.{IndexContext, TemporalContext}
+import services.scalable.index.grpc.IndexContext
 import services.scalable.index.impl._
+import services.scalable.index.{Bytes, Context, IdGenerator, QueryableIndex}
 
 import java.util.UUID
 import java.util.concurrent.ThreadLocalRandom

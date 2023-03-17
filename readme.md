@@ -28,5 +28,5 @@
 
 3.  To run the test: 
 
-    $ sbt "testOnly services.scalable.index.MainSpec"
+    $ sbt "testOnly services.scalable.index.test.MainSpec"
 

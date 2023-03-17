@@ -1,16 +1,17 @@
-package services.scalable.index
+package services.scalable.index.test
 
 import org.apache.commons.lang3.RandomStringUtils
 import services.scalable.index.DefaultComparators.ord
 import services.scalable.index.DefaultSerializers._
-import services.scalable.index.grpc.{IndexContext, RootRef}
+import services.scalable.index.grpc.IndexContext
 import services.scalable.index.impl._
+import services.scalable.index.{Block, Bytes, Commands, Context, IdGenerator, QueryableIndex}
 
 import java.util.UUID
 import java.util.concurrent.ThreadLocalRandom
+import scala.concurrent.Await
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, Future}
 
 class SplitIndexSpec extends Repeatable {
 
@@ -53,14 +54,14 @@ class SplitIndexSpec extends Repeatable {
     def insert(): Commands.Command[K, V] = {
       val n = 3000//rand.nextInt(1000, 2000) //rand.nextInt(1, 1000)
 
-      var list = Seq.empty[(Bytes, Bytes)]
+      var list = Seq.empty[(Bytes, Bytes, Boolean)]
 
       for (i <- 0 until n) {
         val k = RandomStringUtils.randomAlphanumeric(7).getBytes("UTF-8")
 
-        if (!data.exists(x => ord.equiv(k, x._1)) && !list.exists { case (k1, v) => ord.equiv(k, k1) }) {
+        if (!data.exists(x => ord.equiv(k, x._1)) && !list.exists { case (k1, v, _) => ord.equiv(k, k1) }) {
           data = data :+ k -> k
-          list = list :+ k -> k
+          list = list :+ (k, k, false)
         }
       }
 
@@ -110,7 +111,7 @@ class SplitIndexSpec extends Repeatable {
     println("left saving", Await.result(storage.save(l.ctx.snapshot()), Duration.Inf))
     println("right saving", Await.result(storage.save(r.ctx.snapshot()), Duration.Inf))
 
-    Await.result(storage.save(cache.newBlocks.map{case (id, block) => id -> grpcBytesSerializer.serialize(block.asInstanceOf[Block[K, V]])}.toMap),
+    Await.result(storage.save(cache.newBlocks.map{case (id, block) => id -> grpcBytesBytesSerializer.serialize(block.asInstanceOf[Block[K, V]])}.toMap),
       Duration.Inf)
 
     Await.result(storage.close(), Duration.Inf)
