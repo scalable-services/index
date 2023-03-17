@@ -2,6 +2,7 @@ package services.scalable.index
 
 import org.slf4j.LoggerFactory
 import services.scalable.index.Commands._
+import services.scalable.index.Errors.IndexError
 import services.scalable.index.grpc.IndexContext
 import services.scalable.index.impl.RichAsyncIterator
 
@@ -273,13 +274,12 @@ class Index[K, V](val ictx: IndexContext)(implicit val ec: ExecutionContext,
    * @return
    */
   def insert(data: Seq[Tuple3[K, V, Boolean]], version: String = this.ctx.id)
-            (implicit ord: Ordering[K]): Future[Int] = {
+            (implicit ord: Ordering[K]): Future[InsertionResult] = {
 
     val sorted = data.sortBy(_._1)
 
     if(sorted.exists{case (k, _, _) => sorted.count{case (k1, _, _) => ord.equiv(k, k1)} > 1}){
-      //throw new RuntimeException(s"Repeated elements: ${sorted.map{case (k, v) => new String(k.asInstanceOf[Bytes])}}")
-      return Future.failed(Errors.DUPLICATE_KEYS(data))
+      return Future.successful(InsertionResult(false, 0, Some(Errors.DUPLICATED_KEYS(data))))
     }
 
     val len = sorted.length
@@ -301,14 +301,17 @@ class Index[K, V](val ictx: IndexContext)(implicit val ec: ExecutionContext,
           insertLeaf(leaf.copy(), list, version)
       }.flatMap { n =>
         pos += n
-
         ctx.num_elements += n
-
         insert()
       }
     }
 
-    insert()
+    insert().map { n =>
+      InsertionResult(true, n)
+    }.recover {
+      case t: IndexError => InsertionResult(false, 0, Some(t))
+      case t: Throwable => throw t
+    }
   }
 
   protected def merge(left: Block[K, V], lpos: Int, right: Block[K, V], rpos: Int, parent: Meta[K,V])
@@ -456,7 +459,7 @@ class Index[K, V](val ictx: IndexContext)(implicit val ec: ExecutionContext,
    * @param ord
    * @return
    */
-  def remove(keys: Seq[Tuple2[K, Option[String]]])(implicit ord: Ordering[K]): Future[Int] = {
+  def remove(keys: Seq[Tuple2[K, Option[String]]])(implicit ord: Ordering[K]): Future[RemovalResult] = {
     val sorted = keys.distinct.sortBy(_._1)
 
     val len = sorted.length
@@ -485,7 +488,12 @@ class Index[K, V](val ictx: IndexContext)(implicit val ec: ExecutionContext,
       }
     }
 
-    remove()
+    remove().map { n =>
+      RemovalResult(true, n)
+    }.recover {
+      case t: IndexError => RemovalResult(false, 0, Some(t))
+      case t: Throwable => throw t
+    }
   }
 
   protected def updateLeaf(left: Leaf[K, V], data: Seq[Tuple3[K, V, Option[String]]], version: String,
@@ -508,12 +516,12 @@ class Index[K, V](val ictx: IndexContext)(implicit val ec: ExecutionContext,
   def update(data: Seq[Tuple3[K, V, Option[String]]], version: String = this.ctx.id,
              mappingF: Tuple3[K, V, Option[String]] => Tuple3[K, V, Option[String]] =
              (t: Tuple3[K, V, Option[String]]) => t)
-            (implicit ord: Ordering[K]): Future[Int] = {
+            (implicit ord: Ordering[K]): Future[UpdateResult] = {
 
     val sorted = data.sortBy(_._1)
 
     if(sorted.exists{case (k, _, _) => sorted.count{case (k1, _, _) => ord.equiv(k, k1)} > 1}){
-      return Future.failed(Errors.DUPLICATE_KEYS(sorted))
+      return Future.successful(UpdateResult(false, 0, Some(Errors.DUPLICATED_KEYS(sorted))))
     }
 
     val len = sorted.length
@@ -539,7 +547,12 @@ class Index[K, V](val ictx: IndexContext)(implicit val ec: ExecutionContext,
       }
     }
 
-    update()
+    update().map { n =>
+      UpdateResult(true, n)
+    }.recover {
+      case t: IndexError => UpdateResult(false, 0, Some(t))
+      case t: Throwable => throw t
+    }
   }
 
   def inOrder(f: Tuple[K, V] => Boolean = _ => true)(implicit ord: Ordering[K]): AsyncIterator[Seq[Tuple[K, V]]] = new RichAsyncIterator[K, V](f) {
@@ -878,22 +891,22 @@ class Index[K, V](val ictx: IndexContext)(implicit val ec: ExecutionContext,
     }
   }
 
-  def execute(cmds: Seq[Command[K, V]], version: String = this.ctx.id): Future[Boolean] = {
-    def process(pos: Int, previous: Boolean): Future[Boolean] = {
+  def execute(cmds: Seq[Command[K, V]], version: String = this.ctx.id): Future[BatchResult] = {
+    def process(pos: Int, previous: Boolean = true, error: Option[Throwable]): Future[BatchResult] = {
 
-      if(!previous) return Future.successful(false)
-      if(pos == cmds.length) return Future.successful(true)
+      if(error.isDefined) return Future.successful(BatchResult(false, error))
+      if(pos == cmds.length) return Future.successful(BatchResult(true))
 
       val cmd = cmds(pos)
 
       (cmd match {
-        case cmd: Insert[K, V] => insert(cmd.list, version).map(_ == cmd.list.length)
-        case cmd: Remove[K, V] => remove(cmd.keys).map(_ == cmd.keys.length)
-        case cmd: Update[K, V] => update(cmd.list, version).map(_ == cmd.list.length)
-      }).flatMap(ok => process(pos + 1, ok))
+        case cmd: Insert[K, V] => insert(cmd.list, version)
+        case cmd: Remove[K, V] => remove(cmd.keys)
+        case cmd: Update[K, V] => update(cmd.list, version)
+      }).flatMap(prev => process(pos + 1, prev.success, prev.error))
     }
 
-    process(0, true)
+    process(0, true, None)
   }
 
 }

@@ -15,11 +15,11 @@ class TemporalIndex[K, V](private val tctx: TemporalContext)(implicit val ec: Ex
   protected val index = new QueryableIndex[K, V](tctx.latest)
   protected val history = new QueryableIndex[Long, IndexContext](tctx.history)
 
-  def execute(cmds: Seq[Commands.Command[K, V]]): Future[Boolean] = {
+  def execute(cmds: Seq[Commands.Command[K, V]]): Future[BatchResult] = {
     index.execute(cmds)
   }
 
-  def snapshot(): Future[Boolean] = {
+  def snapshot(): Future[BatchResult] = {
     val tmp = System.nanoTime()
 
     history.execute(Seq(
