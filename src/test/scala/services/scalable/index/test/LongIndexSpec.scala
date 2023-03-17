@@ -72,9 +72,9 @@ class LongIndexSpec extends Repeatable {
 
       //index.snapshot()
 
-      assert(result)
+      assert(result.success)
 
-      if(result){
+      if(result.success){
         data = data ++ list
       }
     }

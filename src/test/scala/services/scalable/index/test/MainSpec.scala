@@ -77,11 +77,14 @@ class MainSpec extends Repeatable with Matchers {
       )
       val result = Await.result(index.execute(cmds), Duration.Inf)
 
-      assert(result)
+      assert(result.success)
 
-      if(result){
+      if(result.success){
         data = data ++ list
+        return
       }
+
+      result.error.get.printStackTrace()
     }
 
     def update(): Unit = {
@@ -102,12 +105,9 @@ class MainSpec extends Repeatable with Matchers {
         Commands.Update(indexId, list)
       )
 
-      val result = Await.result(index.execute(cmds).recover { case t: Throwable =>
-        t.printStackTrace()
-        false
-      }, Duration.Inf)
+      val result = Await.result(index.execute(cmds), Duration.Inf)
 
-      if(result){
+      if(result.success){
         logger.debug(s"${Console.MAGENTA_B}UPDATED RIGHT LAST VERSION ${list.map{case (k, _, _) => new String(k)}}...${Console.RESET}")
 
         data = data.filterNot { case (k, _, _) => list.exists { case (k1, _, _) => ord.equiv(k, k1) } }
@@ -116,6 +116,7 @@ class MainSpec extends Repeatable with Matchers {
         return
       }
 
+      result.error.get.printStackTrace()
       logger.debug(s"${Console.RED_B}UPDATED WRONG LAST VERSION ${list.map { case (k, _, _) => new String(k) }}...${Console.RESET}")
       index = new QueryableIndex[K, V](backupCtx)
     }
@@ -138,18 +139,15 @@ class MainSpec extends Repeatable with Matchers {
         Commands.Remove[K, V](indexId, list)
       )
 
-      val result = Await.result(index.execute(cmds)
-        .recover{ case t: Throwable =>
-          t.printStackTrace()
-          false
-        }, Duration.Inf)
+      val result = Await.result(index.execute(cmds), Duration.Inf)
 
-      if(result){
+      if(result.success){
         logger.debug(s"${Console.RED_B}REMOVED RIGHT VERSION ${list.map { case (k, _) => new String(k) }}...${Console.RESET}")
         data = data.filterNot { case (k, _, _) => list.exists { case (k1, _) => ord.equiv(k, k1) } }
         return
       }
 
+      result.error.get.printStackTrace()
       logger.debug(s"${Console.RED_B}REMOVED WRONG VERSION ${list.map { case (k, _) => new String(k) }}...${Console.RESET}")
       index = new QueryableIndex[K, V](backupCtx)
     }

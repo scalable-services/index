@@ -3,7 +3,7 @@ package services.scalable.index
 object Errors {
 
   sealed trait IndexError
-  sealed trait TemporalIndexError
+  sealed trait TemporalIndexError extends IndexError
 
   case object LEAF_BLOCK_FULL extends RuntimeException("Leaf is full!") with IndexError
   case object META_BLOCK_FULL extends RuntimeException("Meta is full!") with IndexError
@@ -18,7 +18,7 @@ object Errors {
 
   case class BLOCK_NOT_FOUND(id: String) extends RuntimeException(s"Block ${id} not found!") with IndexError
 
-  case class DUPLICATE_KEYS[K,V](keys: Seq[K]) extends RuntimeException("Duplicate keys") with IndexError
+  case class DUPLICATED_KEYS[K,V](keys: Seq[K]) extends RuntimeException("Duplicate keys") with IndexError
 
   case class KEY_NOT_FOUND[K](k: K) extends RuntimeException(s"Key not found!") with IndexError
 
