@@ -1,7 +1,7 @@
-package services.scalable.index
+package services.scalable.index.test
 
 import org.scalatest.flatspec.AnyFlatSpec
-import services.scalable.index.grpc.LeafBlock
+import services.scalable.index.{Bytes, DefaultSerializers, Leaf}
 
 import java.util.UUID
 

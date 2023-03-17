@@ -54,7 +54,7 @@ final class GrpcByteSerializer[K, V](implicit val ks: Serializer[K], val vs: Ser
 
       val buffer = os.toByteArray
 
-      logger.info(s"Compressing block ${block.unique_id} input len: ${input.length} output length: ${buffer.length}...")
+      logger.debug(s"Compressing block ${block.unique_id} input len: ${input.length} output length: ${buffer.length}...")
 
       os.flush()
       os.close()
@@ -81,7 +81,7 @@ final class GrpcByteSerializer[K, V](implicit val ks: Serializer[K], val vs: Ser
 
         val block = new Leaf[K,V](leaf.id, leaf.partition, leaf.min, leaf.max, bytes.length)
 
-        logger.info(s"Decompressing block ${block.unique_id}...")
+        logger.debug(s"Decompressing block ${block.unique_id}...")
 
         block.root = leaf.root.map(r => r.partition -> r.id)
 
@@ -97,7 +97,7 @@ final class GrpcByteSerializer[K, V](implicit val ks: Serializer[K], val vs: Ser
       val pointers = Array(meta.pointers.map { t => ks.deserialize(t.key.toByteArray) -> Pointer(t.partition, t.id, t.nSubtree, t.level) }: _*)
       val block = new Meta[K,V](meta.id, meta.partition, meta.min, meta.max, bytes.length)
 
-      logger.info(s"Decompressing block ${block.unique_id}...")
+      logger.debug(s"Decompressing block ${block.unique_id}...")
 
       block.root = meta.root.map(r => r.partition -> r.id)
 

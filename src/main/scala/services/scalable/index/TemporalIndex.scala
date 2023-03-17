@@ -23,7 +23,7 @@ class TemporalIndex[K, V](private val tctx: TemporalContext)(implicit val ec: Ex
     val tmp = System.nanoTime()
 
     history.execute(Seq(
-      Commands.Insert(tctx.history.id, Seq(tmp -> index.snapshot()), false)
+      Commands.Insert(tctx.history.id, Seq(Tuple3(tmp, index.snapshot(), false)))
     ))
   }
 

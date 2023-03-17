@@ -1,4 +1,4 @@
-package services.scalable.index
+package services.scalable.index.test
 
 import org.apache.commons.compress.compressors.CompressorStreamFactory
 import org.apache.commons.compress.compressors.lz4.BlockLZ4CompressorOutputStream
@@ -39,7 +39,7 @@ class CompressionSpec extends AnyFlatSpec {
 
     val decompressed = new String(output, "UTF-8")
 
-    logger.info(s"decompressed: $decompressed")
+    logger.debug(s"decompressed: $decompressed")
 
     assert(text.equals(decompressed))
   }

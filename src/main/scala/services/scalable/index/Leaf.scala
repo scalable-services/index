@@ -18,48 +18,59 @@ class Leaf[K, V](override val id: String,
 
   override def nSubtree: Long = tuples.length.toLong
 
-  def insert(data: Seq[Tuple2[K, V]], upsert: Boolean, version: String)(implicit ord: Ordering[K]): Try[Int] = {
-    
+  def insert(data: Seq[Tuple3[K, V, Boolean]], version: String)(implicit ord: Ordering[K]): Try[Int] = {
+
     if(isFull()) return Failure(Errors.LEAF_BLOCK_FULL)
 
     val n = Math.min(MAX - tuples.length, data.length)
-    var slice = data.slice(0, n)
+    val slice = data.slice(0, n)
 
     val len = slice.length
 
-    if(slice.exists{case (k, _) => tuples.exists{case (k1, _, _) => ord.equiv(k, k1)}}){
-      if(!upsert){
-        return Failure(Errors.LEAF_DUPLICATE_KEY(inOrder().map{case (k, v, _) => k -> v}, slice))
-      }
-
-      slice = slice.filterNot{case (k, _) => tuples.exists{case (k1, _, _) => ord.equiv(k, k1)}}
+    if (slice.exists { case (k, _, upsert) => tuples.exists { case (k1, _, _) => !upsert && ord.equiv(k1, k) } }) {
+      return Failure(Errors.LEAF_DUPLICATE_KEY(inOrder().map{case (k, v, _) => k -> v},
+        slice.map{case (k, v, _) => k -> v}))
     }
 
-    tuples = (tuples ++ slice.map{case (k, v) => Tuple3(k, v, version)}).sortBy(_._1)
+    // Filter out upsert keys...
+    val upserts = slice.filter(_._3)
+    tuples = tuples.filterNot{case (k, v, _) => upserts.exists{case (k1, _, _) => ord.equiv(k, k1)}}
+
+    // Add back the upsert keys and the new ones...
+    tuples = (tuples ++ slice.map{case (k, v, _) => Tuple3(k, v, version)}).sortBy(_._1)
 
     Success(len)
   }
 
-  def remove(keys: Seq[K])(implicit ord: Ordering[K]): Try[Int] = {
-    if(keys.exists{ k => !tuples.exists{ case (k1, _, _) => ord.equiv(k1, k) }}){
-      return Failure(Errors.LEAF_KEY_NOT_FOUND[K](keys))
+  def remove(keys: Seq[Tuple2[K, Option[String]]])(implicit ord: Ordering[K]): Try[Int] = {
+    if(keys.exists{ case (k, _) => !tuples.exists{ case (k1, _, _) => ord.equiv(k1, k) }}){
+      return Failure(Errors.LEAF_KEY_NOT_FOUND[K](keys.map(_._1)))
     }
 
-    tuples = tuples.filterNot{case (k, _, _) => keys.exists{ k1 => ord.equiv(k, k1)}}
+    val versionsChanged = keys.filter(_._2.isDefined)
+      .filter { case (k0, vs0) => tuples.exists { case (k1, _, vs1) => ord.equiv(k0, k1) && !vs0.get.equals(vs1) } }
+
+    if (!versionsChanged.isEmpty) {
+      return Failure(Errors.VERSION_CHANGED(versionsChanged))
+    }
+
+    tuples = tuples.filterNot{case (k, _, _) => keys.exists{ case (k1, _) => ord.equiv(k, k1)}}
 
     Success(keys.length)
   }
 
-  def update(data: Seq[Tuple[K, V]], version: String, mappingF: Tuple[K, V] => Tuple[K, V])(implicit ord: Ordering[K]): Try[Int] = {
+  def update(data: Seq[Tuple3[K, V, Option[String]]], version: String, mappingF: Tuple3[K, V, Option[String]] => Tuple3[K, V, Option[String]])
+            (implicit ord: Ordering[K]): Try[Int] = {
 
     if(data.exists{ case (k, _, _) => !tuples.exists{case (k1, _, _) => ord.equiv(k1, k) }}){
       return Failure(Errors.LEAF_KEY_NOT_FOUND(data.map(_._1)))
     }
 
-    val versionsChanged = data.filter{case (k0, _, vs0) => tuples.exists{case (k1, _, vs1) => ord.equiv(k0, k1) && !vs0.equals(vs1)}}
+    val versionsChanged = data.filter(_._3.isDefined)
+      .filter{case (k0, _, vs0) => tuples.exists{case (k1, _, vs1) => ord.equiv(k0, k1) && !vs0.get.equals(vs1)}}
 
     if (!versionsChanged.isEmpty) {
-      return Failure(Errors.VERSION_CHANGED(versionsChanged))
+      return Failure(Errors.VERSION_CHANGED(versionsChanged.map{case (k, _, vs) => k -> vs}))
     }
 
     val notin = tuples.filterNot{case (k1, _, _) => data.exists{ case (k, _, _) => ord.equiv(k, k1)}}

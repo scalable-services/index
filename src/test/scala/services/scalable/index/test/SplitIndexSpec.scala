@@ -1,10 +1,11 @@
-package services.scalable.index
+package services.scalable.index.test
 
 import org.apache.commons.lang3.RandomStringUtils
 import services.scalable.index.DefaultComparators.ord
 import services.scalable.index.DefaultSerializers._
 import services.scalable.index.grpc.IndexContext
 import services.scalable.index.impl._
+import services.scalable.index.{Block, Bytes, Commands, Context, IdGenerator, QueryableIndex}
 
 import java.util.UUID
 import java.util.concurrent.ThreadLocalRandom
@@ -53,14 +54,14 @@ class SplitIndexSpec extends Repeatable {
     def insert(): Commands.Command[K, V] = {
       val n = 3000//rand.nextInt(1000, 2000) //rand.nextInt(1, 1000)
 
-      var list = Seq.empty[(Bytes, Bytes)]
+      var list = Seq.empty[(Bytes, Bytes, Boolean)]
 
       for (i <- 0 until n) {
         val k = RandomStringUtils.randomAlphanumeric(7).getBytes("UTF-8")
 
-        if (!data.exists(x => ord.equiv(k, x._1)) && !list.exists { case (k1, v) => ord.equiv(k, k1) }) {
+        if (!data.exists(x => ord.equiv(k, x._1)) && !list.exists { case (k1, v, _) => ord.equiv(k, k1) }) {
           data = data :+ k -> k
-          list = list :+ k -> k
+          list = list :+ (k, k, false)
         }
       }
 

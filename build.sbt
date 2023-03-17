@@ -43,5 +43,4 @@ enablePlugins(AkkaGrpcPlugin)
 fork := true
 
 import sbtprotoc.ProtocPlugin._
-
-javaSource in ProtobufConfig := (Compile / sourceDirectory) / "generated"
+//ProtobufConfig / javaSource := (Compile / sourceDirectory) / "generated"
