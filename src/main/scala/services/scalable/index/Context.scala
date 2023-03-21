@@ -15,11 +15,13 @@ sealed class Context[K, V](val indexId: String,
                     val NUM_LEAF_ENTRIES: Int,
                     val NUM_META_ENTRIES: Int)
                    (implicit val ec: ExecutionContext,
-                     val storage: Storage,
-                     val serializer: Serializer[Block[K, V]],
-                     val cache: Cache,
-                     val ord: Ordering[K],
-                     val idGenerator: IdGenerator) {
+                    val storage: Storage,
+                    val serializer: Serializer[Block[K, V]],
+                    val cache: Cache,
+                    val ord: Ordering[K],
+                    val idGenerator: IdGenerator,
+                    val ks: K => String = (k: K) => k.toString,
+                    val vs: V => String = (v: V) => v.toString) {
 
   // Context id (for global manipulation of new blocks)
   val id: String = UUID.randomUUID().toString

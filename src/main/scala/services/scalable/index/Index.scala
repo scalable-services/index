@@ -279,7 +279,7 @@ class Index[K, V](val ictx: IndexContext)(implicit val ec: ExecutionContext,
     val sorted = data.sortBy(_._1)
 
     if(sorted.exists{case (k, _, _) => sorted.count{case (k1, _, _) => ord.equiv(k, k1)} > 1}){
-      return Future.successful(InsertionResult(false, 0, Some(Errors.DUPLICATED_KEYS(data))))
+      return Future.successful(InsertionResult(false, 0, Some(Errors.DUPLICATED_KEYS(data.map(_._1), ctx.ks))))
     }
 
     val len = sorted.length
@@ -475,7 +475,7 @@ class Index[K, V](val ictx: IndexContext)(implicit val ec: ExecutionContext,
       val (k, _) = list(0)
 
       findPath(k).flatMap {
-        case None => Future.failed(Errors.KEY_NOT_FOUND[K](k))
+        case None => Future.failed(Errors.KEY_NOT_FOUND[K](k, ctx.ks))
         case Some(leaf) =>
 
           val idx = list.indexWhere { case (k, _) => ord.gt(k, leaf.last)}
@@ -521,7 +521,7 @@ class Index[K, V](val ictx: IndexContext)(implicit val ec: ExecutionContext,
     val sorted = data.sortBy(_._1)
 
     if(sorted.exists{case (k, _, _) => sorted.count{case (k1, _, _) => ord.equiv(k, k1)} > 1}){
-      return Future.successful(UpdateResult(false, 0, Some(Errors.DUPLICATED_KEYS(sorted))))
+      return Future.successful(UpdateResult(false, 0, Some(Errors.DUPLICATED_KEYS(sorted.map(_._1), ctx.ks))))
     }
 
     val len = sorted.length
@@ -534,7 +534,7 @@ class Index[K, V](val ictx: IndexContext)(implicit val ec: ExecutionContext,
       val (k, _, _) = list(0)
 
       findPath(k).flatMap {
-        case None => Future.failed(Errors.KEY_NOT_FOUND(k))
+        case None => Future.failed(Errors.KEY_NOT_FOUND(k, ctx.ks))
         case Some(leaf) =>
 
           val idx = list.indexWhere{case (k, _, _) => ord.gt(k, leaf.last)}
