@@ -1,6 +1,7 @@
 package services.scalable
 
 import com.datastax.oss.driver.api.core.config.{DefaultDriverOption, DriverConfigLoader}
+import com.google.common.base.Charsets
 import com.google.common.primitives.UnsignedBytes
 import com.google.protobuf.ByteString
 import com.google.protobuf.any.Any
@@ -97,6 +98,12 @@ package object index {
       override def generateId[K,V](ctx: Context[K,V]): String = UUID.randomUUID().toString
       override def generatePartition[K,V](ctx: Context[K,V]): String = UUID.randomUUID().toString
     }
+  }
+
+  object DefaultPrinters {
+    implicit def byteArrayToStringPrinter(k: Array[Byte]): String = new String(k, Charsets.UTF_8)
+    implicit def longToStringPrinter(k: Long): String = k.toString
+    implicit def indexContextStringPrinter(k: IndexContext): String = k.id
   }
 
   object DefaultSerializers {

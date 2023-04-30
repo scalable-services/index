@@ -18,8 +18,10 @@ class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: Execut
                                                   override val serializer: Serializer[Block[K, V]],
                                                   override val cache: Cache,
                                                   override val ord: Ordering[K],
-                                                  override val idGenerator: IdGenerator)
-  extends Index[K, V](c)(ec, storage, serializer, cache, ord, idGenerator) {
+                                                  override val idGenerator: IdGenerator,
+                                                  override val ks: K => String,
+                                                  override val vs: V => String)
+  extends Index[K, V](c)(ec, storage, serializer, cache, ord, idGenerator, ks, vs) {
 
   override val $this = this
 
@@ -687,12 +689,12 @@ class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: Execut
       val refs = ctx.blockReferences
 
       ctx = Context.fromIndexContext(leftICtx)(this.ec,
-        this.storage, this.serializer, this.cache, this.ord, this.idGenerator)
+        this.storage, this.serializer, this.cache, this.ord, this.idGenerator, ks, vs)
 
       ctx.blockReferences ++= refs
 
       val rindex = new QueryableIndex[K, V](rightICtx)(this.ec,
-        this.storage, this.serializer, this.cache, this.ord, this.idGenerator)
+        this.storage, this.serializer, this.cache, this.ord, this.idGenerator, ks, vs)
 
       val leftRoot = leftR.copy()(ctx)
       ctx.root = Some(leftRoot.unique_id)
@@ -721,7 +723,7 @@ class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: Execut
       ctx.root.map { r => RootRef(r._1, r._2) }, levels, ctx.num_elements, c.maxNItems)
 
     val copy = new QueryableIndex[K, V](context)(this.ec,
-      this.storage, this.serializer, this.cache, this.ord, this.idGenerator)
+      this.storage, this.serializer, this.cache, this.ord, this.idGenerator, ks, vs)
 
     ctx.blockReferences.foreach { case (id, _) =>
       copy.ctx.blockReferences += id -> id

@@ -10,15 +10,10 @@ import java.nio.ByteBuffer
 import scala.concurrent.{ExecutionContext, Future}
 
 class CassandraStorage(val KEYSPACE: String,
+                       val session: CqlSession,
                        val truncate: Boolean = true)(implicit val ec: ExecutionContext) extends Storage {
 
   val logger = LoggerFactory.getLogger(this.getClass)
-
-  val session = CqlSession
-    .builder()
-    .withConfigLoader(loader)
-    .withKeyspace(KEYSPACE)
-    .build()
 
   val INSERT = session.prepare("insert into blocks(partition, id, bin, size) values (?, ?, ?, ?);")
   val SELECT_TEMPORAL_INDEX = session.prepare("select buf from temporal_indexes where id=?;")

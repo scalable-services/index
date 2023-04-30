@@ -3,10 +3,8 @@ package services.scalable.index.test
 import com.google.common.base.Charsets
 import io.netty.util.internal.ThreadLocalRandom
 import org.apache.commons.lang3.RandomStringUtils
-import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.matchers.should.Matchers
 import org.slf4j.LoggerFactory
-import services.scalable.index.Errors.VERSION_CHANGED
 import services.scalable.index.grpc._
 import services.scalable.index.impl._
 import services.scalable.index.{Bytes, Commands, Context, IdGenerator, QueryableIndex}
@@ -37,6 +35,7 @@ class MainSpec extends Repeatable with Matchers {
     val indexId = "mysusindex"//UUID.randomUUID().toString
 
     import services.scalable.index.DefaultSerializers._
+    import services.scalable.index.DefaultPrinters._
 
     implicit val idGenerator = new IdGenerator {
       override def generateId[K, V](ctx: Context[K, V]): String = UUID.randomUUID.toString

@@ -9,8 +9,11 @@ class TemporalIndex[K, V](private val tctx: TemporalContext)(implicit val ec: Ex
                                                      val serializer: Serializer[Block[K, V]],
                                                      val cache: Cache,
                                                      val ord: Ordering[K],
-                                                     val idGenerator: IdGenerator){
+                                                     val idGenerator: IdGenerator,
+                                                     val ks: K => String,
+                                                     val vs: V => String){
   import DefaultSerializers._
+  import DefaultPrinters._
 
   protected val index = new QueryableIndex[K, V](tctx.latest)
   protected val history = new QueryableIndex[Long, IndexContext](tctx.history)

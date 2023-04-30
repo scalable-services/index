@@ -29,7 +29,9 @@ class Index[K, V](val ictx: IndexContext)(implicit val ec: ExecutionContext,
                                       val serializer: Serializer[Block[K, V]],
                                       val cache: Cache,
                                       val ord: Ordering[K],
-                                      val idGenerator: IdGenerator){
+                                      val idGenerator: IdGenerator,
+                                      val ks: K => String,
+                                      val vs: V => String){
 
   assert(ictx.numLeafItems >= 4 && ictx.numMetaItems >= 4,
     "Number of leaf and meta elements must be greater or equal to 4!")
@@ -794,7 +796,7 @@ class Index[K, V](val ictx: IndexContext)(implicit val ec: ExecutionContext,
    * Prints any subtree from the provided root
    * Caution: prettyPrint is currently synchronous!
    */
-  def prettyPrint(root: Option[(String, String)] = ctx.root, timeout: Duration = Duration.Inf)(implicit kf: K => String, vf: V => String): (Int, Int) = {
+  def prettyPrint(root: Option[(String, String)] = ctx.root, timeout: Duration = Duration.Inf): (Int, Int) = {
 
     val levels = scala.collection.mutable.Map[Int, scala.collection.mutable.ArrayBuffer[Block[K,V]]]()
     var num_data_blocks = 0
