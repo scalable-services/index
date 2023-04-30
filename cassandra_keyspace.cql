@@ -3,14 +3,12 @@ CREATE KEYSPACE history WITH replication = {'class': 'SimpleStrategy', 'replicat
 CREATE TABLE history.temporal_indexes (
     id text PRIMARY KEY,
     buf blob
-) WITH default_time_to_live = 0
-    AND transactions = {'enabled': 'false'};
+) WITH default_time_to_live = 0;
 
 CREATE TABLE history.indexes (
     id text PRIMARY KEY,
     buf blob
-) WITH default_time_to_live = 0
-    AND transactions = {'enabled': 'false'};
+) WITH default_time_to_live = 0;
 
 CREATE TABLE history.blocks (
     partition text,
@@ -18,5 +16,4 @@ CREATE TABLE history.blocks (
     bin blob,
     size int,
     PRIMARY KEY(partition, id)
-) WITH default_time_to_live = 0
-    AND transactions = {'enabled': 'false'};
+) WITH default_time_to_live = 0;
