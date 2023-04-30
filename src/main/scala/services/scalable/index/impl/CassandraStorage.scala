@@ -9,8 +9,7 @@ import services.scalable.index.grpc.{IndexContext, TemporalContext}
 import java.nio.ByteBuffer
 import scala.concurrent.{ExecutionContext, Future}
 
-class CassandraStorage(val KEYSPACE: String,
-                       val session: CqlSession,
+class CassandraStorage(val session: CqlSession,
                        val truncate: Boolean = true)(implicit val ec: ExecutionContext) extends Storage {
 
   val logger = LoggerFactory.getLogger(this.getClass)

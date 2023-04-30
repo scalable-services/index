@@ -1,6 +1,8 @@
 package services.scalable.index.test
 
+import com.datastax.oss.driver.api.core.CqlSession
 import services.scalable.index.grpc.{IndexContext, TemporalContext}
+import services.scalable.index.test.TestConfig.{CQL_PWD, CQL_USER, KEYSPACE}
 import services.scalable.index.{AsyncIterator, Storage, Tuple}
 
 import scala.concurrent.{ExecutionContext, Future}
