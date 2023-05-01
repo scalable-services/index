@@ -83,7 +83,7 @@ class Meta[K, V](override val id: String,
     if(isFull()) return Failure(Errors.META_BLOCK_FULL)
 
     if(data.exists{case (k, _) => pointers.exists{case (k1, _) => ord.equiv(k, k1)}}){
-      return Failure(Errors.META_DUPLICATE_KEY(inOrder(), data))
+      return Failure(Errors.META_DUPLICATE_KEY(data.map(_._1), ctx.ks))
     }
 
     pointers = (pointers ++ data).sortBy(_._1)
@@ -210,7 +210,7 @@ class Meta[K, V](override val id: String,
     right
   }
 
-  override def print()(implicit kf: K => String, vf: V => String): String = {
+  override def print()(implicit ctx: Context[K, V]): String = {
     if(pointers.isEmpty) return "[]"
 
     val sb = new StringBuilder(s"${id}:")
@@ -221,14 +221,14 @@ class Meta[K, V](override val id: String,
     for(i<-0 until pointers.length - 1){
       val (k, _) = pointers(i)
 
-      sb ++= kf(k)
+      sb ++= ctx.ks(k)
       sb ++= ","
     }
 
     sb ++= Console.RED_B
 
     val (k, _) = pointers(pointers.length - 1)
-    sb ++= kf(k)
+    sb ++= ctx.ks(k)
 
     sb ++= Console.RESET
 

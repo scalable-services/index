@@ -9,6 +9,7 @@ import services.scalable.index.{Commands, Context, IdGenerator, QueryableIndex}
 import java.util.UUID
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
+import services.scalable.index.DefaultPrinters._
 
 class LongIndexSpec extends Repeatable {
 

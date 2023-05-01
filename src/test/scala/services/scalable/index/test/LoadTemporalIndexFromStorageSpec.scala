@@ -9,6 +9,7 @@ import services.scalable.index.{Context, IdGenerator, TemporalIndex}
 import java.util.UUID
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
+import services.scalable.index.DefaultPrinters._
 
 class LoadTemporalIndexFromStorageSpec extends Repeatable {
 
@@ -38,7 +39,7 @@ class LoadTemporalIndexFromStorageSpec extends Repeatable {
 
     implicit val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
     //implicit val storage = new MemoryStorage()
-    implicit val storage = new CassandraStorage(TestConfig.KEYSPACE, false)
+    implicit val storage = new CassandraStorage(TestConfig.session, false)
 
     val dbCtx = Await.result(TestHelper.loadOrCreateTemporalIndex(
       TemporalContext(dbId)

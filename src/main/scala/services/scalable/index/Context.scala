@@ -15,11 +15,13 @@ sealed class Context[K, V](val indexId: String,
                     val NUM_LEAF_ENTRIES: Int,
                     val NUM_META_ENTRIES: Int)
                    (implicit val ec: ExecutionContext,
-                     val storage: Storage,
-                     val serializer: Serializer[Block[K, V]],
-                     val cache: Cache,
-                     val ord: Ordering[K],
-                     val idGenerator: IdGenerator) {
+                    val storage: Storage,
+                    val serializer: Serializer[Block[K, V]],
+                    val cache: Cache,
+                    val ord: Ordering[K],
+                    val idGenerator: IdGenerator,
+                    val ks: K => String,
+                    val vs: V => String) {
 
   // Context id (for global manipulation of new blocks)
   val id: String = UUID.randomUUID().toString
@@ -161,7 +163,7 @@ sealed class Context[K, V](val indexId: String,
 
   def copy(): Context[K, V] = {
     new Context[K, V](indexId, root, num_elements, levels, maxNItems, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)(ec, storage,
-      serializer, cache, ord, idGenerator)
+      serializer, cache, ord, idGenerator, ks, vs)
   }
 
   def clear(): Unit = {
@@ -177,7 +179,9 @@ object Context {
                                                  serializer: Serializer[Block[K, V]],
                                                  cache: Cache,
                                                  ord: Ordering[K],
-                                                 idGenerator: IdGenerator): Context[K, V] = {
+                                                 idGenerator: IdGenerator,
+                                                 ks: K => String,
+                                                 vs: V => String): Context[K, V] = {
     new Context[K, V](ictx.id, ictx.root.map{ r => (r.partition, r.id)}, ictx.numElements,
       ictx.levels, ictx.maxNItems, ictx.numLeafItems, ictx.numMetaItems)
   }

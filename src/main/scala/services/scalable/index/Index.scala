@@ -29,7 +29,9 @@ class Index[K, V](val ictx: IndexContext)(implicit val ec: ExecutionContext,
                                       val serializer: Serializer[Block[K, V]],
                                       val cache: Cache,
                                       val ord: Ordering[K],
-                                      val idGenerator: IdGenerator){
+                                      val idGenerator: IdGenerator,
+                                      val ks: K => String,
+                                      val vs: V => String){
 
   assert(ictx.numLeafItems >= 4 && ictx.numMetaItems >= 4,
     "Number of leaf and meta elements must be greater or equal to 4!")
@@ -279,7 +281,7 @@ class Index[K, V](val ictx: IndexContext)(implicit val ec: ExecutionContext,
     val sorted = data.sortBy(_._1)
 
     if(sorted.exists{case (k, _, _) => sorted.count{case (k1, _, _) => ord.equiv(k, k1)} > 1}){
-      return Future.successful(InsertionResult(false, 0, Some(Errors.DUPLICATED_KEYS(data))))
+      return Future.successful(InsertionResult(false, 0, Some(Errors.DUPLICATED_KEYS(data.map(_._1), ctx.ks))))
     }
 
     val len = sorted.length
@@ -475,7 +477,7 @@ class Index[K, V](val ictx: IndexContext)(implicit val ec: ExecutionContext,
       val (k, _) = list(0)
 
       findPath(k).flatMap {
-        case None => Future.failed(Errors.KEY_NOT_FOUND[K](k))
+        case None => Future.failed(Errors.KEY_NOT_FOUND[K](k, ctx.ks))
         case Some(leaf) =>
 
           val idx = list.indexWhere { case (k, _) => ord.gt(k, leaf.last)}
@@ -521,7 +523,7 @@ class Index[K, V](val ictx: IndexContext)(implicit val ec: ExecutionContext,
     val sorted = data.sortBy(_._1)
 
     if(sorted.exists{case (k, _, _) => sorted.count{case (k1, _, _) => ord.equiv(k, k1)} > 1}){
-      return Future.successful(UpdateResult(false, 0, Some(Errors.DUPLICATED_KEYS(sorted))))
+      return Future.successful(UpdateResult(false, 0, Some(Errors.DUPLICATED_KEYS(sorted.map(_._1), ctx.ks))))
     }
 
     val len = sorted.length
@@ -534,7 +536,7 @@ class Index[K, V](val ictx: IndexContext)(implicit val ec: ExecutionContext,
       val (k, _, _) = list(0)
 
       findPath(k).flatMap {
-        case None => Future.failed(Errors.KEY_NOT_FOUND(k))
+        case None => Future.failed(Errors.KEY_NOT_FOUND(k, ctx.ks))
         case Some(leaf) =>
 
           val idx = list.indexWhere{case (k, _, _) => ord.gt(k, leaf.last)}
@@ -794,7 +796,7 @@ class Index[K, V](val ictx: IndexContext)(implicit val ec: ExecutionContext,
    * Prints any subtree from the provided root
    * Caution: prettyPrint is currently synchronous!
    */
-  def prettyPrint(root: Option[(String, String)] = ctx.root, timeout: Duration = Duration.Inf)(implicit kf: K => String, vf: V => String): (Int, Int) = {
+  def prettyPrint(root: Option[(String, String)] = ctx.root, timeout: Duration = Duration.Inf): (Int, Int) = {
 
     val levels = scala.collection.mutable.Map[Int, scala.collection.mutable.ArrayBuffer[Block[K,V]]]()
     var num_data_blocks = 0
