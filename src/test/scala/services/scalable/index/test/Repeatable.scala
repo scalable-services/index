@@ -1,7 +1,7 @@
 package services.scalable.index.test
 
-import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.{Outcome, Succeeded}
+import org.scalatest.flatspec.AnyFlatSpec
 
 trait Repeatable extends AnyFlatSpec {
 

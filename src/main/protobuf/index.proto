@@ -18,6 +18,11 @@ message KVPair {
   string version = 3;
 }
 
+message KVersionPair {
+  bytes key = 1;
+  string version = 2;
+}
+
 message Link {
   bytes key = 1;
   string partition = 2;
@@ -68,25 +73,6 @@ message TemporalContext {
   string id = 1;
   IndexContext latest = 2 [(scalapb.field).no_box = true];
   IndexContext history = 3 [(scalapb.field).no_box = true];
-}
-
-message InsertCommand {
-  option (scalapb.message).extends = "services.scalable.index.grpc.IndexCommand";
-
-  repeated KVPair list = 1;
-  bool upsert = 2;
-}
-
-message RemoveCommand {
-  option (scalapb.message).extends = "services.scalable.index.grpc.IndexCommand";
-
-  repeated bytes keys = 1;
-}
-
-message UpdateCommand {
-  option (scalapb.message).extends = "services.scalable.index.grpc.IndexCommand";
-
-  repeated KVPair list = 1;
 }
 
 message DecimalValue {
