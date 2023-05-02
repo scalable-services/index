@@ -12,3 +12,4 @@ project/project
 project/metals.sbt
 .vscode
 .idea
+.DS_Store
