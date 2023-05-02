@@ -40,7 +40,9 @@ enablePlugins(AkkaGrpcPlugin)
 // finished before returning.
 // If you want to keep the application running while executing other
 // sbt tasks, consider https://github.com/spray/sbt-revolver/
-fork := true
+ThisBuild / fork := true
+ThisBuild / run / fork := true
+ThisBuild / Test / fork := true
 
 import sbtprotoc.ProtocPlugin._
 //ProtobufConfig / javaSource := (Compile / sourceDirectory) / "generated"

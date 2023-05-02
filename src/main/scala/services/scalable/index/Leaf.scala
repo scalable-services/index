@@ -18,7 +18,7 @@ class Leaf[K, V](override val id: String,
 
   override def nSubtree: Long = tuples.length.toLong
 
-  def insert(data: Seq[Tuple3[K, V, Boolean]], version: String)(implicit ctx: Context[K,V]): Try[Int] = {
+  def insert(data: Seq[Tuple3[K, V, Boolean]])(implicit ctx: Context[K,V]): Try[Int] = {
     import ctx.ord
 
     if(isFull()) return Failure(Errors.LEAF_BLOCK_FULL)
@@ -37,7 +37,7 @@ class Leaf[K, V](override val id: String,
     tuples = tuples.filterNot{case (k, v, _) => upserts.exists{case (k1, _, _) => ord.equiv(k, k1)}}
 
     // Add back the upsert keys and the new ones...
-    tuples = (tuples ++ slice.map{case (k, v, _) => Tuple3(k, v, version)}).sortBy(_._1)
+    tuples = (tuples ++ slice.map{case (k, v, _) => Tuple3(k, v, ctx.id)}).sortBy(_._1)
 
     Success(len)
   }
@@ -61,8 +61,7 @@ class Leaf[K, V](override val id: String,
     Success(keys.length)
   }
 
-  def update(data: Seq[Tuple3[K, V, Option[String]]], version: String, mappingF: Tuple3[K, V, Option[String]] => Tuple3[K, V, Option[String]])
-            (implicit ctx: Context[K, V]): Try[Int] = {
+  def update(data: Seq[Tuple3[K, V, Option[String]]])(implicit ctx: Context[K, V]): Try[Int] = {
     import ctx.ord
 
     if(data.exists{ case (k, _, _) => !tuples.exists{case (k1, _, _) => ord.equiv(k1, k) }}){
@@ -78,7 +77,7 @@ class Leaf[K, V](override val id: String,
 
     val notin = tuples.filterNot{case (k1, _, _) => data.exists{ case (k, _, _) => ord.equiv(k, k1)}}
 
-    tuples = (notin ++ data.map(mappingF).map{case (k, v, _) => Tuple3(k, v, version)}).sortBy(_._1)
+    tuples = (notin ++ data.map{case (k, v, _) => Tuple3(k, v, ctx.id)}).sortBy(_._1)
 
     Success(data.length)
   }

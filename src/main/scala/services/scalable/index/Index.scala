@@ -24,21 +24,21 @@ import scala.util.{Failure, Success}
  * the context. Once you done, the resulting context can be saved and passed to future instances of the class representing another set of
  * operations.
  */
-class Index[K, V](val ictx: IndexContext)(implicit val ec: ExecutionContext,
-                                      val storage: Storage,
-                                      val serializer: Serializer[Block[K, V]],
-                                      val cache: Cache,
-                                      val ord: Ordering[K],
-                                      val idGenerator: IdGenerator,
-                                      val ks: K => String,
-                                      val vs: V => String){
+class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContext,
+                                                val storage: Storage,
+                                                val serializer: Serializer[Block[K, V]],
+                                                val cache: Cache,
+                                                val ord: Ordering[K],
+                                                val idGenerator: IdGenerator,
+                                                val ks: K => String,
+                                                val vs: V => String){
 
-  assert(ictx.numLeafItems >= 4 && ictx.numMetaItems >= 4,
+  assert(descriptor.numLeafItems >= 4 && descriptor.numMetaItems >= 4,
     "Number of leaf and meta elements must be greater or equal to 4!")
 
   val logger = LoggerFactory.getLogger(this.getClass)
 
-  implicit var ctx = Context.fromIndexContext(ictx)
+  implicit var ctx = Context.fromIndexContext(descriptor)
   val $this = this
 
   /**
@@ -152,11 +152,10 @@ class Index[K, V](val ictx: IndexContext)(implicit val ec: ExecutionContext,
     }
   }
 
-  protected def insertEmpty(data: Seq[Tuple3[K, V, Boolean]], version: String)
-                           (implicit ord: Ordering[K]): Future[Int] = {
+  protected def insertEmpty(data: Seq[Tuple3[K, V, Boolean]])(implicit ord: Ordering[K]): Future[Int] = {
     val leaf = ctx.createLeaf()
 
-    leaf.insert(data, version) match {
+    leaf.insert(data) match {
       case Success(n) =>
 
         ctx.levels += 1
@@ -225,7 +224,7 @@ class Index[K, V](val ictx: IndexContext)(implicit val ec: ExecutionContext,
     }
   }
 
-  protected def splitLeaf(left: Leaf[K, V], data: Seq[Tuple3[K, V, Boolean]], version: String)(implicit ord: Ordering[K]): Future[Int] = {
+  protected def splitLeaf(left: Leaf[K, V], data: Seq[Tuple3[K, V, Boolean]])(implicit ord: Ordering[K]): Future[Int] = {
     val right = left.split()
 
     val (k, _, _) = data(0)
@@ -241,12 +240,12 @@ class Index[K, V](val ictx: IndexContext)(implicit val ec: ExecutionContext,
         list = list.takeWhile{case (k, _, _) => ord.lt(k, rightLast)}
       }
 
-      val rn = right.insert(list, version)
+      val rn = right.insert(list)
 
       return handleParent(left, right).map(_ => rn.get)
     }
 
-    val ln = left.insert(list.takeWhile{case (k, _, _) => ord.lt(k, leftLast)}, version)
+    val ln = left.insert(list.takeWhile{case (k, _, _) => ord.lt(k, leftLast)})
 
     handleParent(left, right).map{_ => ln.get}
   }
@@ -260,10 +259,10 @@ class Index[K, V](val ictx: IndexContext)(implicit val ec: ExecutionContext,
       /*val right = left.split()
       return handleParent(left, right).map{_ => 0}*/
 
-      return splitLeaf(left, data, version)
+      return splitLeaf(left, data)
     }
 
-    left.insert(data, version) match {
+    left.insert(data) match {
       case Success(n) => recursiveCopy(left).map{_ => n}
       case Failure(ex) => Future.failed(ex)
     }
@@ -294,7 +293,7 @@ class Index[K, V](val ictx: IndexContext)(implicit val ec: ExecutionContext,
       val (k, _, _) = list(0)
 
       findPath(k).flatMap {
-        case None => insertEmpty(list, version)
+        case None => insertEmpty(list)
         case Some(leaf) =>
 
           val idx = list.indexWhere{case (k, _, _) => ord.gt(k, leaf.last)}
@@ -498,10 +497,8 @@ class Index[K, V](val ictx: IndexContext)(implicit val ec: ExecutionContext,
     }
   }
 
-  protected def updateLeaf(left: Leaf[K, V], data: Seq[Tuple3[K, V, Option[String]]], version: String,
-                           mappingF: Tuple3[K, V, Option[String]] => Tuple3[K, V, Option[String]])
-                          (implicit ord: Ordering[K]): Future[Int] = {
-    val result = left.update(data, version, mappingF)
+  protected def updateLeaf(left: Leaf[K, V], data: Seq[Tuple3[K, V, Option[String]]])(implicit ord: Ordering[K]): Future[Int] = {
+    val result = left.update(data)
 
     if (result.isFailure) return Future.failed(result.failed.get)
 
@@ -542,7 +539,7 @@ class Index[K, V](val ictx: IndexContext)(implicit val ec: ExecutionContext,
           val idx = list.indexWhere{case (k, _, _) => ord.gt(k, leaf.last)}
           if(idx > 0) list = list.slice(0, idx)
 
-          updateLeaf(leaf.copy(), list, version, mappingF)
+          updateLeaf(leaf.copy(), list)
       }.flatMap { n =>
         pos += n
         update()
@@ -894,7 +891,7 @@ class Index[K, V](val ictx: IndexContext)(implicit val ec: ExecutionContext,
   }
 
   def execute(cmds: Seq[Command[K, V]], version: String = this.ctx.id): Future[BatchResult] = {
-    def process(pos: Int, previous: Boolean = true, error: Option[Throwable]): Future[BatchResult] = {
+    def process(pos: Int, error: Option[Throwable]): Future[BatchResult] = {
 
       if(error.isDefined) return Future.successful(BatchResult(false, error))
       if(pos == cmds.length) return Future.successful(BatchResult(true))
@@ -905,10 +902,10 @@ class Index[K, V](val ictx: IndexContext)(implicit val ec: ExecutionContext,
         case cmd: Insert[K, V] => insert(cmd.list, version)
         case cmd: Remove[K, V] => remove(cmd.keys)
         case cmd: Update[K, V] => update(cmd.list, version)
-      }).flatMap(prev => process(pos + 1, prev.success, prev.error))
+      }).flatMap(prev => process(pos + 1, prev.error))
     }
 
-    process(0, true, None)
+    process(0, None)
   }
 
 }

@@ -13,15 +13,15 @@ import scala.concurrent.{ExecutionContext, Future}
  * order[T].compare(k, term): the first parameter of the compare function is the key being compared. The second one is
  * the pattern to be compared to.
  */
-class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: ExecutionContext,
-                                                  override val storage: Storage,
-                                                  override val serializer: Serializer[Block[K, V]],
-                                                  override val cache: Cache,
-                                                  override val ord: Ordering[K],
-                                                  override val idGenerator: IdGenerator,
-                                                  override val ks: K => String,
-                                                  override val vs: V => String)
-  extends Index[K, V](c)(ec, storage, serializer, cache, ord, idGenerator, ks, vs) {
+class QueryableIndex[K, V](override val descriptor: IndexContext)(override implicit val ec: ExecutionContext,
+                                                                  override val storage: Storage,
+                                                                  override val serializer: Serializer[Block[K, V]],
+                                                                  override val cache: Cache,
+                                                                  override val ord: Ordering[K],
+                                                                  override val idGenerator: IdGenerator,
+                                                                  override val ks: K => String,
+                                                                  override val vs: V => String)
+  extends Index[K, V](descriptor)(ec, storage, serializer, cache, ord, idGenerator, ks, vs) {
 
   override val $this = this
 
@@ -646,11 +646,11 @@ class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: Execut
   }
 
   def isFull(): Boolean = {
-    ctx.num_elements >= c.maxNItems
+    ctx.num_elements >= descriptor.maxNItems
   }
 
   def hasMinimum(): Boolean = {
-    ctx.num_elements >= c.maxNItems/2
+    ctx.num_elements >= descriptor.maxNItems/2
   }
 
   def split(): Future[QueryableIndex[K, V]] = {
@@ -670,21 +670,21 @@ class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: Execut
         ptr.nElements
       }.sum
 
-      val leftICtx = c
+      val leftICtx = descriptor
         .withId(ctx.id)
-        .withMaxNItems(c.maxNItems)
+        .withMaxNItems(descriptor.maxNItems)
         .withNumElements(leftN)
         .withLevels(leftR.level)
-        .withNumLeafItems(c.numLeafItems)
-        .withNumMetaItems(c.numMetaItems)
+        .withNumLeafItems(descriptor.numLeafItems)
+        .withNumMetaItems(descriptor.numMetaItems)
 
-      val rightICtx = c
+      val rightICtx = descriptor
         .withId(UUID.randomUUID().toString)
-        .withMaxNItems(c.maxNItems)
+        .withMaxNItems(descriptor.maxNItems)
         .withNumElements(rightN)
         .withLevels(leftR.level)
-        .withNumLeafItems(c.numLeafItems)
-        .withNumMetaItems(c.numMetaItems)
+        .withNumLeafItems(descriptor.numLeafItems)
+        .withNumMetaItems(descriptor.numMetaItems)
 
       val refs = ctx.blockReferences
 
@@ -719,8 +719,8 @@ class QueryableIndex[K, V](val c: IndexContext)(override implicit val ec: Execut
   }
 
   def copy(): QueryableIndex[K, V] = {
-    val context = IndexContext(UUID.randomUUID.toString, c.numLeafItems, c.numMetaItems,
-      ctx.root.map { r => RootRef(r._1, r._2) }, levels, ctx.num_elements, c.maxNItems)
+    val context = IndexContext(UUID.randomUUID.toString, descriptor.numLeafItems, descriptor.numMetaItems,
+      ctx.root.map { r => RootRef(r._1, r._2) }, levels, ctx.num_elements, descriptor.maxNItems)
 
     val copy = new QueryableIndex[K, V](context)(this.ec,
       this.storage, this.serializer, this.cache, this.ord, this.idGenerator, ks, vs)
