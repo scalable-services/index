@@ -18,6 +18,11 @@ message KVPair {
   string version = 3;
 }
 
+message KVersionPair {
+  bytes key = 1;
+  string version = 2;
+}
+
 message Link {
   bytes key = 1;
   string partition = 2;
@@ -80,7 +85,7 @@ message InsertCommand {
 message RemoveCommand {
   option (scalapb.message).extends = "services.scalable.index.grpc.IndexCommand";
 
-  repeated bytes keys = 1;
+  repeated KVersionPair keys = 1;
 }
 
 message UpdateCommand {
