@@ -152,7 +152,7 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     }
   }
 
-  protected def insertEmpty(data: Seq[Tuple3[K, V, Boolean]])(implicit ord: Ordering[K]): Future[Int] = {
+  protected def insertEmpty(data: Seq[Tuple3[K, V, Boolean]]): Future[Int] = {
     val leaf = ctx.createLeaf()
 
     leaf.insert(data) match {
@@ -165,7 +165,7 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     }
   }
 
-  protected def insertParent(left: Meta[K, V], prev: Block[K, V])(implicit ord: Ordering[K]): Future[Boolean] = {
+  protected def insertParent(left: Meta[K, V], prev: Block[K, V]): Future[Boolean] = {
     if(left.isFull()){
       val right = left.split()
 
@@ -184,7 +184,7 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     }
   }
 
-  protected def handleParent(left: Block[K,V], right: Block[K,V])(implicit ord: Ordering[K]): Future[Boolean] = {
+  protected def handleParent(left: Block[K,V], right: Block[K,V]): Future[Boolean] = {
 
     val opt = ctx.getParent(left.unique_id)
 
@@ -224,7 +224,7 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     }
   }
 
-  protected def splitLeaf(left: Leaf[K, V], data: Seq[Tuple3[K, V, Boolean]])(implicit ord: Ordering[K]): Future[Int] = {
+  protected def splitLeaf(left: Leaf[K, V], data: Seq[Tuple3[K, V, Boolean]]): Future[Int] = {
     val right = left.split()
 
     val (k, _, _) = data(0)
@@ -250,9 +250,8 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     handleParent(left, right).map{_ => ln.get}
   }
 
-  protected def insertLeaf(left: Leaf[K, V], data: Seq[Tuple3[K, V, Boolean]])(implicit ord: Ordering[K]): Future[Int] = {
+  protected def insertLeaf(left: Leaf[K, V], data: Seq[Tuple3[K, V, Boolean]]): Future[Int] = {
     if(left.isFull()){
-
       logger.debug(s"${Console.RED_B}LEAF FULL...${Console.RESET}")
 
       /*val right = left.split()
@@ -272,7 +271,7 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
    * @param ord
    * @return
    */
-  def insert(data: Seq[Tuple3[K, V, Boolean]])(implicit ord: Ordering[K]): Future[InsertionResult] = {
+  def insert(data: Seq[Tuple3[K, V, Boolean]]): Future[InsertionResult] = {
 
     val sorted = data.sortBy(_._1)
 
@@ -312,8 +311,7 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     }
   }
 
-  protected def merge(left: Block[K, V], lpos: Int, right: Block[K, V], rpos: Int, parent: Meta[K,V])
-                                 (implicit ord: Ordering[K]): Future[Boolean] = {
+  protected def merge(left: Block[K, V], lpos: Int, right: Block[K, V], rpos: Int, parent: Meta[K,V]): Future[Boolean] = {
 
     //ctx.levels -= 1
 
@@ -345,8 +343,7 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     }
   }
 
-  protected def borrowRight(target: Block[K, V], left: Option[Block[K, V]], right: Option[(String, String)], parent: Meta[K,V], pos: Int)
-                                       (implicit ord: Ordering[K]): Future[Boolean] = {
+  protected def borrowRight(target: Block[K, V], left: Option[Block[K, V]], right: Option[(String, String)], parent: Meta[K,V], pos: Int): Future[Boolean] = {
     right match {
       case Some(id) => ctx.get(id).flatMap { r =>
         val right = r.copy()
@@ -371,8 +368,7 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     }
   }
 
-  protected def borrowLeft(target: Block[K, V], left: Option[(String, String)], right: Option[(String, String)], parent: Meta[K,V], pos: Int)
-                                      (implicit ord: Ordering[K]): Future[Boolean] = {
+  protected def borrowLeft(target: Block[K, V], left: Option[(String, String)], right: Option[(String, String)], parent: Meta[K,V], pos: Int): Future[Boolean] = {
     left match {
       case Some(id) => ctx.get(id).flatMap { l =>
         val left = l.copy()
@@ -397,7 +393,7 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     }
   }
 
-  protected def borrow(target: Block[K, V], parent: Meta[K,V], pos: Int)(implicit ord: Ordering[K]): Future[Boolean] = {
+  protected def borrow(target: Block[K, V], parent: Meta[K,V], pos: Int): Future[Boolean] = {
 
     val left = parent.left(pos)
     val right = parent.right(pos)
@@ -414,7 +410,7 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     borrowLeft(target, left, right, parent, pos)
   }
 
-  protected def removeFromLeaf(target: Leaf[K, V], keys: Seq[Tuple2[K, Option[String]]])(implicit ord: Ordering[K]): Future[Int] = {
+  protected def removeFromLeaf(target: Leaf[K, V], keys: Seq[Tuple2[K, Option[String]]]): Future[Int] = {
     val result = target.remove(keys)
 
     if(result.isFailure) return Future.failed(result.failed.get)
@@ -457,7 +453,7 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
    * @param ord
    * @return
    */
-  def remove(keys: Seq[Tuple2[K, Option[String]]])(implicit ord: Ordering[K]): Future[RemovalResult] = {
+  def remove(keys: Seq[Tuple2[K, Option[String]]]): Future[RemovalResult] = {
     val sorted = keys.distinct.sortBy(_._1)
 
     val len = sorted.length
@@ -494,7 +490,7 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     }
   }
 
-  protected def updateLeaf(left: Leaf[K, V], data: Seq[Tuple3[K, V, Option[String]]])(implicit ord: Ordering[K]): Future[Int] = {
+  protected def updateLeaf(left: Leaf[K, V], data: Seq[Tuple3[K, V, Option[String]]]): Future[Int] = {
     val result = left.update(data)
 
     if (result.isFailure) return Future.failed(result.failed.get)
@@ -508,7 +504,7 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
    * @param ord
    * @return
    */
-  def update(data: Seq[Tuple3[K, V, Option[String]]])(implicit ord: Ordering[K]): Future[UpdateResult] = {
+  def update(data: Seq[Tuple3[K, V, Option[String]]]): Future[UpdateResult] = {
 
     val sorted = data.sortBy(_._1)
 
@@ -646,7 +642,7 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     }
   }
 
-  def first()(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
+  def first(): Future[Option[Leaf[K,V]]] = {
     if(ctx.root.isEmpty) return Future.successful(None)
 
     val root = ctx.root.get
@@ -675,7 +671,7 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     }
   }
 
-  def last()(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
+  def last(): Future[Option[Leaf[K,V]]] = {
     if(ctx.root.isEmpty) return Future.successful(None)
 
     val root = ctx.root.get
@@ -758,21 +754,21 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     }
   }
 
-  def get(k: K)(implicit ord: Ordering[K]): Future[Option[Tuple[K,V]]] = {
+  def get(k: K): Future[Option[Tuple[K,V]]] = {
     findPath(k).flatMap {
       case None => Future.successful(None)
       case Some(leaf) => Future.successful(leaf.find(k))
     }
   }
 
-  def min()(implicit ord: Ordering[K]): Future[Option[Tuple[K,V]]] = {
+  def min(): Future[Option[Tuple[K,V]]] = {
     first().flatMap {
       case None => Future.successful(None)
       case Some(leaf) => Future.successful(leaf.min())
     }
   }
 
-  def max()(implicit ord: Ordering[K]): Future[Option[Tuple[K,V]]] = {
+  def max(): Future[Option[Tuple[K,V]]] = {
     last().flatMap {
       case None => Future.successful(None)
       case Some(leaf) => Future.successful(leaf.max())
