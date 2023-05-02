@@ -71,7 +71,7 @@ class SplitIndexSpec extends Repeatable {
 
     val cmds = Seq[Commands.Command[K, V]](insert())
 
-    val n = Await.result(index.execute(cmds, txId), Duration.Inf)
+    val n = Await.result(index.execute(cmds), Duration.Inf)
 
     //val savedMetaContext = Await.result(index.save(), Duration.Inf)
 

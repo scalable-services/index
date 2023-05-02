@@ -250,8 +250,7 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     handleParent(left, right).map{_ => ln.get}
   }
 
-  protected def insertLeaf(left: Leaf[K, V], data: Seq[Tuple3[K, V, Boolean]], version: String)
-                          (implicit ord: Ordering[K]): Future[Int] = {
+  protected def insertLeaf(left: Leaf[K, V], data: Seq[Tuple3[K, V, Boolean]])(implicit ord: Ordering[K]): Future[Int] = {
     if(left.isFull()){
 
       logger.debug(s"${Console.RED_B}LEAF FULL...${Console.RESET}")
@@ -270,12 +269,10 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
 
   /**
    * @param data (key, value, upsert)
-   * @param version
    * @param ord
    * @return
    */
-  def insert(data: Seq[Tuple3[K, V, Boolean]], version: String = this.ctx.id)
-            (implicit ord: Ordering[K]): Future[InsertionResult] = {
+  def insert(data: Seq[Tuple3[K, V, Boolean]])(implicit ord: Ordering[K]): Future[InsertionResult] = {
 
     val sorted = data.sortBy(_._1)
 
@@ -299,7 +296,7 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
           val idx = list.indexWhere{case (k, _, _) => ord.gt(k, leaf.last)}
           if(idx > 0) list = list.slice(0, idx)
 
-          insertLeaf(leaf.copy(), list, version)
+          insertLeaf(leaf.copy(), list)
       }.flatMap { n =>
         pos += n
         ctx.num_elements += n
@@ -507,15 +504,11 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
 
   /**
    * @param data (key, value, compare_version_change?)
-   * @param version
    * @param mappingF
    * @param ord
    * @return
    */
-  def update(data: Seq[Tuple3[K, V, Option[String]]], version: String = this.ctx.id,
-             mappingF: Tuple3[K, V, Option[String]] => Tuple3[K, V, Option[String]] =
-             (t: Tuple3[K, V, Option[String]]) => t)
-            (implicit ord: Ordering[K]): Future[UpdateResult] = {
+  def update(data: Seq[Tuple3[K, V, Option[String]]])(implicit ord: Ordering[K]): Future[UpdateResult] = {
 
     val sorted = data.sortBy(_._1)
 
@@ -890,7 +883,7 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     }
   }
 
-  def execute(cmds: Seq[Command[K, V]], version: String = this.ctx.id): Future[BatchResult] = {
+  def execute(cmds: Seq[Command[K, V]]): Future[BatchResult] = {
     def process(pos: Int, error: Option[Throwable]): Future[BatchResult] = {
 
       if(error.isDefined) return Future.successful(BatchResult(false, error))
@@ -899,9 +892,9 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
       val cmd = cmds(pos)
 
       (cmd match {
-        case cmd: Insert[K, V] => insert(cmd.list, version)
+        case cmd: Insert[K, V] => insert(cmd.list)
         case cmd: Remove[K, V] => remove(cmd.keys)
-        case cmd: Update[K, V] => update(cmd.list, version)
+        case cmd: Update[K, V] => update(cmd.list)
       }).flatMap(prev => process(pos + 1, prev.error))
     }
 
