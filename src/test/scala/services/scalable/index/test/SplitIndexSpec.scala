@@ -1,11 +1,11 @@
 package services.scalable.index.test
 
 import org.apache.commons.lang3.RandomStringUtils
-import services.scalable.index.DefaultComparators.ord
+import services.scalable.index.DefaultComparators.bytesOrd
 import services.scalable.index.DefaultSerializers._
 import services.scalable.index.grpc.IndexContext
 import services.scalable.index.impl._
-import services.scalable.index.{Block, Bytes, Commands, Context, IdGenerator, QueryableIndex}
+import services.scalable.index.{Block, Bytes, Commands, Context, DefaultComparators, DefaultSerializers, IdGenerator, IndexBuilder, QueryableIndex}
 
 import java.util.UUID
 import java.util.concurrent.ThreadLocalRandom
@@ -38,8 +38,6 @@ class SplitIndexSpec extends Repeatable {
     //implicit val storage = new MemoryStorage()
     implicit val storage = new CassandraStorage(TestConfig.session, false)
 
-    val txId = UUID.randomUUID().toString
-
     val MAX_ITEMS = 250
 
     val ctx = Await.result(TestHelper.loadOrCreateIndex(IndexContext("test-index", NUM_LEAF_ENTRIES, NUM_META_ENTRIES)),
@@ -48,7 +46,11 @@ class SplitIndexSpec extends Repeatable {
       .withNumLeafItems(NUM_LEAF_ENTRIES)
       .withNumMetaItems(NUM_META_ENTRIES)
 
-    val index = new QueryableIndex[K, V](ctx)
+    val indexBuilder = IndexBuilder.create[K, V](DefaultComparators.bytesOrd)
+      .storage(storage)
+      .serializer(DefaultSerializers.grpcBytesBytesSerializer)
+
+    val index = new QueryableIndex[K, V](ctx)(indexBuilder)
 
     var data = Seq.empty[(Bytes, Bytes)]
 
@@ -60,7 +62,7 @@ class SplitIndexSpec extends Repeatable {
       for (i <- 0 until n) {
         val k = RandomStringUtils.randomAlphanumeric(7).getBytes("UTF-8")
 
-        if (!data.exists(x => ord.equiv(k, x._1)) && !list.exists { case (k1, v, _) => ord.equiv(k, k1) }) {
+        if (!data.exists(x => bytesOrd.equiv(k, x._1)) && !list.exists { case (k1, v, _) => bytesOrd.equiv(k, k1) }) {
           data = data :+ k -> k
           list = list :+ (k, k, false)
         }

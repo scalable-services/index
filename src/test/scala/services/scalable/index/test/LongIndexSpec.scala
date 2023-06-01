@@ -4,7 +4,7 @@ import io.netty.util.internal.ThreadLocalRandom
 import org.slf4j.LoggerFactory
 import services.scalable.index.grpc.IndexContext
 import services.scalable.index.impl._
-import services.scalable.index.{Commands, Context, IdGenerator, QueryableIndex}
+import services.scalable.index.{Commands, Context, DefaultComparators, IdGenerator, IndexBuilder, QueryableIndex}
 
 import java.util.UUID
 import scala.concurrent.Await
@@ -47,10 +47,14 @@ class LongIndexSpec extends Repeatable {
       IndexContext(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
     ), Duration.Inf).get
 
-    implicit val longLongBlockSerializer = new GrpcByteSerializer[Long, Long]()
+    val longLongBlockSerializer = new GrpcByteSerializer[Long, Long]()
+
+    val indexBuilder = IndexBuilder.create[K, V](DefaultComparators.ordLong)
+      .storage(storage)
+      .serializer(longLongBlockSerializer)
 
     var data = Seq.empty[(K, V, Boolean)]
-    val index = new QueryableIndex[K, V](indexContext)
+    val index = new QueryableIndex[K, V](indexContext)(indexBuilder)
 
     def insert(): Unit = {
       val n = 100//rand.nextInt(1, 100)

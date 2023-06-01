@@ -51,7 +51,7 @@ package object index {
       .build()
 
   object DefaultComparators {
-    implicit val ord = new Ordering[Bytes] {
+    implicit val bytesOrd = new Ordering[Bytes] {
       val comp = UnsignedBytes.lexicographicalComparator()
       override def compare(x: Bytes, y: Bytes): Int = comp.compare(x, y)
     }

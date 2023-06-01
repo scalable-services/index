@@ -4,19 +4,15 @@ import services.scalable.index.grpc._
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.{ExecutionContext, Future}
 
-class TemporalIndex[K, V](private val tctx: TemporalContext)(implicit val ec: ExecutionContext,
-                                                     val storage: Storage,
-                                                     val serializer: Serializer[Block[K, V]],
-                                                     val cache: Cache,
-                                                     val ord: Ordering[K],
-                                                     val idGenerator: IdGenerator,
-                                                     val ks: K => String,
-                                                     val vs: V => String){
-  import DefaultSerializers._
-  import DefaultPrinters._
+class TemporalIndex[K, V](private val tctx: TemporalContext)
+                         (val indexBuilder: IndexBuilder[K, V],
+                          val historyBuilder: IndexBuilder[Long, IndexContext]){
 
-  protected val index = new QueryableIndex[K, V](tctx.latest)
-  protected val history = new QueryableIndex[Long, IndexContext](tctx.history)
+  import indexBuilder._
+  import DefaultSerializers._
+
+  protected val index = new QueryableIndex[K, V](tctx.latest)(indexBuilder)
+  protected val history = new QueryableIndex[Long, IndexContext](tctx.history)(historyBuilder)
 
   def execute(cmds: Seq[Commands.Command[K, V]]): Future[BatchResult] = {
     index.execute(cmds)
@@ -42,7 +38,7 @@ class TemporalIndex[K, V](private val tctx: TemporalContext)(implicit val ec: Ex
   }
 
   def findIndex(t: Long): Future[Option[QueryableIndex[K, V]]] = {
-    find(t).map(_.map(new QueryableIndex[K, V](_)))
+    find(t).map(_.map(new QueryableIndex[K, V](_)(indexBuilder)))
   }
 
   def findIndex(): QueryableIndex[K, V] = index

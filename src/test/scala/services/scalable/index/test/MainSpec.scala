@@ -7,7 +7,7 @@ import org.scalatest.matchers.should.Matchers
 import org.slf4j.LoggerFactory
 import services.scalable.index.grpc._
 import services.scalable.index.impl._
-import services.scalable.index.{Bytes, Commands, Context, IdGenerator, QueryableIndex}
+import services.scalable.index.{Bytes, Commands, Context, DefaultComparators, DefaultSerializers, IdGenerator, IndexBuilder, QueryableIndex}
 
 import java.util.UUID
 import scala.concurrent.Await
@@ -34,17 +34,11 @@ class MainSpec extends Repeatable with Matchers {
 
     val indexId = "mysusindex"//UUID.randomUUID().toString
 
-    import services.scalable.index.DefaultSerializers._
-    import services.scalable.index.DefaultPrinters._
-
-    implicit val idGenerator = new IdGenerator {
-      override def generateId[K, V](ctx: Context[K, V]): String = UUID.randomUUID.toString
-      override def generatePartition[K, V](ctx: Context[K, V]): String = "p0"
-    }
-
-    implicit val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
     implicit val storage = new MemoryStorage()
-    //implicit val storage = new CassandraStorage(TestConfig.KEYSPACE, false)
+
+    val builder = IndexBuilder.create[K, V](DefaultComparators.bytesOrd)
+      .storage(storage)
+      .serializer(DefaultSerializers.grpcBytesBytesSerializer)
 
     val indexContext = Await.result(TestHelper.loadOrCreateIndex(IndexContext(
       indexId,
@@ -53,7 +47,7 @@ class MainSpec extends Repeatable with Matchers {
     )), Duration.Inf).get
 
     var data = Seq.empty[(K, V, Boolean)]
-    var index = new QueryableIndex[K, V](indexContext)
+    var index = builder.build(indexContext)
 
     def insert(): Unit = {
       val n = rand.nextInt(1, 1000)
@@ -63,8 +57,8 @@ class MainSpec extends Repeatable with Matchers {
         val k = RandomStringUtils.randomAlphanumeric(5, 10).getBytes(Charsets.UTF_8)
         val v = RandomStringUtils.randomAlphanumeric(5).getBytes(Charsets.UTF_8)
 
-        if(!data.exists { case (k1, _, _) => ord.equiv(k, k1) } &&
-          !list.exists { case (k1, _, _) => ord.equiv(k, k1) }){
+        if(!data.exists { case (k1, _, _) => bytesOrd.equiv(k, k1) } &&
+          !list.exists { case (k1, _, _) => bytesOrd.equiv(k, k1) }){
           list = list :+ (k, v, false)
         }
       }
@@ -109,7 +103,7 @@ class MainSpec extends Repeatable with Matchers {
       if(result.success){
         logger.debug(s"${Console.MAGENTA_B}UPDATED RIGHT LAST VERSION ${list.map{case (k, _, _) => new String(k)}}...${Console.RESET}")
 
-        data = data.filterNot { case (k, _, _) => list.exists { case (k1, _, _) => ord.equiv(k, k1) } }
+        data = data.filterNot { case (k, _, _) => list.exists { case (k1, _, _) => bytesOrd.equiv(k, k1) } }
         data = data ++ list.map { case (k, v, _) => (k, v, true) }
 
         return
@@ -117,7 +111,7 @@ class MainSpec extends Repeatable with Matchers {
 
       result.error.get.printStackTrace()
       logger.debug(s"${Console.RED_B}UPDATED WRONG LAST VERSION ${list.map { case (k, _, _) => new String(k) }}...${Console.RESET}")
-      index = new QueryableIndex[K, V](backupCtx)
+      index = new QueryableIndex[K, V](backupCtx)(builder)
     }
 
     def remove(): Unit = {
@@ -142,13 +136,13 @@ class MainSpec extends Repeatable with Matchers {
 
       if(result.success){
         logger.debug(s"${Console.RED_B}REMOVED RIGHT VERSION ${list.map { case (k, _) => new String(k) }}...${Console.RESET}")
-        data = data.filterNot { case (k, _, _) => list.exists { case (k1, _) => ord.equiv(k, k1) } }
+        data = data.filterNot { case (k, _, _) => list.exists { case (k1, _) => bytesOrd.equiv(k, k1) } }
         return
       }
 
       result.error.get.printStackTrace()
       logger.debug(s"${Console.RED_B}REMOVED WRONG VERSION ${list.map { case (k, _) => new String(k) }}...${Console.RESET}")
-      index = new QueryableIndex[K, V](backupCtx)
+      index = new QueryableIndex[K, V](backupCtx)(builder)
     }
 
     val n = 100
