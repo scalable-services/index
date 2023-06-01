@@ -1,10 +1,10 @@
 package services.scalable.index.test
 
-import services.scalable.index.DefaultComparators.ord
+import services.scalable.index.DefaultComparators.bytesOrd
 import services.scalable.index.DefaultSerializers._
 import services.scalable.index.grpc.IndexContext
 import services.scalable.index.impl._
-import services.scalable.index.{Bytes, Context, IdGenerator, QueryableIndex}
+import services.scalable.index.{Bytes, Context, DefaultComparators, DefaultSerializers, IdGenerator, IndexBuilder, QueryableIndex}
 
 import java.util.UUID
 import java.util.concurrent.ThreadLocalRandom
@@ -27,19 +27,9 @@ class LoadSplittenIndexFromDiskSpec extends Repeatable {
     val NUM_LEAF_ENTRIES = 8
     val NUM_META_ENTRIES = 8
 
-    implicit val idGenerator = new IdGenerator {
-      override def generateId[K, V](ctx: Context[K, V]): String = UUID.randomUUID.toString
-
-      override def generatePartition[K, V](ctx: Context[K, V]): String = "p0"
-    }
-
-    implicit val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
+    //val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
     //implicit val storage = new MemoryStorage()
     implicit val storage = new CassandraStorage(TestConfig.session, false)
-
-    val txId = UUID.randomUUID().toString
-
-    val MAX_ITEMS = 250
 
     val tctx = IndexContext("index", NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
     val ctx = Await.result(TestHelper.loadOrCreateIndex(tctx), Duration.Inf)
@@ -47,10 +37,14 @@ class LoadSplittenIndexFromDiskSpec extends Repeatable {
     val lctx = Await.result(storage.loadIndex("d4a53d67-6d4e-4d0f-8815-b7d388ea4daf"), Duration.Inf)
     val rctx = Await.result(storage.loadIndex("79b6eab6-5b5f-434f-a83e-9ac361003248"), Duration.Inf)
 
-    val left = new QueryableIndex[K, V](lctx.get)
-    val right = new QueryableIndex[K, V](rctx.get)
+    val builder = IndexBuilder.create[K, V](DefaultComparators.bytesOrd)
+      .storage(storage)
+      .serializer(DefaultSerializers.grpcBytesBytesSerializer)
 
-    val index = new QueryableIndex[K, V](ctx.get)
+    val left = new QueryableIndex[K, V](lctx.get)(builder)
+    val right = new QueryableIndex[K, V](rctx.get)(builder)
+
+    val index = new QueryableIndex[K, V](ctx.get)(builder)
 
     val fullList = Await.result(TestHelper.all(index.inOrder()), Duration.Inf)
       .map { case (k, v, _) => new String(k) }.toList

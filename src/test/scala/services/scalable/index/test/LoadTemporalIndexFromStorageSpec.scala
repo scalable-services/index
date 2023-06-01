@@ -2,9 +2,9 @@ package services.scalable.index.test
 
 import io.netty.util.internal.ThreadLocalRandom
 import org.slf4j.LoggerFactory
-import services.scalable.index.grpc.TemporalContext
+import services.scalable.index.grpc.{IndexContext, TemporalContext}
 import services.scalable.index.impl._
-import services.scalable.index.{Context, IdGenerator, TemporalIndex}
+import services.scalable.index.{Context, DefaultComparators, DefaultSerializers, IdGenerator, IndexBuilder, TemporalIndex}
 
 import java.util.UUID
 import scala.concurrent.Await
@@ -37,7 +37,6 @@ class LoadTemporalIndexFromStorageSpec extends Repeatable {
       override def generatePartition[K, V](ctx: Context[K, V]): String = UUID.randomUUID.toString
     }
 
-    implicit val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
     //implicit val storage = new MemoryStorage()
     implicit val storage = new CassandraStorage(TestConfig.session, false)
 
@@ -45,7 +44,17 @@ class LoadTemporalIndexFromStorageSpec extends Repeatable {
       TemporalContext(dbId)
     ), Duration.Inf).get
 
-    val db = new TemporalIndex[K, V](dbCtx)
+    val grpcLongLongSerializer = new GrpcByteSerializer[Long, Long]()
+
+    val indexBuilder = IndexBuilder.create[K, V](DefaultComparators.ordLong)
+      .storage(storage)
+      .serializer(grpcLongLongSerializer)
+
+    val historyBuilder = IndexBuilder.create[Long, IndexContext](DefaultComparators.ordLong)
+      .storage(storage)
+      .serializer(DefaultSerializers.grpcLongIndexContextSerializer)
+
+    val db = new TemporalIndex[K, V](dbCtx)(indexBuilder, historyBuilder)
 
     val t0 = 0L
     val t1 = System.nanoTime()

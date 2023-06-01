@@ -13,17 +13,12 @@ import scala.concurrent.{ExecutionContext, Future}
  * order[T].compare(k, term): the first parameter of the compare function is the key being compared. The second one is
  * the pattern to be compared to.
  */
-class QueryableIndex[K, V](override val descriptor: IndexContext)(override implicit val ec: ExecutionContext,
-                                                                  override val storage: Storage,
-                                                                  override val serializer: Serializer[Block[K, V]],
-                                                                  override val cache: Cache,
-                                                                  override val ord: Ordering[K],
-                                                                  override val idGenerator: IdGenerator,
-                                                                  override val ks: K => String,
-                                                                  override val vs: V => String)
-  extends Index[K, V](descriptor)(ec, storage, serializer, cache, ord, idGenerator, ks, vs) {
+class QueryableIndex[K, V](override val descriptor: IndexContext)(override val builder: IndexBuilder[K, V])
+  extends Index[K, V](descriptor)(builder) {
 
   override val $this = this
+
+  import builder._
 
   protected def ltr(fromPrefix: Option[K], fromWord: K, inclusiveFrom: Boolean,
                     prefixOrd: Option[Ordering[K]], order: Ordering[K]): RichAsyncIterator[K, V] = {
@@ -688,13 +683,11 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override impli
 
       val refs = ctx.blockReferences
 
-      ctx = Context.fromIndexContext(leftICtx)(this.ec,
-        this.storage, this.serializer, this.cache, this.ord, this.idGenerator, ks, vs)
+      ctx = Context.fromIndexContext(leftICtx)(this.builder)
 
       ctx.blockReferences ++= refs
 
-      val rindex = new QueryableIndex[K, V](rightICtx)(this.ec,
-        this.storage, this.serializer, this.cache, this.ord, this.idGenerator, ks, vs)
+      val rindex = new QueryableIndex[K, V](rightICtx)(this.builder)
 
       val leftRoot = leftR.copy()(ctx)
       ctx.root = Some(leftRoot.unique_id)
@@ -722,8 +715,7 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override impli
     val context = IndexContext(UUID.randomUUID.toString, descriptor.numLeafItems, descriptor.numMetaItems,
       ctx.root.map { r => RootRef(r._1, r._2) }, levels, ctx.num_elements, descriptor.maxNItems)
 
-    val copy = new QueryableIndex[K, V](context)(this.ec,
-      this.storage, this.serializer, this.cache, this.ord, this.idGenerator, ks, vs)
+    val copy = new QueryableIndex[K, V](context)(this.builder)
 
     ctx.blockReferences.foreach { case (id, _) =>
       copy.ctx.blockReferences += id -> id

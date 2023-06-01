@@ -19,7 +19,7 @@ class Leaf[K, V](override val id: String,
   override def nSubtree: Long = tuples.length.toLong
 
   def insert(data: Seq[Tuple3[K, V, Boolean]])(implicit ctx: Context[K,V]): Try[Int] = {
-    import ctx.ord
+    import ctx.builder.ord
 
     if(isFull()) return Failure(Errors.LEAF_BLOCK_FULL)
 
@@ -29,7 +29,7 @@ class Leaf[K, V](override val id: String,
     val len = slice.length
 
     if (slice.exists { case (k, _, upsert) => tuples.exists { case (k1, _, _) => !upsert && ord.equiv(k1, k) } }) {
-      return Failure(Errors.LEAF_DUPLICATE_KEY(slice.map(_._1), ctx.ks))
+      return Failure(Errors.LEAF_DUPLICATE_KEY(slice.map(_._1), ctx.builder.ks))
     }
 
     // Filter out upsert keys...
@@ -43,17 +43,17 @@ class Leaf[K, V](override val id: String,
   }
 
   def remove(keys: Seq[Tuple2[K, Option[String]]])(implicit ctx: Context[K, V]): Try[Int] = {
-    import ctx.ord
+    import ctx.builder.ord
 
     if(keys.exists{ case (k, _) => !tuples.exists{ case (k1, _, _) => ord.equiv(k1, k) }}){
-      return Failure(Errors.LEAF_KEY_NOT_FOUND[K](keys.map(_._1), ctx.ks))
+      return Failure(Errors.LEAF_KEY_NOT_FOUND[K](keys.map(_._1), ctx.builder.ks))
     }
 
     val versionsChanged = keys.filter(_._2.isDefined)
       .filter { case (k0, vs0) => tuples.exists { case (k1, _, vs1) => ord.equiv(k0, k1) && !vs0.get.equals(vs1) } }
 
     if (!versionsChanged.isEmpty) {
-      return Failure(Errors.VERSION_CHANGED(versionsChanged, ctx.ks))
+      return Failure(Errors.VERSION_CHANGED(versionsChanged, ctx.builder.ks))
     }
 
     tuples = tuples.filterNot{case (k, _, _) => keys.exists{ case (k1, _) => ord.equiv(k, k1)}}
@@ -62,17 +62,17 @@ class Leaf[K, V](override val id: String,
   }
 
   def update(data: Seq[Tuple3[K, V, Option[String]]])(implicit ctx: Context[K, V]): Try[Int] = {
-    import ctx.ord
+    import ctx.builder.ord
 
     if(data.exists{ case (k, _, _) => !tuples.exists{case (k1, _, _) => ord.equiv(k1, k) }}){
-      return Failure(Errors.LEAF_KEY_NOT_FOUND(data.map(_._1), ctx.ks))
+      return Failure(Errors.LEAF_KEY_NOT_FOUND(data.map(_._1), ctx.builder.ks))
     }
 
     val versionsChanged = data.filter(_._3.isDefined)
       .filter{case (k0, _, vs0) => tuples.exists{case (k1, _, vs1) => ord.equiv(k0, k1) && !vs0.get.equals(vs1)}}
 
     if (!versionsChanged.isEmpty) {
-      return Failure(Errors.VERSION_CHANGED(versionsChanged.map{case (k, _, vs) => k -> vs}, ctx.ks))
+      return Failure(Errors.VERSION_CHANGED(versionsChanged.map{case (k, _, vs) => k -> vs}, ctx.builder.ks))
     }
 
     val notin = tuples.filterNot{case (k1, _, _) => data.exists{ case (k, _, _) => ord.equiv(k, k1)}}
@@ -222,22 +222,22 @@ class Leaf[K, V](override val id: String,
 
     for(i<-0 until tuples.length - 1){
       val (k, v, _) = tuples(i)
-      sb ++= ctx.ks(k)
+      sb ++= ctx.builder.ks(k)
 
       sb ++= "->"
 
-      sb ++= ctx.vs(v)
+      sb ++= ctx.builder.vs(v)
       sb ++= ","
     }
 
     sb ++= Console.RED_B
     val (k, v, _) = tuples(tuples.length - 1)
-    sb ++= ctx.ks(k)
+    sb ++= ctx.builder.ks(k)
     sb ++= Console.RESET
 
     sb ++= "->"
 
-    sb ++= ctx.vs(v)
+    sb ++= ctx.builder.vs(v)
 
     sb ++= Console.GREEN_B
     sb ++= "]"

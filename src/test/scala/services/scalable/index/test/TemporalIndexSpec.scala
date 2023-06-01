@@ -4,7 +4,7 @@ import io.netty.util.internal.ThreadLocalRandom
 import org.slf4j.LoggerFactory
 import services.scalable.index.grpc.{IndexContext, TemporalContext}
 import services.scalable.index.impl._
-import services.scalable.index.{Commands, Context, IdGenerator, TemporalIndex}
+import services.scalable.index.{Commands, Context, DefaultComparators, DefaultSerializers, IdGenerator, IndexBuilder, TemporalIndex}
 
 import java.util.UUID
 import scala.concurrent.Await
@@ -52,7 +52,17 @@ class TemporalIndexSpec extends Repeatable {
       IndexContext(s"$historyIndexId-history", NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
     )), Duration.Inf).get
 
-    val hDB = new TemporalIndex[K, V](tctx)
+    val grpcLongLongSerializer = new GrpcByteSerializer[Long, Long]()
+
+    val indexBuilder = IndexBuilder.create[K, V](DefaultComparators.ordLong)
+      .storage(storage)
+      .serializer(grpcLongLongSerializer)
+
+    val historyBuilder = IndexBuilder.create[Long, IndexContext](DefaultComparators.ordLong)
+      .storage(storage)
+      .serializer(DefaultSerializers.grpcLongIndexContextSerializer)
+
+    val hDB = new TemporalIndex[K, V](tctx)(indexBuilder, historyBuilder)
     var data = Seq.empty[(K, V, Boolean)]
 
     def insert(): Seq[Commands.Command[K, V]] = {
@@ -89,7 +99,7 @@ class TemporalIndexSpec extends Repeatable {
 
     val hdbCtxSaved = Await.result(hDB.save(), Duration.Inf)
 
-    val hDB2 = new TemporalIndex[K, V](hdbCtxSaved)
+    val hDB2 = new TemporalIndex[K, V](hdbCtxSaved)(indexBuilder, historyBuilder)
 
     val t0 = 0L
     val t1 = System.nanoTime()

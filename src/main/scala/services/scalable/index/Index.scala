@@ -24,21 +24,16 @@ import scala.util.{Failure, Success}
  * the context. Once you done, the resulting context can be saved and passed to future instances of the class representing another set of
  * operations.
  */
-class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContext,
-                                                val storage: Storage,
-                                                val serializer: Serializer[Block[K, V]],
-                                                val cache: Cache,
-                                                val ord: Ordering[K],
-                                                val idGenerator: IdGenerator,
-                                                val ks: K => String,
-                                                val vs: V => String){
+class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V]){
+
+  import builder._
 
   assert(descriptor.numLeafItems >= 4 && descriptor.numMetaItems >= 4,
     "Number of leaf and meta elements must be greater or equal to 4!")
 
   val logger = LoggerFactory.getLogger(this.getClass)
 
-  implicit var ctx = Context.fromIndexContext(descriptor)
+  implicit var ctx = Context.fromIndexContext(descriptor)(builder)
   val $this = this
 
   /**
@@ -276,7 +271,8 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     val sorted = data.sortBy(_._1)
 
     if(sorted.exists{case (k, _, _) => sorted.count{case (k1, _, _) => ord.equiv(k, k1)} > 1}){
-      return Future.successful(InsertionResult(false, 0, Some(Errors.DUPLICATED_KEYS(data.map(_._1), ctx.ks))))
+      return Future.successful(InsertionResult(false, 0,
+        Some(Errors.DUPLICATED_KEYS(data.map(_._1), ctx.builder.ks))))
     }
 
     val len = sorted.length
@@ -469,7 +465,7 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
       val (k, _) = list(0)
 
       findPath(k).flatMap {
-        case None => Future.failed(Errors.KEY_NOT_FOUND[K](k, ctx.ks))
+        case None => Future.failed(Errors.KEY_NOT_FOUND[K](k, ctx.builder.ks))
         case Some(leaf) =>
 
           val idx = list.indexWhere { case (k, _) => ord.gt(k, leaf.last)}
@@ -509,7 +505,7 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     val sorted = data.sortBy(_._1)
 
     if(sorted.exists{case (k, _, _) => sorted.count{case (k1, _, _) => ord.equiv(k, k1)} > 1}){
-      return Future.successful(UpdateResult(false, 0, Some(Errors.DUPLICATED_KEYS(sorted.map(_._1), ctx.ks))))
+      return Future.successful(UpdateResult(false, 0, Some(Errors.DUPLICATED_KEYS(sorted.map(_._1), ctx.builder.ks))))
     }
 
     val len = sorted.length
@@ -522,7 +518,7 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
       val (k, _, _) = list(0)
 
       findPath(k).flatMap {
-        case None => Future.failed(Errors.KEY_NOT_FOUND(k, ctx.ks))
+        case None => Future.failed(Errors.KEY_NOT_FOUND(k, ctx.builder.ks))
         case Some(leaf) =>
 
           val idx = list.indexWhere{case (k, _, _) => ord.gt(k, leaf.last)}
