@@ -36,7 +36,8 @@ class SplitIndexSpec extends Repeatable {
 
     implicit val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
     //implicit val storage = new MemoryStorage()
-    implicit val storage = new CassandraStorage(TestConfig.session, false)
+    val session = TestHelper.createCassandraSession()
+    implicit val storage = new CassandraStorage(session, false)
 
     val MAX_ITEMS = 250
 

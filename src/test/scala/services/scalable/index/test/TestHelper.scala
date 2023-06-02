@@ -1,6 +1,9 @@
 package services.scalable.index.test
 
 import com.datastax.oss.driver.api.core.CqlSession
+import org.cassandraunit.CQLDataLoader
+import org.cassandraunit.dataset.cql.ClassPathCQLDataSet
+import org.cassandraunit.utils.EmbeddedCassandraServerHelper
 import services.scalable.index.grpc.{IndexContext, TemporalContext}
 import services.scalable.index.test.TestConfig.{CQL_PWD, CQL_USER, KEYSPACE}
 import services.scalable.index.{AsyncIterator, Storage, Tuple}
@@ -21,6 +24,14 @@ object TestHelper {
       case None => storage.createIndex(tctx).map(_ => Some(tctx))
       case Some(t) => Future.successful(Some(t))
     }
+  }
+
+  def loadIndex(id: String)(implicit storage: Storage, ec: ExecutionContext): Future[Option[IndexContext]] = {
+    storage.loadIndex(id)
+  }
+
+  def loadTemporalIndex(id: String)(implicit storage: Storage, ec: ExecutionContext): Future[Option[TemporalContext]] = {
+    storage.loadTemporalIndex(id)
   }
 
   def all[K, V](it: AsyncIterator[Seq[Tuple[K, V]]])(implicit ec: ExecutionContext): Future[Seq[Tuple[K, V]]] = {
@@ -46,6 +57,14 @@ object TestHelper {
     }
 
     true
+  }
+
+  def createCassandraSession(): CqlSession = {
+    CqlSession
+      .builder()
+      .withKeyspace(KEYSPACE)
+      .withAuthCredentials(CQL_USER, CQL_PWD)
+      .build()
   }
 
 }
