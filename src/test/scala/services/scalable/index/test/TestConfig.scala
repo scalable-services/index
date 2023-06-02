@@ -1,6 +1,9 @@
 package services.scalable.index.test
 
 import com.datastax.oss.driver.api.core.CqlSession
+import org.cassandraunit.CQLDataLoader
+import org.cassandraunit.dataset.cql.ClassPathCQLDataSet
+import org.cassandraunit.utils.EmbeddedCassandraServerHelper
 
 object TestConfig {
 
@@ -9,10 +12,7 @@ object TestConfig {
   val CQL_PWD = "cassandra"
   val DATABASE = "myHistoryIndex"
 
-  val session = CqlSession
-    .builder()
-    .withKeyspace(KEYSPACE)
-    .withAuthCredentials(CQL_USER, CQL_PWD)
-    .build()
+  val NUM_LEAF_ENTRIES = 16
+  val NUM_META_ENTRIES = 16
 
 }

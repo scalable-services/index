@@ -12,6 +12,7 @@ import services.scalable.index.{Bytes, Commands, Context, DefaultComparators, De
 import java.util.UUID
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
+import scala.jdk.FutureConverters.CompletionStageOps
 
 class MainSpec extends Repeatable with Matchers {
 
@@ -29,12 +30,14 @@ class MainSpec extends Repeatable with Matchers {
 
     import services.scalable.index.DefaultComparators._
 
-    val NUM_LEAF_ENTRIES = rand.nextInt(4, 64)
-    val NUM_META_ENTRIES = rand.nextInt(4, 64)
+    val NUM_LEAF_ENTRIES = TestConfig.NUM_LEAF_ENTRIES//rand.nextInt(4, 64)
+    val NUM_META_ENTRIES = TestConfig.NUM_META_ENTRIES//rand.nextInt(4, 64)
 
-    val indexId = "mysusindex"//UUID.randomUUID().toString
+    val indexId = UUID.randomUUID().toString
 
-    implicit val storage = new MemoryStorage()
+    //val storage = new MemoryStorage()
+    val session = TestHelper.createCassandraSession()
+    val storage = new CassandraStorage(session, true)
 
     val builder = IndexBuilder.create[K, V](DefaultComparators.bytesOrd)
       .storage(storage)
@@ -44,7 +47,7 @@ class MainSpec extends Repeatable with Matchers {
       indexId,
       NUM_LEAF_ENTRIES,
       NUM_META_ENTRIES
-    )), Duration.Inf).get
+    ))(storage, global), Duration.Inf).get
 
     var data = Seq.empty[(K, V, Boolean)]
     var index = builder.build(indexContext)
@@ -145,6 +148,17 @@ class MainSpec extends Repeatable with Matchers {
       index = new QueryableIndex[K, V](backupCtx)(builder)
     }
 
+    def loadFromDisk(): QueryableIndex[K, V] = {
+      val session = TestHelper.createCassandraSession()
+      val storage = new CassandraStorage(session, false)
+      val builderDisk = IndexBuilder.create[K, V](DefaultComparators.bytesOrd)
+        .storage(storage)
+        .serializer(DefaultSerializers.grpcBytesBytesSerializer)
+
+      val indexContextFromDisk = Await.result(TestHelper.loadIndex(indexId)(storage, global), Duration.Inf).get
+      new QueryableIndex[K, V](indexContextFromDisk)(builderDisk)
+    }
+
     val n = 100
 
     for(i<-0 until n){
@@ -156,13 +170,20 @@ class MainSpec extends Repeatable with Matchers {
       }
     }
 
-    logger.info(Await.result(index.save(), Duration.Inf).toString)
+    logger.info(Await.result(index.save(true), Duration.Inf).toString)
 
     val dlist = data.sortBy(_._1).map{case (k, v, _) => k -> v}
-    val ilist = Await.result(TestHelper.all(index.inOrder()), Duration.Inf).map{case (k, v, _) => k -> v}
+
+    // Tries to load from disk to check against it...
+    val indexFromDisk = loadFromDisk()
+    val ilist = Await.result(TestHelper.all(indexFromDisk.inOrder()), Duration.Inf).map{case (k, v, _) => k -> v}
 
     logger.debug(s"${Console.GREEN_B}tdata: ${dlist.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
     logger.debug(s"${Console.MAGENTA_B}idata: ${ilist.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
+
+    Await.result(storage.close().flatMap(_ => indexFromDisk.builder.storage.close()), Duration.Inf)
+
+    Await.result(session.closeAsync().asScala, Duration.Inf)
 
     assert(TestHelper.isColEqual(dlist, ilist))
   }

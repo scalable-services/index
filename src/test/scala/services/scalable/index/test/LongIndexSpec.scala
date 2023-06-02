@@ -11,6 +11,8 @@ import scala.concurrent.Await
 import scala.concurrent.duration.Duration
 import services.scalable.index.DefaultPrinters._
 
+import scala.jdk.FutureConverters.CompletionStageOps
+
 class LongIndexSpec extends Repeatable {
 
   override val times: Int = 1
@@ -27,21 +29,17 @@ class LongIndexSpec extends Repeatable {
 
     import services.scalable.index.DefaultComparators._
 
-    val NUM_LEAF_ENTRIES = 4//rand.nextInt(5, 64)
-    val NUM_META_ENTRIES = 4//rand.nextInt(5, 64)
+    val NUM_LEAF_ENTRIES = 32//rand.nextInt(5, 64)
+    val NUM_META_ENTRIES = 32//rand.nextInt(5, 64)
 
-    val indexId = "mysusindex"//UUID.randomUUID().toString
+    val indexId = "index1"//UUID.randomUUID().toString
 
     import services.scalable.index.DefaultSerializers._
 
-    implicit val idGenerator = new IdGenerator {
-      override def generateId[K, V](ctx: Context[K, V]): String = UUID.randomUUID.toString
-      override def generatePartition[K, V](ctx: Context[K, V]): String = "p0"
-    }
-
-    implicit val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
-    implicit val storage = new MemoryStorage()
-    //implicit val storage = new CassandraStorage(TestConfig.KEYSPACE, false)
+    //implicit val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
+    //implicit val storage = new MemoryStorage()
+    val session = TestHelper.createCassandraSession()
+    implicit val storage = new CassandraStorage(session, false)
 
     val indexContext = Await.result(TestHelper.loadOrCreateIndex(
       IndexContext(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
@@ -94,6 +92,8 @@ class LongIndexSpec extends Repeatable {
 
     logger.debug(s"${Console.GREEN_B}tdata: ${dlist}${Console.RESET}\n")
     logger.debug(s"${Console.MAGENTA_B}idata: ${ilist}${Console.RESET}\n")
+
+    Await.result(session.closeAsync().asScala, Duration.Inf)
 
     assert(TestHelper.isColEqual(dlist, ilist))
   }

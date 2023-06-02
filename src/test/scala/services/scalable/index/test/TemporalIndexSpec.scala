@@ -11,6 +11,8 @@ import scala.concurrent.Await
 import scala.concurrent.duration.Duration
 import services.scalable.index.DefaultPrinters._
 
+import scala.jdk.FutureConverters.CompletionStageOps
+
 class TemporalIndexSpec extends Repeatable {
 
   override val times: Int = 1
@@ -44,7 +46,8 @@ class TemporalIndexSpec extends Repeatable {
 
     implicit val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
     //implicit val storage = new MemoryStorage()
-    implicit val storage = new CassandraStorage(TestConfig.session, false)
+    val session = TestHelper.createCassandraSession()
+    implicit val storage = new CassandraStorage(session, false)
 
     val tctx = Await.result(TestHelper.loadOrCreateTemporalIndex(TemporalContext(
       historyIndexId,
@@ -121,6 +124,8 @@ class TemporalIndexSpec extends Repeatable {
     logger.debug(s"${Console.YELLOW_B}latest: ${latest.map{case (k, v, _) => k -> v}}${Console.RESET}\n")
 
     logger.debug(s"${Console.CYAN_B}hDB2 main: ${list.map{case (k, v, _) => k -> v}}${Console.RESET}\n")
+
+    Await.result(session.closeAsync().asScala, Duration.Inf)
   }
 
 }

@@ -25,7 +25,9 @@ libraryDependencies ++= Seq(
 
   "org.scala-lang.modules" %% "scala-collection-compat" % "2.1.6",
 
-  "org.apache.commons" % "commons-compress" % "1.21"
+  "org.apache.commons" % "commons-compress" % "1.21",
+
+  "org.cassandraunit" % "cassandra-unit" % "4.3.1.0" % Test
 )
 
 

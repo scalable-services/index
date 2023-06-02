@@ -29,7 +29,8 @@ class LoadSplittenIndexFromDiskSpec extends Repeatable {
 
     //val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
     //implicit val storage = new MemoryStorage()
-    implicit val storage = new CassandraStorage(TestConfig.session, false)
+    val session = TestHelper.createCassandraSession()
+    implicit val storage = new CassandraStorage(session, false)
 
     val tctx = IndexContext("index", NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
     val ctx = Await.result(TestHelper.loadOrCreateIndex(tctx), Duration.Inf)
