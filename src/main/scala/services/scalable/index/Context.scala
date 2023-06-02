@@ -29,9 +29,11 @@ sealed class Context[K, V](val indexId: String,
   val META_MAX = NUM_META_ENTRIES
   val META_MIN = META_MAX/2
 
-  //val blocks = TrieMap.empty[(String, String), Block[K,V]]
   val blockReferences = TrieMap.empty[(String, String), (String, String)]
   val parents = TrieMap.empty[(String, String), (Option[(String, String)], Int)]
+
+  var txRoot: Option[(String, String)] = None
+  val txBlockReferences = TrieMap.empty[(String, String), (String, String)]
 
   if(root.isDefined) {
     setParent(root.get, 0, None)
@@ -40,6 +42,21 @@ sealed class Context[K, V](val indexId: String,
   root match {
     case None =>
     case Some(r) => parents += r -> (None, 0)
+  }
+
+  def beginTx(): Unit = {
+    txRoot = root
+  }
+
+  def commitTx(): Unit = {
+    txBlockReferences.foreach { t =>
+      blockReferences += t
+    }
+  }
+
+  def rollbackTx(): Unit = {
+    root = txRoot
+    txBlockReferences.clear()
   }
 
   /**
@@ -85,7 +102,8 @@ sealed class Context[K, V](val indexId: String,
 
     cache.newBlocks += leaf.unique_id -> leaf
 
-    blockReferences += leaf.unique_id -> leaf.unique_id
+    //blockReferences += leaf.unique_id -> leaf.unique_id
+    txBlockReferences += leaf.unique_id -> leaf.unique_id
     setParent(leaf.unique_id, 0, None)
 
     leaf
@@ -96,7 +114,8 @@ sealed class Context[K, V](val indexId: String,
 
     cache.newBlocks += meta.unique_id -> meta
 
-    blockReferences += meta.unique_id -> meta.unique_id
+    //blockReferences += meta.unique_id -> meta.unique_id
+    txBlockReferences += meta.unique_id -> meta.unique_id
     setParent(meta.unique_id, 0, None)
 
     meta

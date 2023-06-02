@@ -1,17 +1,16 @@
 package services.scalable.index.test
 
+import com.google.common.base.Charsets
 import io.netty.util.internal.ThreadLocalRandom
+import org.apache.commons.lang3.RandomStringUtils
 import org.slf4j.LoggerFactory
 import services.scalable.index.grpc.{IndexContext, TemporalContext}
 import services.scalable.index.impl._
-import services.scalable.index.{Commands, Context, DefaultComparators, DefaultSerializers, IdGenerator, IndexBuilder, TemporalIndex}
+import services.scalable.index.{Commands, Context, DefaultComparators, DefaultPrinters, DefaultSerializers, IdGenerator, IndexBuilder, TemporalIndex}
 
 import java.util.UUID
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
-import services.scalable.index.DefaultPrinters._
-
-import scala.jdk.FutureConverters.CompletionStageOps
 
 class TemporalIndexSpec extends Repeatable {
 
@@ -24,30 +23,23 @@ class TemporalIndexSpec extends Repeatable {
     val rand = ThreadLocalRandom.current()
     import scala.concurrent.ExecutionContext.Implicits.global
 
-    type K = Long
-    type V = Long
+    type K = Array[Byte]
+    type V = Array[Byte]
 
     import services.scalable.index.DefaultComparators._
 
-    val NUM_LEAF_ENTRIES = 32
-    val NUM_META_ENTRIES = 32
+    val NUM_LEAF_ENTRIES = TestConfig.NUM_LEAF_ENTRIES
+    val NUM_META_ENTRIES = TestConfig.NUM_META_ENTRIES
 
     val historyIndexId = TestConfig.DATABASE
-    val indexId = "main"
+    val indexId = UUID.randomUUID().toString
 
     import services.scalable.index.DefaultSerializers._
 
-    implicit val longBytesSerializer = new GrpcByteSerializer[K, V]()
-
-    implicit val idGenerator = new IdGenerator {
-      override def generateId[K, V](ctx: Context[K, V]): String = "1"
-      override def generatePartition[K, V](ctx: Context[K, V]): String = UUID.randomUUID.toString
-    }
-
-    implicit val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
     //implicit val storage = new MemoryStorage()
+
     val session = TestHelper.createCassandraSession()
-    implicit val storage = new CassandraStorage(session, false)
+    implicit val storage = new CassandraStorage(session, true)
 
     val tctx = Await.result(TestHelper.loadOrCreateTemporalIndex(TemporalContext(
       historyIndexId,
@@ -55,11 +47,10 @@ class TemporalIndexSpec extends Repeatable {
       IndexContext(s"$historyIndexId-history", NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
     )), Duration.Inf).get
 
-    val grpcLongLongSerializer = new GrpcByteSerializer[Long, Long]()
-
-    val indexBuilder = IndexBuilder.create[K, V](DefaultComparators.ordLong)
+    val indexBuilder = IndexBuilder.create[K, V](DefaultComparators.bytesOrd)
       .storage(storage)
-      .serializer(grpcLongLongSerializer)
+      .serializer(grpcBytesBytesSerializer)
+      .keyToStringConverter(DefaultPrinters.byteArrayToStringPrinter)
 
     val historyBuilder = IndexBuilder.create[Long, IndexContext](DefaultComparators.ordLong)
       .storage(storage)
@@ -69,17 +60,19 @@ class TemporalIndexSpec extends Repeatable {
     var data = Seq.empty[(K, V, Boolean)]
 
     def insert(): Seq[Commands.Command[K, V]] = {
-      val n = 100//rand.nextInt(1, 100)
+      val n = rand.nextInt(1, 100)
       var list = Seq.empty[Tuple3[K, V, Boolean]]
 
       for(i<-0 until n){
-        val k = rand.nextLong()
-        val v = rand.nextLong()//RandomStringUtils.randomAlphanumeric(5).getBytes(Charsets.UTF_8)
+        val k =  RandomStringUtils.randomAlphanumeric(5).getBytes(Charsets.UTF_8)
+        val v = RandomStringUtils.randomAlphanumeric(5).getBytes(Charsets.UTF_8)
 
-        if(!data.exists{case (k1, _, _) => ordLong.equiv(k, k1)} && !list.exists{case (k1, _, _) => ordLong.equiv(k, k1)}){
+        if(!data.exists{case (k1, _, _) => bytesOrd.equiv(k, k1)} && !list.exists{case (k1, _, _) => bytesOrd.equiv(k, k1)}){
           list = list :+ (k, v, false)
         }
       }
+
+      data ++= list
 
       val cmds = Seq(
         Commands.Insert(indexId, list)
@@ -91,11 +84,13 @@ class TemporalIndexSpec extends Repeatable {
     var result = Await.result(hDB.execute(insert()), Duration.Inf)
 
     // Explicitly save snapshot
+    val snapshot0 = data.sortBy(_._1)
     Await.result(hDB.snapshot(), Duration.Inf)
 
     result = Await.result(hDB.execute(insert()), Duration.Inf)
 
     // Explicitly save snapshot
+    val snapshot1 = data.sortBy(_._1)
     Await.result(hDB.snapshot(), Duration.Inf)
 
     logger.info(s"\n${Console.MAGENTA_B}result: ${result}${Console.RESET}\n")
@@ -119,13 +114,19 @@ class TemporalIndexSpec extends Repeatable {
 
     val latest = Await.result(TestHelper.all(hDB.findIndex().inOrder()), Duration.Inf)
 
-    logger.debug(s"${Console.GREEN_B}t0: ${t0list.map{case (k, v, _) => k -> v}}${Console.RESET}\n")
-    logger.debug(s"${Console.MAGENTA_B}t1: ${t1list.map{case (k, v, _) => k -> v}}${Console.RESET}\n")
-    logger.debug(s"${Console.YELLOW_B}latest: ${latest.map{case (k, v, _) => k -> v}}${Console.RESET}\n")
+    logger.debug(s"${Console.GREEN_B}t0Index: ${t0list.map{case (k, v, _) => indexBuilder.ks(k)}}${Console.RESET}\n")
+    logger.debug(s"${Console.GREEN_B}t0List: ${snapshot0.map { case (k, v, _) => indexBuilder.ks(k) }}${Console.RESET}\n")
+    logger.debug(s"${Console.MAGENTA_B}t1Index: ${t1list.map{case (k, v, _) => indexBuilder.ks(k)}}${Console.RESET}\n")
+    logger.debug(s"${Console.MAGENTA_B}t1List: ${snapshot1.map { case (k, v, _) => indexBuilder.ks(k) }}${Console.RESET}\n")
 
-    logger.debug(s"${Console.CYAN_B}hDB2 main: ${list.map{case (k, v, _) => k -> v}}${Console.RESET}\n")
+    logger.debug(s"${Console.YELLOW_B}Index latest: ${latest.map{case (k, v, _) => indexBuilder.ks(k)}}${Console.RESET}\n")
+    //logger.debug(s"${Console.CYAN_B}hDB2 main: ${list.map{case (k, v, _) => indexBuilder.ks(k)}}${Console.RESET}\n")
 
-    Await.result(session.closeAsync().asScala, Duration.Inf)
+    assert(TestHelper.isColEqual(snapshot0.map(x => x._1 -> x._2).toList, t0list.map{x => x._1 -> x._2}.toList))
+    assert(TestHelper.isColEqual(snapshot1.map(x => x._1 -> x._2).toList, t1list.map{x => x._1 -> x._2}.toList))
+    assert(TestHelper.isColEqual(snapshot1.map(x => x._1 -> x._2).toList, latest.map{x => x._1 -> x._2}.toList))
+
+    Await.result(storage.close(), Duration.Inf)
   }
 
 }

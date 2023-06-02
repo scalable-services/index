@@ -18,12 +18,12 @@ class TemporalIndex[K, V](private val tctx: TemporalContext)
     index.execute(cmds)
   }
 
-  def snapshot(): Future[BatchResult] = {
+  def snapshot(): Future[(Long, BatchResult)] = {
     val tmp = System.nanoTime()
 
     history.execute(Seq(
       Commands.Insert(tctx.history.id, Seq(Tuple3(tmp, index.snapshot(), false)))
-    ))
+    )).map(tmp -> _)
   }
 
   def find() = index.snapshot()

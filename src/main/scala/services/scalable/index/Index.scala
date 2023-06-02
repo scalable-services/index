@@ -44,6 +44,18 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
     ctx.snapshot()
   }
 
+  def beginTx(): Unit = {
+    ctx.beginTx()
+  }
+
+  def commitTx(): Unit = {
+    ctx.commitTx()
+  }
+
+  def rollback(): Unit = {
+    ctx.rollbackTx()
+  }
+
   def save(clear: Boolean = true): Future[IndexContext] = {
     val snapshot = ctx.snapshot()
 
@@ -876,10 +888,19 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
   }
 
   def execute(cmds: Seq[Command[K, V]]): Future[BatchResult] = {
-    def process(pos: Int, error: Option[Throwable]): Future[BatchResult] = {
 
-      if(error.isDefined) return Future.successful(BatchResult(false, error))
-      if(pos == cmds.length) return Future.successful(BatchResult(true))
+    ctx.beginTx()
+
+    def process(pos: Int, error: Option[Throwable]): Future[BatchResult] = {
+      if(error.isDefined) {
+        ctx.rollbackTx()
+        return Future.successful(BatchResult(false, error))
+      }
+
+      if(pos == cmds.length) {
+        ctx.commitTx()
+        return Future.successful(BatchResult(true))
+      }
 
       val cmd = cmds(pos)
 
