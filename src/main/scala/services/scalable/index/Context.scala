@@ -79,6 +79,12 @@ sealed class Context[K, V](val indexId: String,
     assert(txState == TxState.PENDING, "Are you trying to abort an already committed tx?")
 
     root = txRoot
+
+    // Removed new blocks created during the tx...
+    txBlockReferences.foreach { t =>
+      cache.newBlocks.remove(t._1)
+    }
+
     txBlockReferences.clear()
     txState = TxState.ABORTED
     txId = None
