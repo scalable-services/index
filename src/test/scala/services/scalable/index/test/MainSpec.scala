@@ -162,7 +162,7 @@ class MainSpec extends Repeatable with Matchers {
     logger.debug(s"${Console.GREEN_B}tdata: ${dlist.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
     logger.debug(s"${Console.MAGENTA_B}idata: ${ilist.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
 
-    Await.result(storage.close().flatMap(_ => index.builder.storage.close()), Duration.Inf)
+    Await.result(storage.close(), Duration.Inf)
 
     assert(TestHelper.isColEqual(dlist, ilist))
   }
