@@ -50,7 +50,7 @@ class CassandraSpec extends Repeatable with Matchers {
     ))(storage, global), Duration.Inf).get
 
     var data = Seq.empty[(K, V, Boolean)]
-    var index = builder.build(indexContext)
+    val index = builder.build(indexContext)
 
     def insert(): Unit = {
       val n = rand.nextInt(1, 1000)
@@ -86,11 +86,9 @@ class CassandraSpec extends Repeatable with Matchers {
     def update(): Unit = {
 
       val lastVersion: Option[String] = rand.nextBoolean() match {
-        case true => None
+        case true => index.ctx.txId
         case false => Some(UUID.randomUUID.toString)
       }
-
-      val backupCtx = index.snapshot()
 
       val n = if(data.length >= 2) rand.nextInt(1, data.length) else 1
       val list = scala.util.Random.shuffle(data).slice(0, n).map { case (k, v, _) =>
@@ -114,17 +112,14 @@ class CassandraSpec extends Repeatable with Matchers {
 
       result.error.get.printStackTrace()
       logger.debug(s"${Console.RED_B}UPDATED WRONG LAST VERSION ${list.map { case (k, _, _) => new String(k) }}...${Console.RESET}")
-      index = new QueryableIndex[K, V](backupCtx)(builder)
     }
 
     def remove(): Unit = {
 
       val lastVersion: Option[String] = rand.nextBoolean() match {
-        case true => None
+        case true => index.ctx.txId
         case false => Some(UUID.randomUUID.toString)
       }
-
-      val backupCtx = index.snapshot()
 
       val n = if(data.length >= 2) rand.nextInt(1, data.length) else 1
       val list: Seq[Tuple2[K, Option[String]]] = scala.util.Random.shuffle(data).slice(0, n).map { case (k, _, _) =>
@@ -145,11 +140,9 @@ class CassandraSpec extends Repeatable with Matchers {
 
       result.error.get.printStackTrace()
       logger.debug(s"${Console.RED_B}REMOVED WRONG VERSION ${list.map { case (k, _) => new String(k) }}...${Console.RESET}")
-      index = new QueryableIndex[K, V](backupCtx)(builder)
     }
 
     def loadFromDisk(): QueryableIndex[K, V] = {
-      val session = TestHelper.createCassandraSession()
       val storage = new CassandraStorage(session, false)
       val builderDisk = IndexBuilder.create[K, V](DefaultComparators.bytesOrd)
         .storage(storage)
@@ -182,7 +175,7 @@ class CassandraSpec extends Repeatable with Matchers {
     logger.debug(s"${Console.GREEN_B}tdata: ${dlist.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
     logger.debug(s"${Console.MAGENTA_B}idata: ${ilist.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
 
-    Await.result(storage.close().flatMap(_ => indexFromDisk.builder.storage.close()), Duration.Inf)
+    Await.result(storage.close(), Duration.Inf)
 
     assert(TestHelper.isColEqual(dlist, ilist))
   }
