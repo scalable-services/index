@@ -56,13 +56,8 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
     ctx.rollbackTx()
   }
 
-  def save(clear: Boolean = true): Future[IndexContext] = {
-    val snapshot = ctx.snapshot()
-
-    storage.save(snapshot, ctx.getBlocks().map{case (id, block) => id -> serializer.serialize(block)}).map { r =>
-      if(clear) ctx.clear()
-      snapshot
-    }
+  def save(): Future[IndexContext] = {
+    ctx.save()
   }
 
   def findPath(k: K, start: Block[K,V], limit: Option[Block[K,V]])(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {

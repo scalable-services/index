@@ -53,8 +53,6 @@ class MainSpec extends Repeatable with Matchers {
 
     def insert(): Unit = {
 
-      index.beginTx()
-
       val n = rand.nextInt(1, 1000)
       var list = Seq.empty[Tuple3[K, V, Boolean]]
 
@@ -83,20 +81,17 @@ class MainSpec extends Repeatable with Matchers {
         return
       }
 
-      index.commitTx()
-
       result.error.get.printStackTrace()
     }
 
     def update(): Unit = {
 
       val lastVersion: Option[String] = rand.nextBoolean() match {
-        case true => None
+        case true => Some(index.ctx.id)
         case false => Some(UUID.randomUUID.toString)
       }
 
       //val backupCtx = index.snapshot()
-      index.beginTx()
 
       val n = if(data.length >= 2) rand.nextInt(1, data.length) else 1
       val list = scala.util.Random.shuffle(data).slice(0, n).map { case (k, v, _) =>
@@ -115,28 +110,22 @@ class MainSpec extends Repeatable with Matchers {
         data = data.filterNot { case (k, _, _) => list.exists { case (k1, _, _) => bytesOrd.equiv(k, k1) } }
         data = data ++ list.map { case (k, v, _) => (k, v, true) }
 
-        index.commitTx()
-
         return
       }
 
       result.error.get.printStackTrace()
       logger.debug(s"${Console.RED_B}UPDATED WRONG LAST VERSION ${list.map { case (k, _, _) => new String(k) }}...${Console.RESET}")
       //index = new QueryableIndex[K, V](backupCtx)(builder)
-
-      index.rollback()
     }
 
     def remove(): Unit = {
 
       val lastVersion: Option[String] = rand.nextBoolean() match {
-        case true => None
+        case true => Some(index.ctx.id)
         case false => Some(UUID.randomUUID.toString)
       }
 
       //val backupCtx = index.snapshot()
-
-      index.beginTx()
 
       val n = if(data.length >= 2) rand.nextInt(1, data.length) else 1
       val list: Seq[Tuple2[K, Option[String]]] = scala.util.Random.shuffle(data).slice(0, n).map { case (k, _, _) =>
@@ -152,17 +141,12 @@ class MainSpec extends Repeatable with Matchers {
       if(result.success){
         logger.debug(s"${Console.RED_B}REMOVED RIGHT VERSION ${list.map { case (k, _) => new String(k) }}...${Console.RESET}")
         data = data.filterNot { case (k, _, _) => list.exists { case (k1, _) => bytesOrd.equiv(k, k1) } }
-
-        index.commitTx()
-
         return
       }
 
       result.error.get.printStackTrace()
       logger.debug(s"${Console.RED_B}REMOVED WRONG VERSION ${list.map { case (k, _) => new String(k) }}...${Console.RESET}")
       //index = new QueryableIndex[K, V](backupCtx)(builder)
-
-      index.rollback()
     }
 
     val n = 100
@@ -176,7 +160,7 @@ class MainSpec extends Repeatable with Matchers {
       }
     }
 
-    logger.info(Await.result(index.save(true), Duration.Inf).toString)
+    logger.info(Await.result(index.save(), Duration.Inf).toString)
 
     val dlist = data.sortBy(_._1).map{case (k, v, _) => k -> v}
     val ilist = Await.result(TestHelper.all(index.inOrder()), Duration.Inf).map{case (k, v, _) => k -> v}

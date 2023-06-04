@@ -171,7 +171,7 @@ class CassandraSpec extends Repeatable with Matchers {
       }
     }
 
-    logger.info(Await.result(index.save(true), Duration.Inf).toString)
+    logger.info(Await.result(index.save(), Duration.Inf).toString)
 
     val dlist = data.sortBy(_._1).map{case (k, v, _) => k -> v}
 

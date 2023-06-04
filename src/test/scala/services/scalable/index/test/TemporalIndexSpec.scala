@@ -6,7 +6,7 @@ import org.apache.commons.lang3.RandomStringUtils
 import org.slf4j.LoggerFactory
 import services.scalable.index.grpc.{IndexContext, TemporalContext}
 import services.scalable.index.impl._
-import services.scalable.index.{Commands, Context, DefaultComparators, DefaultPrinters, DefaultSerializers, IdGenerator, IndexBuilder, TemporalIndex}
+import services.scalable.index.{Commands, DefaultComparators, DefaultPrinters, DefaultSerializers, IndexBuilder, QueryableIndex, TemporalIndex}
 
 import java.util.UUID
 import scala.concurrent.Await
@@ -58,8 +58,9 @@ class TemporalIndexSpec extends Repeatable {
 
     val hDB = new TemporalIndex[K, V](tctx)(indexBuilder, historyBuilder)
     var data = Seq.empty[(K, V, Boolean)]
+    var snapshots = Seq.empty[(Long, Seq[(K, V, Boolean)])]
 
-    def insert(): Seq[Commands.Command[K, V]] = {
+    def insert(): Unit = {
       val n = rand.nextInt(1, 100)
       var list = Seq.empty[Tuple3[K, V, Boolean]]
 
@@ -72,16 +73,102 @@ class TemporalIndexSpec extends Repeatable {
         }
       }
 
-      data ++= list
-
       val cmds = Seq(
         Commands.Insert(indexId, list)
       )
 
-      cmds
+      val result = Await.result(hDB.execute(cmds), Duration.Inf)
+
+      assert(result.success)
+
+      if (result.success) {
+        data ++= list
+
+        val tmp = System.nanoTime()
+        val (_, bresult) = Await.result(hDB.snapshot(), Duration.Inf)
+
+        assert(bresult.success)
+
+        snapshots = snapshots :+ tmp -> data.sortBy(_._1)
+
+        return
+      }
+
+      result.error.get.printStackTrace()
     }
 
-    var result = Await.result(hDB.execute(insert()), Duration.Inf)
+    def update(): Unit = {
+      val index = hDB.findIndex()
+
+      val lastVersion: Option[String] = index.ctx.txId
+
+      val n = if (data.length >= 2) rand.nextInt(1, data.length) else 1
+      val list = scala.util.Random.shuffle(data).slice(0, n).map { case (k, v, _) =>
+        (k, RandomStringUtils.randomAlphanumeric(10).getBytes(Charsets.UTF_8), lastVersion)
+      }
+
+      val cmds = Seq(
+        Commands.Update(indexId, list)
+      )
+
+      val result = Await.result(index.execute(cmds), Duration.Inf)
+
+      if (result.success) {
+        logger.debug(s"${Console.MAGENTA_B}UPDATED RIGHT LAST VERSION ${list.map { case (k, _, _) => new String(k) }}...${Console.RESET}")
+
+        data = data.filterNot { case (k, _, _) => list.exists { case (k1, _, _) => bytesOrd.equiv(k, k1) } }
+        data = data ++ list.map { case (k, v, _) => (k, v, true) }
+
+        val tmp = System.nanoTime()
+        val (_, bresult) = Await.result(hDB.snapshot(), Duration.Inf)
+
+        assert(bresult.success)
+
+        snapshots = snapshots :+ tmp -> data.sortBy(_._1)
+
+        return
+      }
+
+      result.error.get.printStackTrace()
+      logger.debug(s"${Console.RED_B}UPDATED WRONG LAST VERSION ${list.map { case (k, _, _) => new String(k) }}...${Console.RESET}")
+    }
+
+    def remove(): Unit = {
+
+      val index = hDB.findIndex()
+      val lastVersion: Option[String] = index.ctx.txId
+
+      val n = if (data.length >= 2) rand.nextInt(1, data.length) else 1
+      val list: Seq[Tuple2[K, Option[String]]] = scala.util.Random.shuffle(data).slice(0, n).map { case (k, _, _) =>
+        (k, lastVersion)
+      }
+
+      val cmds = Seq(
+        Commands.Remove[K, V](indexId, list)
+      )
+
+      val result = Await.result(index.execute(cmds), Duration.Inf)
+
+      if (result.success) {
+        logger.debug(s"${Console.RED_B}REMOVED RIGHT VERSION ${list.map { case (k, _) => new String(k) }}...${Console.RESET}")
+        data = data.filterNot { case (k, _, _) => list.exists { case (k1, _) => bytesOrd.equiv(k, k1) } }
+
+        val tmp = System.nanoTime()
+        val (_, bresult) = Await.result(hDB.snapshot(), Duration.Inf)
+
+        assert(bresult.success)
+
+        snapshots = snapshots :+ tmp -> data.sortBy(_._1)
+
+        return
+      }
+
+      result.error.get.printStackTrace()
+      logger.debug(s"${Console.RED_B}REMOVED WRONG VERSION ${list.map { case (k, _) => new String(k) }}...${Console.RESET}")
+      //index = new QueryableIndex[K, V](backupCtx)(builder)
+    }
+
+    /*var result = Await.result(hDB.execute(insert()), Duration.Inf)
 
     // Explicitly save snapshot
     val snapshot0 = data.sortBy(_._1)
@@ -93,38 +180,36 @@ class TemporalIndexSpec extends Repeatable {
     val snapshot1 = data.sortBy(_._1)
     Await.result(hDB.snapshot(), Duration.Inf)
 
-    logger.info(s"\n${Console.MAGENTA_B}result: ${result}${Console.RESET}\n")
+    logger.info(s"\n${Console.MAGENTA_B}result: ${result}${Console.RESET}\n")*/
+
+    val n = 100
+
+    for(i<-0 until n){
+
+      rand.nextInt(1, 4) match {
+        case 1 => insert()
+        case 2 if !data.isEmpty => update()
+        case 3 if !data.isEmpty => remove()
+        case _ => insert()
+      }
+
+    }
 
     val hdbCtxSaved = Await.result(hDB.save(), Duration.Inf)
 
-    val hDB2 = new TemporalIndex[K, V](hdbCtxSaved)(indexBuilder, historyBuilder)
+    val hDBFromDisk = new TemporalIndex[K, V](hdbCtxSaved)(indexBuilder, historyBuilder)
 
-    val t0 = 0L
-    val t1 = System.nanoTime()
+    snapshots.foreach { case (tmp, data) =>
+      val ldata = data.map{x => x._1 -> x._2}.toList
 
-    val hdb2t0 = Await.result(hDB2.findIndex(t0), Duration.Inf)
+      val idx = Await.result(hDBFromDisk.findIndex(tmp), Duration.Inf).get
+      val idata = Await.result(TestHelper.all(idx.inOrder()), Duration.Inf).map{x => x._1 -> x._2}
 
-    val list = Await.result(TestHelper.all(hdb2t0.get.inOrder()), Duration.Inf)
+      logger.debug(s"${Console.GREEN_B}idata: ${idata.map { case (k, v) => indexBuilder.ks(k) }}${Console.RESET}\n")
+      logger.debug(s"${Console.GREEN_B}ldata: ${ldata.map { case (k, v) => indexBuilder.ks(k) }}${Console.RESET}\n")
 
-    val t0Index = Await.result(hDB.findIndex(t0), Duration.Inf).get
-    val t1Index = Await.result(hDB.findIndex(t1), Duration.Inf).get
-
-    val t0list = Await.result(TestHelper.all(t0Index.inOrder()), Duration.Inf)
-    val t1list = Await.result(TestHelper.all(t1Index.inOrder()), Duration.Inf)
-
-    val latest = Await.result(TestHelper.all(hDB.findIndex().inOrder()), Duration.Inf)
-
-    logger.debug(s"${Console.GREEN_B}t0Index: ${t0list.map{case (k, v, _) => indexBuilder.ks(k)}}${Console.RESET}\n")
-    logger.debug(s"${Console.GREEN_B}t0List: ${snapshot0.map { case (k, v, _) => indexBuilder.ks(k) }}${Console.RESET}\n")
-    logger.debug(s"${Console.MAGENTA_B}t1Index: ${t1list.map{case (k, v, _) => indexBuilder.ks(k)}}${Console.RESET}\n")
-    logger.debug(s"${Console.MAGENTA_B}t1List: ${snapshot1.map { case (k, v, _) => indexBuilder.ks(k) }}${Console.RESET}\n")
-
-    logger.debug(s"${Console.YELLOW_B}Index latest: ${latest.map{case (k, v, _) => indexBuilder.ks(k)}}${Console.RESET}\n")
-    //logger.debug(s"${Console.CYAN_B}hDB2 main: ${list.map{case (k, v, _) => indexBuilder.ks(k)}}${Console.RESET}\n")
-
-    assert(TestHelper.isColEqual(snapshot0.map(x => x._1 -> x._2).toList, t0list.map{x => x._1 -> x._2}.toList))
-    assert(TestHelper.isColEqual(snapshot1.map(x => x._1 -> x._2).toList, t1list.map{x => x._1 -> x._2}.toList))
-    assert(TestHelper.isColEqual(snapshot1.map(x => x._1 -> x._2).toList, latest.map{x => x._1 -> x._2}.toList))
+      assert(TestHelper.isColEqual(ldata, idata))
+    }
 
     Await.result(storage.close(), Duration.Inf)
   }

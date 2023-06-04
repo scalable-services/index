@@ -16,6 +16,12 @@ sealed class Context[K, V](val indexId: String,
                     val NUM_META_ENTRIES: Int)
                    (val builder: IndexBuilder[K, V]) {
 
+  object TxState {
+    val PENDING = "PENDING"
+    val COMPLETED = "COMPLETED"
+    val ABORTED = "ABORTED"
+  }
+
   import builder._
 
   // Context id (for global manipulation of new blocks)
@@ -32,8 +38,10 @@ sealed class Context[K, V](val indexId: String,
   val blockReferences = TrieMap.empty[(String, String), (String, String)]
   val parents = TrieMap.empty[(String, String), (Option[(String, String)], Int)]
 
-  var txRoot: Option[(String, String)] = None
-  val txBlockReferences = TrieMap.empty[(String, String), (String, String)]
+  protected[index] var txRoot: Option[(String, String)] = None
+  protected[index] val txBlockReferences = TrieMap.empty[(String, String), (String, String)]
+  protected[index] var txId: Option[String] = None
+  protected[index] var txState = TxState.PENDING
 
   if(root.isDefined) {
     setParent(root.get, 0, None)
@@ -44,19 +52,36 @@ sealed class Context[K, V](val indexId: String,
     case Some(r) => parents += r -> (None, 0)
   }
 
+  def getCurrentTxId(): Option[String] = txId
+
   def beginTx(): Unit = {
+    assert(txId.isEmpty, s"Previous transaction ${txId.get} not completed!")
+
+    txId = Some(UUID.randomUUID.toString)
     txRoot = root
+    txState = TxState.PENDING
   }
 
-  def commitTx(): Unit = {
+  def commitTx(): Unit = synchronized {
+    assert(txId.isDefined, "You must start a transaction first calling beginTx()!")
+    assert(txState == TxState.PENDING, "Are you trying to commit an aborted tx?")
+
     txBlockReferences.foreach { t =>
       blockReferences += t
     }
+
+    txState = TxState.COMPLETED
+    txId = None
   }
 
-  def rollbackTx(): Unit = {
+  def rollbackTx(): Unit = synchronized {
+    assert(txId.isDefined, "You must start a transaction first calling beginTx()!")
+    assert(txState == TxState.PENDING, "Are you trying to abort an already committed tx?")
+
     root = txRoot
     txBlockReferences.clear()
+    txState = TxState.ABORTED
+    txId = None
   }
 
   /**
@@ -154,7 +179,7 @@ sealed class Context[K, V](val indexId: String,
       b.isNew = false
     }
 
-    logger.info(s"\nSAVING $indexId: ${root.map{r => RootRef(r._1, r._2)}}\n")
+    logger.debug(s"\nSAVING $indexId: ${root.map{r => RootRef(r._1, r._2)}}\n")
 
     IndexContext(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, root.map{r => RootRef(r._1, r._2)}, levels,
       num_elements, maxNItems)
@@ -169,7 +194,7 @@ sealed class Context[K, V](val indexId: String,
       }
     }
 
-    logger.info(s"\nSAVING $indexId: ${root.map { r => RootRef(r._1, r._2) }}\n")
+    logger.debug(s"\nSAVING $indexId: ${root.map { r => RootRef(r._1, r._2) }}\n")
 
     IndexContext(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, root.map { r => RootRef(r._1, r._2) }, levels,
       num_elements, maxNItems)
@@ -179,9 +204,18 @@ sealed class Context[K, V](val indexId: String,
     new Context[K, V](indexId, root, num_elements, levels, maxNItems, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)(builder)
   }
 
-  def clear(): Unit = {
+  private def clear(): Unit = {
     blockReferences.foreach { case (id, _) =>
       cache.newBlocks.remove(id)
+    }
+  }
+
+  def save(): Future[IndexContext] = {
+    val snap = snapshot()
+
+    storage.save(snap, getBlocks().map { case (id, block) => id -> serializer.serialize(block) }).map { r =>
+      clear()
+      snap
     }
   }
 }
