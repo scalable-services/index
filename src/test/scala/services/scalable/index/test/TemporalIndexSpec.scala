@@ -1,17 +1,16 @@
 package services.scalable.index.test
 
+import com.google.common.base.Charsets
 import io.netty.util.internal.ThreadLocalRandom
+import org.apache.commons.lang3.RandomStringUtils
 import org.slf4j.LoggerFactory
 import services.scalable.index.grpc.{IndexContext, TemporalContext}
 import services.scalable.index.impl._
-import services.scalable.index.{Commands, Context, DefaultComparators, DefaultSerializers, IdGenerator, IndexBuilder, TemporalIndex}
+import services.scalable.index.{Commands, DefaultComparators, DefaultPrinters, DefaultSerializers, IndexBuilder, QueryableIndex, TemporalIndex}
 
 import java.util.UUID
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
-import services.scalable.index.DefaultPrinters._
-
-import scala.jdk.FutureConverters.CompletionStageOps
 
 class TemporalIndexSpec extends Repeatable {
 
@@ -24,30 +23,23 @@ class TemporalIndexSpec extends Repeatable {
     val rand = ThreadLocalRandom.current()
     import scala.concurrent.ExecutionContext.Implicits.global
 
-    type K = Long
-    type V = Long
+    type K = Array[Byte]
+    type V = Array[Byte]
 
     import services.scalable.index.DefaultComparators._
 
-    val NUM_LEAF_ENTRIES = 32
-    val NUM_META_ENTRIES = 32
+    val NUM_LEAF_ENTRIES = TestConfig.NUM_LEAF_ENTRIES
+    val NUM_META_ENTRIES = TestConfig.NUM_META_ENTRIES
 
     val historyIndexId = TestConfig.DATABASE
-    val indexId = "main"
+    val indexId = UUID.randomUUID().toString
 
     import services.scalable.index.DefaultSerializers._
 
-    implicit val longBytesSerializer = new GrpcByteSerializer[K, V]()
-
-    implicit val idGenerator = new IdGenerator {
-      override def generateId[K, V](ctx: Context[K, V]): String = "1"
-      override def generatePartition[K, V](ctx: Context[K, V]): String = UUID.randomUUID.toString
-    }
-
-    implicit val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
     //implicit val storage = new MemoryStorage()
+
     val session = TestHelper.createCassandraSession()
-    implicit val storage = new CassandraStorage(session, false)
+    implicit val storage = new CassandraStorage(session, true)
 
     val tctx = Await.result(TestHelper.loadOrCreateTemporalIndex(TemporalContext(
       historyIndexId,
@@ -55,11 +47,10 @@ class TemporalIndexSpec extends Repeatable {
       IndexContext(s"$historyIndexId-history", NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
     )), Duration.Inf).get
 
-    val grpcLongLongSerializer = new GrpcByteSerializer[Long, Long]()
-
-    val indexBuilder = IndexBuilder.create[K, V](DefaultComparators.ordLong)
+    val indexBuilder = IndexBuilder.create[K, V](DefaultComparators.bytesOrd)
       .storage(storage)
-      .serializer(grpcLongLongSerializer)
+      .serializer(grpcBytesBytesSerializer)
+      .keyToStringConverter(DefaultPrinters.byteArrayToStringPrinter)
 
     val historyBuilder = IndexBuilder.create[Long, IndexContext](DefaultComparators.ordLong)
       .storage(storage)
@@ -67,16 +58,17 @@ class TemporalIndexSpec extends Repeatable {
 
     val hDB = new TemporalIndex[K, V](tctx)(indexBuilder, historyBuilder)
     var data = Seq.empty[(K, V, Boolean)]
+    var snapshots = Seq.empty[(Long, Seq[(K, V, Boolean)])]
 
-    def insert(): Seq[Commands.Command[K, V]] = {
-      val n = 100//rand.nextInt(1, 100)
+    def insert(): Unit = {
+      val n = rand.nextInt(1, 100)
       var list = Seq.empty[Tuple3[K, V, Boolean]]
 
       for(i<-0 until n){
-        val k = rand.nextLong()
-        val v = rand.nextLong()//RandomStringUtils.randomAlphanumeric(5).getBytes(Charsets.UTF_8)
+        val k =  RandomStringUtils.randomAlphanumeric(5).getBytes(Charsets.UTF_8)
+        val v = RandomStringUtils.randomAlphanumeric(5).getBytes(Charsets.UTF_8)
 
-        if(!data.exists{case (k1, _, _) => ordLong.equiv(k, k1)} && !list.exists{case (k1, _, _) => ordLong.equiv(k, k1)}){
+        if(!data.exists{case (k1, _, _) => bytesOrd.equiv(k, k1)} && !list.exists{case (k1, _, _) => bytesOrd.equiv(k, k1)}){
           list = list :+ (k, v, false)
         }
       }
@@ -85,47 +77,126 @@ class TemporalIndexSpec extends Repeatable {
         Commands.Insert(indexId, list)
       )
 
-      cmds
+      val result = Await.result(hDB.execute(cmds), Duration.Inf)
+
+      assert(result.success)
+
+      if (result.success) {
+        data ++= list
+
+        val tmp = System.nanoTime()
+        val (_, bresult) = Await.result(hDB.snapshot(), Duration.Inf)
+
+        assert(bresult.success)
+
+        snapshots = snapshots :+ tmp -> data.sortBy(_._1)
+
+        return
+      }
+
+      result.error.get.printStackTrace()
     }
 
-    var result = Await.result(hDB.execute(insert()), Duration.Inf)
+    def update(): Unit = {
+      val index = hDB.findIndex()
 
-    // Explicitly save snapshot
-    Await.result(hDB.snapshot(), Duration.Inf)
+      val lastVersion: Option[String] = index.ctx.txId
 
-    result = Await.result(hDB.execute(insert()), Duration.Inf)
+      val n = if (data.length >= 2) rand.nextInt(1, data.length) else 1
+      val list = scala.util.Random.shuffle(data).slice(0, n).map { case (k, v, _) =>
+        (k, RandomStringUtils.randomAlphanumeric(10).getBytes(Charsets.UTF_8), lastVersion)
+      }
 
-    // Explicitly save snapshot
-    Await.result(hDB.snapshot(), Duration.Inf)
+      val cmds = Seq(
+        Commands.Update(indexId, list)
+      )
 
-    logger.info(s"\n${Console.MAGENTA_B}result: ${result}${Console.RESET}\n")
+      val result = Await.result(hDB.execute(cmds), Duration.Inf)
+
+      if (result.success) {
+        logger.debug(s"${Console.MAGENTA_B}UPDATED RIGHT LAST VERSION ${list.map { case (k, _, _) => new String(k) }}...${Console.RESET}")
+
+        data = data.filterNot { case (k, _, _) => list.exists { case (k1, _, _) => bytesOrd.equiv(k, k1) } }
+        data = data ++ list.map { case (k, v, _) => (k, v, true) }
+
+        val tmp = System.nanoTime()
+        val (_, bresult) = Await.result(hDB.snapshot(), Duration.Inf)
+
+        assert(bresult.success)
+
+        snapshots = snapshots :+ tmp -> data.sortBy(_._1)
+
+        return
+      }
+
+      result.error.get.printStackTrace()
+      logger.debug(s"${Console.RED_B}UPDATED WRONG LAST VERSION ${list.map { case (k, _, _) => new String(k) }}...${Console.RESET}")
+    }
+
+    def remove(): Unit = {
+
+      val index = hDB.findIndex()
+      val lastVersion: Option[String] = index.ctx.txId
+
+      val n = if (data.length >= 2) rand.nextInt(1, data.length) else 1
+      val list: Seq[Tuple2[K, Option[String]]] = scala.util.Random.shuffle(data).slice(0, n).map { case (k, _, _) =>
+        (k, lastVersion)
+      }
+
+      val cmds = Seq(
+        Commands.Remove[K, V](indexId, list)
+      )
+
+      val result = Await.result(hDB.execute(cmds), Duration.Inf)
+
+      if (result.success) {
+        logger.debug(s"${Console.RED_B}REMOVED RIGHT VERSION ${list.map { case (k, _) => new String(k) }}...${Console.RESET}")
+        data = data.filterNot { case (k, _, _) => list.exists { case (k1, _) => bytesOrd.equiv(k, k1) } }
+
+        val tmp = System.nanoTime()
+        val (_, bresult) = Await.result(hDB.snapshot(), Duration.Inf)
+
+        assert(bresult.success)
+
+        snapshots = snapshots :+ tmp -> data.sortBy(_._1)
+
+        return
+      }
+
+      result.error.get.printStackTrace()
+      logger.debug(s"${Console.RED_B}REMOVED WRONG VERSION ${list.map { case (k, _) => new String(k) }}...${Console.RESET}")
+    }
+
+    val n = 100
+
+    for(i<-0 until n){
+
+      rand.nextInt(1, 4) match {
+        case 1 => insert()
+        case 2 if !data.isEmpty => update()
+        case 3 if !data.isEmpty => remove()
+        case _ => insert()
+      }
+
+    }
 
     val hdbCtxSaved = Await.result(hDB.save(), Duration.Inf)
 
-    val hDB2 = new TemporalIndex[K, V](hdbCtxSaved)(indexBuilder, historyBuilder)
+    val hDBFromDisk = new TemporalIndex[K, V](hdbCtxSaved)(indexBuilder, historyBuilder)
 
-    val t0 = 0L
-    val t1 = System.nanoTime()
+    snapshots.foreach { case (tmp, data) =>
+      val ldata = data.map{x => x._1 -> x._2}.toList
 
-    val hdb2t0 = Await.result(hDB2.findIndex(t0), Duration.Inf)
+      val idx = Await.result(hDBFromDisk.findIndex(tmp), Duration.Inf).get
+      val idata = Await.result(TestHelper.all(idx.inOrder()), Duration.Inf).map{x => x._1 -> x._2}
 
-    val list = Await.result(TestHelper.all(hdb2t0.get.inOrder()), Duration.Inf)
+      logger.debug(s"${Console.GREEN_B}idata: ${idata.map { case (k, _) => indexBuilder.ks(k) }}${Console.RESET}\n")
+      logger.debug(s"${Console.GREEN_B}ldata: ${ldata.map { case (k, _) => indexBuilder.ks(k) }}${Console.RESET}\n")
 
-    val t0Index = Await.result(hDB.findIndex(t0), Duration.Inf).get
-    val t1Index = Await.result(hDB.findIndex(t1), Duration.Inf).get
+      assert(TestHelper.isColEqual(ldata, idata))
+    }
 
-    val t0list = Await.result(TestHelper.all(t0Index.inOrder()), Duration.Inf)
-    val t1list = Await.result(TestHelper.all(t1Index.inOrder()), Duration.Inf)
-
-    val latest = Await.result(TestHelper.all(hDB.findIndex().inOrder()), Duration.Inf)
-
-    logger.debug(s"${Console.GREEN_B}t0: ${t0list.map{case (k, v, _) => k -> v}}${Console.RESET}\n")
-    logger.debug(s"${Console.MAGENTA_B}t1: ${t1list.map{case (k, v, _) => k -> v}}${Console.RESET}\n")
-    logger.debug(s"${Console.YELLOW_B}latest: ${latest.map{case (k, v, _) => k -> v}}${Console.RESET}\n")
-
-    logger.debug(s"${Console.CYAN_B}hDB2 main: ${list.map{case (k, v, _) => k -> v}}${Console.RESET}\n")
-
-    Await.result(session.closeAsync().asScala, Duration.Inf)
+    Await.result(storage.close(), Duration.Inf)
   }
 
 }
