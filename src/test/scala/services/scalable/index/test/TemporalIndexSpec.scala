@@ -111,7 +111,7 @@ class TemporalIndexSpec extends Repeatable {
         Commands.Update(indexId, list)
       )
 
-      val result = Await.result(index.execute(cmds), Duration.Inf)
+      val result = Await.result(hDB.execute(cmds), Duration.Inf)
 
       if (result.success) {
         logger.debug(s"${Console.MAGENTA_B}UPDATED RIGHT LAST VERSION ${list.map { case (k, _, _) => new String(k) }}...${Console.RESET}")
@@ -147,7 +147,7 @@ class TemporalIndexSpec extends Repeatable {
         Commands.Remove[K, V](indexId, list)
       )
 
-      val result = Await.result(index.execute(cmds), Duration.Inf)
+      val result = Await.result(hDB.execute(cmds), Duration.Inf)
 
       if (result.success) {
         logger.debug(s"${Console.RED_B}REMOVED RIGHT VERSION ${list.map { case (k, _) => new String(k) }}...${Console.RESET}")
@@ -165,22 +165,7 @@ class TemporalIndexSpec extends Repeatable {
 
       result.error.get.printStackTrace()
       logger.debug(s"${Console.RED_B}REMOVED WRONG VERSION ${list.map { case (k, _) => new String(k) }}...${Console.RESET}")
-      //index = new QueryableIndex[K, V](backupCtx)(builder)
     }
-
-    /*var result = Await.result(hDB.execute(insert()), Duration.Inf)
-
-    // Explicitly save snapshot
-    val snapshot0 = data.sortBy(_._1)
-    Await.result(hDB.snapshot(), Duration.Inf)
-
-    result = Await.result(hDB.execute(insert()), Duration.Inf)
-
-    // Explicitly save snapshot
-    val snapshot1 = data.sortBy(_._1)
-    Await.result(hDB.snapshot(), Duration.Inf)
-
-    logger.info(s"\n${Console.MAGENTA_B}result: ${result}${Console.RESET}\n")*/
 
     val n = 100
 
@@ -205,8 +190,8 @@ class TemporalIndexSpec extends Repeatable {
       val idx = Await.result(hDBFromDisk.findIndex(tmp), Duration.Inf).get
       val idata = Await.result(TestHelper.all(idx.inOrder()), Duration.Inf).map{x => x._1 -> x._2}
 
-      logger.debug(s"${Console.GREEN_B}idata: ${idata.map { case (k, v) => indexBuilder.ks(k) }}${Console.RESET}\n")
-      logger.debug(s"${Console.GREEN_B}ldata: ${ldata.map { case (k, v) => indexBuilder.ks(k) }}${Console.RESET}\n")
+      logger.debug(s"${Console.GREEN_B}idata: ${idata.map { case (k, _) => indexBuilder.ks(k) }}${Console.RESET}\n")
+      logger.debug(s"${Console.GREEN_B}ldata: ${ldata.map { case (k, _) => indexBuilder.ks(k) }}${Console.RESET}\n")
 
       assert(TestHelper.isColEqual(ldata, idata))
     }

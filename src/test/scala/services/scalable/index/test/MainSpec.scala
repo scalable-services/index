@@ -3,6 +3,7 @@ package services.scalable.index.test
 import com.google.common.base.Charsets
 import io.netty.util.internal.ThreadLocalRandom
 import org.apache.commons.lang3.RandomStringUtils
+import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.matchers.should.Matchers
 import org.slf4j.LoggerFactory
 import services.scalable.index.grpc._
@@ -52,7 +53,6 @@ class MainSpec extends Repeatable with Matchers {
     val index = builder.build(indexContext)
 
     def insert(): Unit = {
-
       val n = rand.nextInt(1, 1000)
       var list = Seq.empty[Tuple3[K, V, Boolean]]
 
@@ -91,8 +91,6 @@ class MainSpec extends Repeatable with Matchers {
         case false => Some(UUID.randomUUID.toString)
       }
 
-      //val backupCtx = index.snapshot()
-
       val n = if(data.length >= 2) rand.nextInt(1, data.length) else 1
       val list = scala.util.Random.shuffle(data).slice(0, n).map { case (k, v, _) =>
         (k, RandomStringUtils.randomAlphanumeric(10).getBytes(Charsets.UTF_8), lastVersion)
@@ -115,7 +113,6 @@ class MainSpec extends Repeatable with Matchers {
 
       result.error.get.printStackTrace()
       logger.debug(s"${Console.RED_B}UPDATED WRONG LAST VERSION ${list.map { case (k, _, _) => new String(k) }}...${Console.RESET}")
-      //index = new QueryableIndex[K, V](backupCtx)(builder)
     }
 
     def remove(): Unit = {
@@ -124,8 +121,6 @@ class MainSpec extends Repeatable with Matchers {
         case true => Some(index.ctx.id)
         case false => Some(UUID.randomUUID.toString)
       }
-
-      //val backupCtx = index.snapshot()
 
       val n = if(data.length >= 2) rand.nextInt(1, data.length) else 1
       val list: Seq[Tuple2[K, Option[String]]] = scala.util.Random.shuffle(data).slice(0, n).map { case (k, _, _) =>
@@ -146,7 +141,6 @@ class MainSpec extends Repeatable with Matchers {
 
       result.error.get.printStackTrace()
       logger.debug(s"${Console.RED_B}REMOVED WRONG VERSION ${list.map { case (k, _) => new String(k) }}...${Console.RESET}")
-      //index = new QueryableIndex[K, V](backupCtx)(builder)
     }
 
     val n = 100
