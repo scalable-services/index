@@ -100,7 +100,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
 
         if(p.length == 1){
           val c = p.pointers(0)._2
-          ctx.root = Some(c.unique_id)
+          //ctx.root = Some(c.unique_id)
 
           ctx.levels -= 1
 
@@ -110,6 +110,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
             val copy = block.copy()
             ctx.put(copy)
 
+            ctx.root = Some(copy.unique_id)
             ctx.setParent(copy.unique_id, 0, None)
 
             true

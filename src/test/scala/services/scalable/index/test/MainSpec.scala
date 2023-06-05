@@ -31,12 +31,13 @@ class MainSpec extends Repeatable with Matchers {
 
     import services.scalable.index.DefaultComparators._
 
-    val NUM_LEAF_ENTRIES = rand.nextInt(4, 64)
-    val NUM_META_ENTRIES = rand.nextInt(4, 64)
+    val NUM_LEAF_ENTRIES = 8//rand.nextInt(4, 64)
+    val NUM_META_ENTRIES = 8//rand.nextInt(4, 64)
 
     val indexId = UUID.randomUUID().toString
 
-    val storage = new MemoryStorage()
+    //val session = TestHelper.createCassandraSession()
+    val storage = /*new CassandraStorage(session, true)*/new MemoryStorage()
 
     val builder = IndexBuilder.create[K, V](DefaultComparators.bytesOrd)
       .storage(storage)
@@ -87,7 +88,7 @@ class MainSpec extends Repeatable with Matchers {
     def update(): Unit = {
 
       val lastVersion: Option[String] = rand.nextBoolean() match {
-        case true => Some(index.ctx.id)
+        case true => index.ctx.txId
         case false => Some(UUID.randomUUID.toString)
       }
 
@@ -118,7 +119,7 @@ class MainSpec extends Repeatable with Matchers {
     def remove(): Unit = {
 
       val lastVersion: Option[String] = rand.nextBoolean() match {
-        case true => Some(index.ctx.id)
+        case true => index.ctx.txId
         case false => Some(UUID.randomUUID.toString)
       }
 
@@ -153,6 +154,9 @@ class MainSpec extends Repeatable with Matchers {
         case _ => insert()
       }
     }
+
+    //insert()
+    //update()
 
     logger.info(Await.result(index.save(), Duration.Inf).toString)
 

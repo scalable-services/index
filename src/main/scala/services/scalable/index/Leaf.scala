@@ -120,8 +120,7 @@ class Leaf[K, V](override val id: String,
 
   override def hasMinimum(): Boolean = tuples.length >= MIN
 
-  override def copy()(implicit ctx: Context[K, V]): Leaf[K,V] = {
-    //if(ctx.isNew(unique_id)) return this
+  override def copy()(implicit ctx: Context[K, V]): Leaf[K, V] = {
     if(isNew) return this
 
     val (p, pos) = ctx.getParent(unique_id).get
