@@ -5,7 +5,7 @@ import services.scalable.index.grpc.{IndexContext, RootRef}
 
 import java.util.UUID
 import scala.collection.concurrent.TrieMap
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.Future
 
 sealed class Context[K, V](val indexId: String,
                     var root: Option[(String, String)],
@@ -79,7 +79,7 @@ sealed class Context[K, V](val indexId: String,
     assert(txId.isDefined, "You must start a transaction first calling beginTx()!")
     assert(txState == TxState.PENDING, "Are you trying to abort an already committed tx?")
 
-    // Removed new blocks created during the tx...
+    // Removed new blocks created during the failed tx...
     txBlockReferences.foreach { t =>
       cache.newBlocks.remove(t._1)
       parents.remove(t._1)
