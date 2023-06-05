@@ -1,7 +1,5 @@
 package services.scalable.index
 
-import scala.reflect.runtime.universe.typeOf
-
 trait Block[K, V] {
 
   val id: String

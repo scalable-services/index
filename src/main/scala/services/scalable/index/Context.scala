@@ -54,7 +54,7 @@ sealed class Context[K, V](val indexId: String,
 
   def getCurrentTxId(): Option[String] = txId
 
-  def beginTx(): Unit = {
+  def beginTx(): Unit = synchronized {
     assert(txId.isEmpty, s"Previous transaction ${txId.get} not completed!")
 
     txId = Some(UUID.randomUUID.toString)
@@ -70,6 +70,7 @@ sealed class Context[K, V](val indexId: String,
       blockReferences += t
     }
 
+    txBlockReferences.clear()
     txState = TxState.COMPLETED
     txId = None
   }
@@ -78,16 +79,16 @@ sealed class Context[K, V](val indexId: String,
     assert(txId.isDefined, "You must start a transaction first calling beginTx()!")
     assert(txState == TxState.PENDING, "Are you trying to abort an already committed tx?")
 
-    root = txRoot
-
     // Removed new blocks created during the tx...
     txBlockReferences.foreach { t =>
       cache.newBlocks.remove(t._1)
+      parents.remove(t._1)
     }
 
     txBlockReferences.clear()
     txState = TxState.ABORTED
     txId = None
+    root = txRoot
   }
 
   /**
@@ -111,7 +112,8 @@ sealed class Context[K, V](val indexId: String,
   }
 
   def put(block: Block[K, V]): Unit = {
-    cache.newBlocks.put(block.unique_id, block)
+    //cache.newBlocks.put(block.unique_id, block)
+    txBlockReferences += block.unique_id -> block.unique_id
   }
 
   def getBlocks(): Map[(String, String), Block[K, V]] = {
