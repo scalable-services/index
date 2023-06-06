@@ -31,8 +31,8 @@ class MainSpec extends Repeatable with Matchers {
 
     import services.scalable.index.DefaultComparators._
 
-    val NUM_LEAF_ENTRIES = 8//rand.nextInt(4, 64)
-    val NUM_META_ENTRIES = 8//rand.nextInt(4, 64)
+    val NUM_LEAF_ENTRIES = rand.nextInt(4, 64)
+    val NUM_META_ENTRIES = rand.nextInt(4, 64)
 
     val indexId = UUID.randomUUID().toString
 
