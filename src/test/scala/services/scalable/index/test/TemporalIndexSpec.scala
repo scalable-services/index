@@ -56,11 +56,14 @@ class TemporalIndexSpec extends Repeatable {
       .storage(storage)
       .serializer(DefaultSerializers.grpcLongIndexContextSerializer)
 
-    val hDB = new TemporalIndex[K, V](tctx)(indexBuilder, historyBuilder)
+    var hDB = new TemporalIndex[K, V](tctx)(indexBuilder, historyBuilder)
     var data = Seq.empty[(K, V, Boolean)]
     var snapshots = Seq.empty[(Long, Seq[(K, V, Boolean)])]
 
     def insert(): Unit = {
+
+      val descriptorBackup = hDB.descriptor
+
       val n = rand.nextInt(1, 100)
       var list = Seq.empty[Tuple3[K, V, Boolean]]
 
@@ -91,13 +94,19 @@ class TemporalIndexSpec extends Repeatable {
 
         snapshots = snapshots :+ tmp -> data.sortBy(_._1)
 
+        val newDescriptor = Await.result(hDB.save(), Duration.Inf)
+        hDB = new TemporalIndex[K, V](newDescriptor)(indexBuilder, historyBuilder)
+
         return
       }
 
+      hDB = new TemporalIndex[K, V](descriptorBackup)(indexBuilder, historyBuilder)
       result.error.get.printStackTrace()
     }
 
     def update(): Unit = {
+
+      val descriptorBackup = hDB.descriptor
       val index = hDB.findIndex()
 
       val lastVersion: Option[String] = Some(index.ctx.id)
@@ -126,15 +135,20 @@ class TemporalIndexSpec extends Repeatable {
 
         snapshots = snapshots :+ tmp -> data.sortBy(_._1)
 
+        val newDescriptor = Await.result(hDB.save(), Duration.Inf)
+        hDB = new TemporalIndex[K, V](newDescriptor)(indexBuilder, historyBuilder)
+
         return
       }
 
+      hDB = new TemporalIndex[K, V](descriptorBackup)(indexBuilder, historyBuilder)
       result.error.get.printStackTrace()
       logger.debug(s"${Console.RED_B}UPDATED WRONG LAST VERSION ${list.map { case (k, _, _) => new String(k) }}...${Console.RESET}")
     }
 
     def remove(): Unit = {
 
+      val descriptorBackup = hDB.descriptor
       val index = hDB.findIndex()
       val lastVersion: Option[String] = Some(index.ctx.id)
 
@@ -160,9 +174,13 @@ class TemporalIndexSpec extends Repeatable {
 
         snapshots = snapshots :+ tmp -> data.sortBy(_._1)
 
+        val newDescriptor = Await.result(hDB.save(), Duration.Inf)
+        hDB = new TemporalIndex[K, V](newDescriptor)(indexBuilder, historyBuilder)
+
         return
       }
 
+      hDB = new TemporalIndex[K, V](descriptorBackup)(indexBuilder, historyBuilder)
       result.error.get.printStackTrace()
       logger.debug(s"${Console.RED_B}REMOVED WRONG VERSION ${list.map { case (k, _) => new String(k) }}...${Console.RESET}")
     }

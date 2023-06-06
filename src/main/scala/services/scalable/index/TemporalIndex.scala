@@ -4,15 +4,15 @@ import services.scalable.index.grpc._
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.{ExecutionContext, Future}
 
-class TemporalIndex[K, V](private val tctx: TemporalContext)
+class TemporalIndex[K, V](val descriptor: TemporalContext)
                          (val indexBuilder: IndexBuilder[K, V],
                           val historyBuilder: IndexBuilder[Long, IndexContext]){
 
   import indexBuilder._
   import DefaultSerializers._
 
-  protected val index = new QueryableIndex[K, V](tctx.latest)(indexBuilder)
-  protected val history = new QueryableIndex[Long, IndexContext](tctx.history)(historyBuilder)
+  protected val index = new QueryableIndex[K, V](descriptor.latest)(indexBuilder)
+  protected val history = new QueryableIndex[Long, IndexContext](descriptor.history)(historyBuilder)
 
   def execute(cmds: Seq[Commands.Command[K, V]]): Future[BatchResult] = {
     index.execute(cmds)
@@ -22,7 +22,7 @@ class TemporalIndex[K, V](private val tctx: TemporalContext)
     val tmp = System.nanoTime()
 
     history.execute(Seq(
-      Commands.Insert(tctx.history.id, Seq(Tuple3(tmp, index.snapshot(), false)))
+      Commands.Insert(descriptor.history.id, Seq(Tuple3(tmp, index.snapshot(), false)))
     )).map(tmp -> _)
   }
 
@@ -44,7 +44,7 @@ class TemporalIndex[K, V](private val tctx: TemporalContext)
   def findIndex(): QueryableIndex[K, V] = index
 
   def save(): Future[TemporalContext] = {
-    val ctx = TemporalContext(tctx.id, index.snapshot(), history.snapshot())
+    val ctx = TemporalContext(descriptor.id, index.snapshot(), history.snapshot())
 
     val blocks = index.ctx.newBlocks.map { case (id, block) =>
       id -> serializer.serialize(block)
