@@ -29,6 +29,7 @@ sealed class Context[K, V](val indexId: String,
   val META_MIN = META_MAX/2
 
   val blockReferences = TrieMap.empty[(String, String), (String, String)]
+  val tempBlockReferences = TrieMap.empty[(String, String), (String, String)]
   val parents = TrieMap.empty[(String, String), (Option[(String, String)], Int)]
 
   if(root.isDefined) {
@@ -60,8 +61,9 @@ sealed class Context[K, V](val indexId: String,
   }
 
   def put(block: Block[K, V]): Unit = {
-    //cache.newBlocks.put(block.unique_id, block)
-    blockReferences += block.unique_id -> block.unique_id
+    cache.newBlocks.put(block.unique_id, block)
+    //blockReferences += block.unique_id -> block.unique_id
+    tempBlockReferences += block.unique_id -> block.unique_id
   }
 
   def getBlocks(): Map[(String, String), Block[K, V]] = {
@@ -83,7 +85,8 @@ sealed class Context[K, V](val indexId: String,
 
     cache.newBlocks += leaf.unique_id -> leaf
 
-    blockReferences += leaf.unique_id -> leaf.unique_id
+    //blockReferences += leaf.unique_id -> leaf.unique_id
+    tempBlockReferences += leaf.unique_id -> leaf.unique_id
     setParent(leaf.unique_id, 0, None)
 
     leaf
@@ -94,7 +97,8 @@ sealed class Context[K, V](val indexId: String,
 
     cache.newBlocks += meta.unique_id -> meta
 
-    blockReferences += meta.unique_id -> meta.unique_id
+    //blockReferences += meta.unique_id -> meta.unique_id
+    tempBlockReferences += meta.unique_id -> meta.unique_id
     setParent(meta.unique_id, 0, None)
 
     meta
@@ -128,9 +132,12 @@ sealed class Context[K, V](val indexId: String,
   }
 
   def snapshot(): IndexContext = {
-    cache.newBlocks.filter(_._2.isNew).foreach { case (_, b) =>
-      b.root = root
+
+    // Review this...
+    (tempBlockReferences ++ blockReferences).filter{t => cache.newBlocks.isDefinedAt(t._1)}.foreach { t =>
+      val b = cache.newBlocks(t._1)
       b.isNew = false
+      b.root = root
     }
 
     logger.debug(s"\nSAVING $indexId: ${root.map{r => RootRef(r._1, r._2)}}\n")

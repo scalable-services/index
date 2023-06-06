@@ -96,24 +96,24 @@ class SplitIndexSpec extends Repeatable {
 
     //Await.result(index.save(false), Duration.Inf)
 
-    println("index saving", Await.result(storage.save(index.ctx.snapshot()), Duration.Inf))
+    println("index saving", Await.result(storage.save(index.tmpCtx.snapshot()), Duration.Inf))
 
     val l = index.copy()
     val r = Await.result(l.split(), Duration.Inf)
 
-    println("left id", l.ctx.indexId, "right id", r.ctx.indexId)
+    println("left id", l.tmpCtx.indexId, "right id", r.tmpCtx.indexId)
 
-    Await.result(TestHelper.loadOrCreateIndex(IndexContext(l.ctx.indexId, NUM_LEAF_ENTRIES,
+    Await.result(TestHelper.loadOrCreateIndex(IndexContext(l.tmpCtx.indexId, NUM_LEAF_ENTRIES,
       NUM_META_ENTRIES)), Duration.Inf).get
 
-    Await.result(TestHelper.loadOrCreateIndex(IndexContext(r.ctx.indexId, NUM_LEAF_ENTRIES,
+    Await.result(TestHelper.loadOrCreateIndex(IndexContext(r.tmpCtx.indexId, NUM_LEAF_ENTRIES,
       NUM_META_ENTRIES)), Duration.Inf).get
 
     /*println("left saving", Await.result(l.save(true), Duration.Inf))
     println("right saving", Await.result(r.save(true), Duration.Inf))*/
 
-    println("left saving", Await.result(storage.save(l.ctx.snapshot()), Duration.Inf))
-    println("right saving", Await.result(storage.save(r.ctx.snapshot()), Duration.Inf))
+    println("left saving", Await.result(storage.save(l.tmpCtx.snapshot()), Duration.Inf))
+    println("right saving", Await.result(storage.save(r.tmpCtx.snapshot()), Duration.Inf))
 
     Await.result(storage.save(cache.newBlocks.map{case (id, block) => id -> grpcBytesBytesSerializer.serialize(block.asInstanceOf[Block[K, V]])}.toMap),
       Duration.Inf)

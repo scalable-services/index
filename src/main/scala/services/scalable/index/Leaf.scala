@@ -37,7 +37,7 @@ class Leaf[K, V](override val id: String,
     tuples = tuples.filterNot{case (k, v, _) => upserts.exists{case (k1, _, _) => ord.equiv(k, k1)}}
 
     // Add back the upsert keys and the new ones...
-    tuples = (tuples ++ slice.map{case (k, v, _) => Tuple3(k, v, ctx.txId.get)}).sortBy(_._1)
+    tuples = (tuples ++ slice.map{case (k, v, _) => Tuple3(k, v, ctx.id)}).sortBy(_._1)
 
     Success(len)
   }
@@ -77,7 +77,7 @@ class Leaf[K, V](override val id: String,
 
     val notin = tuples.filterNot{case (k1, _, _) => data.exists{ case (k, _, _) => ord.equiv(k, k1)}}
 
-    tuples = (notin ++ data.map{case (k, v, _) => Tuple3(k, v, ctx.txId.get)}).sortBy(_._1)
+    tuples = (notin ++ data.map{case (k, v, _) => Tuple3(k, v, ctx.id)}).sortBy(_._1)
 
     Success(data.length)
   }

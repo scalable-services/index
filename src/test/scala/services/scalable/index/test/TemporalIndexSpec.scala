@@ -100,7 +100,7 @@ class TemporalIndexSpec extends Repeatable {
     def update(): Unit = {
       val index = hDB.findIndex()
 
-      val lastVersion: Option[String] = index.ctx.txId
+      val lastVersion: Option[String] = Some(index.tmpCtx.id)
 
       val n = if (data.length >= 2) rand.nextInt(1, data.length) else 1
       val list = scala.util.Random.shuffle(data).slice(0, n).map { case (k, v, _) =>
@@ -136,7 +136,7 @@ class TemporalIndexSpec extends Repeatable {
     def remove(): Unit = {
 
       val index = hDB.findIndex()
-      val lastVersion: Option[String] = index.ctx.txId
+      val lastVersion: Option[String] = Some(index.tmpCtx.id)
 
       val n = if (data.length >= 2) rand.nextInt(1, data.length) else 1
       val list: Seq[Tuple2[K, Option[String]]] = scala.util.Random.shuffle(data).slice(0, n).map { case (k, _, _) =>

@@ -86,7 +86,7 @@ class CassandraSpec extends Repeatable with Matchers {
     def update(): Unit = {
 
       val lastVersion: Option[String] = rand.nextBoolean() match {
-        case true => index.ctx.txId
+        case true => Some(index.tmpCtx.id)
         case false => Some(UUID.randomUUID.toString)
       }
 
@@ -117,7 +117,7 @@ class CassandraSpec extends Repeatable with Matchers {
     def remove(): Unit = {
 
       val lastVersion: Option[String] = rand.nextBoolean() match {
-        case true => index.ctx.txId
+        case true => Some(index.tmpCtx.id)
         case false => Some(UUID.randomUUID.toString)
       }
 
