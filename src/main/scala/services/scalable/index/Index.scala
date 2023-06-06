@@ -44,8 +44,10 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
     ctx.snapshot()
   }
 
+  private var ctxBackup: Context[K, V] = null
+
   def beginTx(): Unit = {
-    ctx.beginTx()
+    ctxBackup = ctx.copy()
   }
 
   def commitTx(): Unit = {

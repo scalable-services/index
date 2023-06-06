@@ -16,15 +16,8 @@ sealed class Context[K, V](val indexId: String,
                     val NUM_META_ENTRIES: Int)
                    (val builder: IndexBuilder[K, V]) {
 
-  object TxState {
-    val PENDING = "PENDING"
-    val COMPLETED = "COMPLETED"
-    val ABORTED = "ABORTED"
-  }
-
   import builder._
 
-  // Context id (for global manipulation of new blocks)
   val id: String = UUID.randomUUID().toString
 
   val logger = LoggerFactory.getLogger(this.getClass)
@@ -38,11 +31,6 @@ sealed class Context[K, V](val indexId: String,
   val blockReferences = TrieMap.empty[(String, String), (String, String)]
   val parents = TrieMap.empty[(String, String), (Option[(String, String)], Int)]
 
-  protected[index] var txRoot: Option[(String, String)] = None
-  protected[index] val txBlockReferences = TrieMap.empty[(String, String), (String, String)]
-  protected[index] var txId: Option[String] = None
-  protected[index] var txState = TxState.PENDING
-
   if(root.isDefined) {
     setParent(root.get, 0, None)
   }
@@ -51,46 +39,6 @@ sealed class Context[K, V](val indexId: String,
     case None =>
     case Some(r) => parents += r -> (None, 0)
   }
-
-  def getCurrentTxId(): Option[String] = txId
-
-  def beginTx(): Unit = synchronized {
-    assert(txId.isEmpty, s"Previous transaction ${txId.get} not completed!")
-
-    txId = Some(UUID.randomUUID.toString)
-    txRoot = root
-    txState = TxState.PENDING
-  }
-
-  def commitTx(): Unit = synchronized {
-    assert(txId.isDefined, "You must start a transaction first calling beginTx()!")
-    assert(txState == TxState.PENDING, "Are you trying to commit an aborted tx?")
-
-    txBlockReferences.foreach { t =>
-      blockReferences += t
-    }
-
-    txBlockReferences.clear()
-    txState = TxState.COMPLETED
-    txId = None
-  }
-
-  def rollbackTx(): Unit = synchronized {
-    assert(txId.isDefined, "You must start a transaction first calling beginTx()!")
-    assert(txState == TxState.PENDING, "Are you trying to abort an already committed tx?")
-
-    // Removed new blocks created during the failed tx...
-    txBlockReferences.foreach { t =>
-      cache.newBlocks.remove(t._1)
-      parents.remove(t._1)
-    }
-
-    txBlockReferences.clear()
-    txState = TxState.ABORTED
-    txId = None
-    root = txRoot
-  }
-
   /**
    *
    * To work the blocks being manipulated must be in memory before saving...
@@ -113,7 +61,7 @@ sealed class Context[K, V](val indexId: String,
 
   def put(block: Block[K, V]): Unit = {
     //cache.newBlocks.put(block.unique_id, block)
-    txBlockReferences += block.unique_id -> block.unique_id
+    blockReferences += block.unique_id -> block.unique_id
   }
 
   def getBlocks(): Map[(String, String), Block[K, V]] = {
@@ -135,8 +83,7 @@ sealed class Context[K, V](val indexId: String,
 
     cache.newBlocks += leaf.unique_id -> leaf
 
-    //blockReferences += leaf.unique_id -> leaf.unique_id
-    txBlockReferences += leaf.unique_id -> leaf.unique_id
+    blockReferences += leaf.unique_id -> leaf.unique_id
     setParent(leaf.unique_id, 0, None)
 
     leaf
@@ -147,8 +94,7 @@ sealed class Context[K, V](val indexId: String,
 
     cache.newBlocks += meta.unique_id -> meta
 
-    //blockReferences += meta.unique_id -> meta.unique_id
-    txBlockReferences += meta.unique_id -> meta.unique_id
+    blockReferences += meta.unique_id -> meta.unique_id
     setParent(meta.unique_id, 0, None)
 
     meta
@@ -209,7 +155,17 @@ sealed class Context[K, V](val indexId: String,
   }
 
   def copy(): Context[K, V] = {
-    new Context[K, V](indexId, root, num_elements, levels, maxNItems, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)(builder)
+    val ctx = new Context[K, V](indexId, root, num_elements, levels, maxNItems, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)(builder)
+
+    blockReferences.foreach { t =>
+      ctx.blockReferences += t
+    }
+
+    parents.foreach { t =>
+      ctx.parents += t
+    }
+
+    ctx
   }
 
   private def clear(): Unit = {
