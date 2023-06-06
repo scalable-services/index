@@ -29,7 +29,7 @@ sealed class Context[K, V](val indexId: String,
   val META_MIN = META_MAX/2
 
   val blockReferences = TrieMap.empty[(String, String), (String, String)]
-  val tempBlockReferences = TrieMap.empty[(String, String), (String, String)]
+  val newBlocks = TrieMap.empty[(String, String), Block[K, V]]
   val parents = TrieMap.empty[(String, String), (Option[(String, String)], Int)]
 
   if(root.isDefined) {
@@ -44,7 +44,7 @@ sealed class Context[K, V](val indexId: String,
    *
    * To work the blocks being manipulated must be in memory before saving...
    */
-  def get(id: (String, String)): Future[Block[K,V]] = cache.newBlocks.get(id) match {
+  def get(id: (String, String)): Future[Block[K,V]] = newBlocks.get(id) match {
     case None => cache.get[K, V](id) match {
       case None =>
 
@@ -61,15 +61,9 @@ sealed class Context[K, V](val indexId: String,
   }
 
   def put(block: Block[K, V]): Unit = {
-    cache.newBlocks.put(block.unique_id, block)
-    //blockReferences += block.unique_id -> block.unique_id
-    tempBlockReferences += block.unique_id -> block.unique_id
-  }
-
-  def getBlocks(): Map[(String, String), Block[K, V]] = {
-    blockReferences.map { case (id, _) =>
-      id -> cache.newBlocks.get(id).get.asInstanceOf[Block[K, V]]
-    }.toMap
+    newBlocks.put(block.unique_id, block)
+    blockReferences += block.unique_id -> block.unique_id
+    //tempBlockReferences += block.unique_id -> block.unique_id
   }
 
   def getLeaf(id: (String, String)): Future[Leaf[K,V]] = {
@@ -83,10 +77,10 @@ sealed class Context[K, V](val indexId: String,
   def createLeaf(): Leaf[K,V] = {
     val leaf = new Leaf[K,V](idGenerator.generateId(this), idGenerator.generatePartition(this), LEAF_MIN, LEAF_MAX)
 
-    cache.newBlocks += leaf.unique_id -> leaf
+    newBlocks += leaf.unique_id -> leaf
 
-    //blockReferences += leaf.unique_id -> leaf.unique_id
-    tempBlockReferences += leaf.unique_id -> leaf.unique_id
+    blockReferences += leaf.unique_id -> leaf.unique_id
+    //tempBlockReferences += leaf.unique_id -> leaf.unique_id
     setParent(leaf.unique_id, 0, None)
 
     leaf
@@ -95,10 +89,10 @@ sealed class Context[K, V](val indexId: String,
   def createMeta(): Meta[K,V] = {
     val meta = new Meta[K,V](idGenerator.generateId(this), idGenerator.generatePartition(this), META_MIN, META_MAX)
 
-    cache.newBlocks += meta.unique_id -> meta
+    newBlocks += meta.unique_id -> meta
 
-    //blockReferences += meta.unique_id -> meta.unique_id
-    tempBlockReferences += meta.unique_id -> meta.unique_id
+    blockReferences += meta.unique_id -> meta.unique_id
+    //tempBlockReferences += meta.unique_id -> meta.unique_id
     setParent(meta.unique_id, 0, None)
 
     meta
@@ -133,9 +127,8 @@ sealed class Context[K, V](val indexId: String,
 
   def snapshot(): IndexContext = {
 
-    // Review this...
-    (tempBlockReferences ++ blockReferences).filter{t => cache.newBlocks.isDefinedAt(t._1)}.foreach { t =>
-      val b = cache.newBlocks(t._1)
+    // Freeze the blocks...
+    newBlocks.values.foreach { b =>
       b.isNew = false
       b.root = root
     }
@@ -146,26 +139,11 @@ sealed class Context[K, V](val indexId: String,
       num_elements, maxNItems)
   }
 
-  def snapshot(clearNewBlocks: Boolean): IndexContext = {
-
-    if(clearNewBlocks){
-      cache.newBlocks.filter(_._2.isNew).foreach { case (_, b) =>
-        b.root = root
-        b.isNew = false
-      }
-    }
-
-    logger.debug(s"\nSAVING $indexId: ${root.map { r => RootRef(r._1, r._2) }}\n")
-
-    IndexContext(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, root.map { r => RootRef(r._1, r._2) }, levels,
-      num_elements, maxNItems)
-  }
-
   def copy(): Context[K, V] = {
     val ctx = new Context[K, V](indexId, root, num_elements, levels, maxNItems, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)(builder)
 
-    blockReferences.foreach { t =>
-      ctx.blockReferences += t
+    newBlocks.foreach { t =>
+      ctx.newBlocks += t
     }
 
     parents.foreach { t =>
@@ -175,17 +153,10 @@ sealed class Context[K, V](val indexId: String,
     ctx
   }
 
-  private def clear(): Unit = {
-    blockReferences.foreach { case (id, _) =>
-      cache.newBlocks.remove(id)
-    }
-  }
-
   def save(): Future[IndexContext] = {
     val snap = snapshot()
 
-    storage.save(snap, getBlocks().map { case (id, block) => id -> serializer.serialize(block) }).map { r =>
-      clear()
+    storage.save(snap, newBlocks.map { case (id, block) => id -> serializer.serialize(block) }.toMap).map { r =>
       snap
     }
   }

@@ -648,7 +648,7 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override val b
     tmpCtx.num_elements >= descriptor.maxNItems/2
   }
 
-  def split(): Future[QueryableIndex[K, V]] = {
+  /*def split(): Future[QueryableIndex[K, V]] = {
 
     for {
       leftR <- tmpCtx.getMeta(tmpCtx.root.get).flatMap {
@@ -722,6 +722,6 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override val b
     }
 
     copy
-  }
+  }*/
 
 }

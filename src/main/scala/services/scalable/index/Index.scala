@@ -51,23 +51,12 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
   }
 
   def commitTx(): Unit = {
-
-    tmpCtx.tempBlockReferences.foreach { t =>
-      tmpCtx.blockReferences += t
-    }
-
-    tmpCtx.tempBlockReferences.clear()
-
+    tmpCtx.blockReferences.clear()
     ctx = tmpCtx
   }
 
   def rollbackTx(): Unit = {
-    tmpCtx.tempBlockReferences.foreach { t =>
-      cache.newBlocks.remove(t._1)
-    }
-
-    tmpCtx.tempBlockReferences.clear()
-
+    tmpCtx.blockReferences.clear()
     tmpCtx = ctx
   }
 

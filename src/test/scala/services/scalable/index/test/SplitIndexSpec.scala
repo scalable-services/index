@@ -18,7 +18,7 @@ class SplitIndexSpec extends Repeatable {
 
   override val times: Int = 1
 
-  "operations" should " run successfully" in {
+  /*"operations" should " run successfully" in {
 
     val rand = ThreadLocalRandom.current()
 
@@ -120,6 +120,6 @@ class SplitIndexSpec extends Repeatable {
 
     Await.result(storage.close(), Duration.Inf)
 
-  }
+  }*/
 
 }
