@@ -209,7 +209,17 @@ sealed class Context[K, V](val indexId: String,
   }
 
   def copy(): Context[K, V] = {
-    new Context[K, V](indexId, root, num_elements, levels, maxNItems, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)(builder)
+    val ctx = new Context[K, V](indexId, root, num_elements, levels, maxNItems, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)(builder)
+
+    blockReferences.foreach { t =>
+      ctx.blockReferences += t
+    }
+
+    parents.foreach { t =>
+      ctx.parents += t
+    }
+
+    ctx
   }
 
   private def clear(): Unit = {
