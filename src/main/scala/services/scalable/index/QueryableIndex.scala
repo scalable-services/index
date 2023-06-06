@@ -44,7 +44,7 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override val b
         }
 
       override def hasNext(): Future[Boolean] = {
-        if(!firstTime) return Future.successful(ctx.root.isDefined)
+        if(!firstTime) return Future.successful(tmpCtx.root.isDefined)
         Future.successful(!stop && cur.isDefined)
       }
 
@@ -124,7 +124,7 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override val b
       }
 
       override def hasNext(): Future[Boolean] = {
-        if(!firstTime) return Future.successful(ctx.root.isDefined)
+        if(!firstTime) return Future.successful(tmpCtx.root.isDefined)
         Future.successful(!stop && cur.isDefined)
       }
 
@@ -192,7 +192,7 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override val b
       }
 
       override def hasNext(): Future[Boolean] = {
-        if(!firstTime) return Future.successful(ctx.root.isDefined)
+        if(!firstTime) return Future.successful(tmpCtx.root.isDefined)
         Future.successful(!stop && cur.isDefined)
       }
 
@@ -269,7 +269,7 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override val b
       }
 
       override def hasNext(): Future[Boolean] = {
-        if(!firstTime) return Future.successful(ctx.root.isDefined)
+        if(!firstTime) return Future.successful(tmpCtx.root.isDefined)
         Future.successful(!stop && cur.isDefined)
       }
 
@@ -347,7 +347,7 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override val b
         }
 
       override def hasNext(): Future[Boolean] = {
-        if(!firstTime) return Future.successful(ctx.root.isDefined)
+        if(!firstTime) return Future.successful(tmpCtx.root.isDefined)
         Future.successful(!stop && cur.isDefined)
       }
 
@@ -432,7 +432,7 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override val b
         }
 
       override def hasNext(): Future[Boolean] = {
-        if(!firstTime) return Future.successful(ctx.root.isDefined)
+        if(!firstTime) return Future.successful(tmpCtx.root.isDefined)
         Future.successful(!stop && cur.isDefined)
       }
 
@@ -504,7 +504,7 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override val b
     new RichAsyncIterator[K, V] {
 
       override def hasNext(): Future[Boolean] = {
-        if(!firstTime) return Future.successful(ctx.root.isDefined)
+        if(!firstTime) return Future.successful(tmpCtx.root.isDefined)
         Future.successful(!stop && cur.isDefined)
       }
 
@@ -568,7 +568,7 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override val b
 
     new RichAsyncIterator[K, V] {
       override def hasNext(): Future[Boolean] = {
-        if(!firstTime) return Future.successful(ctx.root.isDefined)
+        if(!firstTime) return Future.successful(tmpCtx.root.isDefined)
         Future.successful(!stop && cur.isDefined)
       }
 
@@ -641,18 +641,18 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override val b
   }
 
   def isFull(): Boolean = {
-    ctx.num_elements >= descriptor.maxNItems
+    tmpCtx.num_elements >= descriptor.maxNItems
   }
 
   def hasMinimum(): Boolean = {
-    ctx.num_elements >= descriptor.maxNItems/2
+    tmpCtx.num_elements >= descriptor.maxNItems/2
   }
 
   def split(): Future[QueryableIndex[K, V]] = {
 
     for {
-      leftR <- ctx.getMeta(ctx.root.get).flatMap {
-        case block if block.length == 1 => ctx.getMeta(block.pointers(0)._2.unique_id)
+      leftR <- tmpCtx.getMeta(tmpCtx.root.get).flatMap {
+        case block if block.length == 1 => tmpCtx.getMeta(block.pointers(0)._2.unique_id)
         case block => Future.successful(block)
       }
     } yield {
@@ -666,7 +666,7 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override val b
       }.sum
 
       val leftICtx = descriptor
-        .withId(ctx.id)
+        .withId(tmpCtx.id)
         .withMaxNItems(descriptor.maxNItems)
         .withNumElements(leftN)
         .withLevels(leftR.level)
@@ -681,19 +681,19 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override val b
         .withNumLeafItems(descriptor.numLeafItems)
         .withNumMetaItems(descriptor.numMetaItems)
 
-      val refs = ctx.blockReferences
+      val refs = tmpCtx.blockReferences
 
-      ctx = Context.fromIndexContext(leftICtx)(this.builder)
+      tmpCtx = Context.fromIndexContext(leftICtx)(this.builder)
 
-      ctx.blockReferences ++= refs
+      tmpCtx.blockReferences ++= refs
 
       val rindex = new QueryableIndex[K, V](rightICtx)(this.builder)
 
-      val leftRoot = leftR.copy()(ctx)
-      ctx.root = Some(leftRoot.unique_id)
+      val leftRoot = leftR.copy()(tmpCtx)
+      tmpCtx.root = Some(leftRoot.unique_id)
 
-      val rightRoot = leftRoot.split()(rindex.ctx)
-      rindex.ctx.root = Some(rightRoot.unique_id)
+      val rightRoot = leftRoot.split()(rindex.tmpCtx)
+      rindex.tmpCtx.root = Some(rightRoot.unique_id)
 
       /*val ileft = Await.result(TestHelper.all(left.inOrder()), Duration.Inf).map { case (k, v, _) => k -> v }
         logger.debug(s"${Console.BLUE_B}idata data: ${ileft.map { case (k, v) => new String(k, Charsets.UTF_8) -> new String(v) }}${Console.RESET}\n")
@@ -713,12 +713,12 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override val b
 
   def copy(): QueryableIndex[K, V] = {
     val context = IndexContext(UUID.randomUUID.toString, descriptor.numLeafItems, descriptor.numMetaItems,
-      ctx.root.map { r => RootRef(r._1, r._2) }, levels, ctx.num_elements, descriptor.maxNItems)
+      tmpCtx.root.map { r => RootRef(r._1, r._2) }, levels, tmpCtx.num_elements, descriptor.maxNItems)
 
     val copy = new QueryableIndex[K, V](context)(this.builder)
 
-    ctx.blockReferences.foreach { case (id, _) =>
-      copy.ctx.blockReferences += id -> id
+    tmpCtx.blockReferences.foreach { case (id, _) =>
+      copy.tmpCtx.blockReferences += id -> id
     }
 
     copy
