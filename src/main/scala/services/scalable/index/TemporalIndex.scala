@@ -46,9 +46,9 @@ class TemporalIndex[K, V](private val tctx: TemporalContext)
   def save(): Future[TemporalContext] = {
     val ctx = TemporalContext(tctx.id, index.snapshot(), history.snapshot())
 
-    val blocks = index.tmpCtx.newBlocks.map { case (id, block) =>
+    val blocks = index.ctx.newBlocks.map { case (id, block) =>
       id -> serializer.serialize(block)
-    } ++ history.tmpCtx.newBlocks.map { case (id, block) =>
+    } ++ history.ctx.newBlocks.map { case (id, block) =>
       id -> grpcLongIndexContextSerializer.serialize(block)
     }
 

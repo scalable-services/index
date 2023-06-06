@@ -51,23 +51,39 @@ class MainSpec extends Repeatable with Matchers {
     ))(storage, global), Duration.Inf).get
 
     var data = Seq.empty[(K, V, Boolean)]
-    val index = builder.build(indexContext)
+    var index = builder.build(indexContext)
 
     def insert(): Unit = {
+
+      val descriptorBackup = index.descriptor
+
       val n = rand.nextInt(1, 1000)
       var list = Seq.empty[Tuple3[K, V, Boolean]]
 
-      for(i<-0 until n){
-        val k = RandomStringUtils.randomAlphanumeric(5, 10).getBytes(Charsets.UTF_8)
-        val v = RandomStringUtils.randomAlphanumeric(5).getBytes(Charsets.UTF_8)
+      val insertDup = rand.nextBoolean()
 
-        if(!data.exists { case (k1, _, _) => bytesOrd.equiv(k, k1) } &&
-          !list.exists { case (k1, _, _) => bytesOrd.equiv(k, k1) }){
-          list = list :+ (k, v, false)
+      for(i<-0 until n){
+
+        rand.nextBoolean() match {
+          case x if x && i > 0 && insertDup =>
+
+            // Inserts some duplicate
+            val (k, v, _) = list(rand.nextInt(0, i))
+            list = list :+ (k, v, false)
+
+          case _ =>
+
+            val k = RandomStringUtils.randomAlphanumeric(5, 10).getBytes(Charsets.UTF_8)
+            val v = RandomStringUtils.randomAlphanumeric(5).getBytes(Charsets.UTF_8)
+
+            if (!data.exists { case (k1, _, _) => bytesOrd.equiv(k, k1) } &&
+              !list.exists { case (k1, _, _) => bytesOrd.equiv(k, k1) }) {
+              list = list :+ (k, v, false)
+            }
         }
       }
 
-      logger.debug(s"${Console.GREEN_B}INSERTING ${list.map{case (k, v, _) => new String(k)}}${Console.RESET}")
+      //logger.debug(s"${Console.GREEN_B}INSERTING ${list.map{case (k, v, _) => new String(k)}}${Console.RESET}")
 
       val cmds = Seq(
         Commands.Insert(indexId, list)
@@ -75,22 +91,31 @@ class MainSpec extends Repeatable with Matchers {
 
       val result = Await.result(index.execute(cmds), Duration.Inf)
 
-      assert(result.success)
-
       if(result.success){
+        logger.debug(s"${Console.GREEN_B}INSERTION OK: ${list.map{case (k, v, _) => builder.ks(k)}}${Console.RESET}")
+
+        val newDescriptor = Await.result(index.save(), Duration.Inf)
+        index = new QueryableIndex[K, V](newDescriptor)(builder)
+
         data = data ++ list
+
         return
       }
 
+      logger.debug(s"${Console.RED_B}INSERTION FAIL: ${list.map{case (k, v, _) => builder.ks(k)}}${Console.RESET}")
+
+      index = new QueryableIndex[K, V](descriptorBackup)(builder)
       result.error.get.printStackTrace()
     }
 
     def update(): Unit = {
 
       val lastVersion: Option[String] = rand.nextBoolean() match {
-        case true => Some(index.tmpCtx.id)
+        case true => Some(index.ctx.id)
         case false => Some(UUID.randomUUID.toString)
       }
+
+      val descriptorBackup = index.descriptor
 
       val n = if(data.length >= 2) rand.nextInt(1, data.length) else 1
       val list = scala.util.Random.shuffle(data).slice(0, n).map { case (k, v, _) =>
@@ -104,7 +129,11 @@ class MainSpec extends Repeatable with Matchers {
       val result = Await.result(index.execute(cmds), Duration.Inf)
 
       if(result.success){
+
         logger.debug(s"${Console.MAGENTA_B}UPDATED RIGHT LAST VERSION ${list.map{case (k, _, _) => new String(k)}}...${Console.RESET}")
+
+        val newDescriptor = Await.result(index.save(), Duration.Inf)
+        index = new QueryableIndex[K, V](newDescriptor)(builder)
 
         data = data.filterNot { case (k, _, _) => list.exists { case (k1, _, _) => bytesOrd.equiv(k, k1) } }
         data = data ++ list.map { case (k, v, _) => (k, v, true) }
@@ -112,16 +141,19 @@ class MainSpec extends Repeatable with Matchers {
         return
       }
 
+      index = new QueryableIndex[K, V](descriptorBackup)(builder)
       result.error.get.printStackTrace()
-      logger.debug(s"${Console.RED_B}UPDATED WRONG LAST VERSION ${list.map { case (k, _, _) => new String(k) }}...${Console.RESET}")
+      logger.debug(s"${Console.CYAN_B}UPDATED WRONG LAST VERSION ${list.map { case (k, _, _) => new String(k) }}...${Console.RESET}")
     }
 
     def remove(): Unit = {
 
       val lastVersion: Option[String] = rand.nextBoolean() match {
-        case true => Some(index.tmpCtx.id)
+        case true => Some(index.ctx.id)
         case false => Some(UUID.randomUUID.toString)
       }
+
+      val descriptorBackup = index.descriptor
 
       val n = if(data.length >= 2) rand.nextInt(1, data.length) else 1
       val list: Seq[Tuple2[K, Option[String]]] = scala.util.Random.shuffle(data).slice(0, n).map { case (k, _, _) =>
@@ -135,11 +167,17 @@ class MainSpec extends Repeatable with Matchers {
       val result = Await.result(index.execute(cmds), Duration.Inf)
 
       if(result.success){
-        logger.debug(s"${Console.RED_B}REMOVED RIGHT VERSION ${list.map { case (k, _) => new String(k) }}...${Console.RESET}")
+
+        val newDescriptor = Await.result(index.save(), Duration.Inf)
+        index = new QueryableIndex[K, V](newDescriptor)(builder)
+
+        logger.debug(s"${Console.YELLOW_B}REMOVED RIGHT VERSION ${list.map { case (k, _) => new String(k) }}...${Console.RESET}")
         data = data.filterNot { case (k, _, _) => list.exists { case (k1, _) => bytesOrd.equiv(k, k1) } }
+
         return
       }
 
+      index = new QueryableIndex[K, V](descriptorBackup)(builder)
       result.error.get.printStackTrace()
       logger.debug(s"${Console.RED_B}REMOVED WRONG VERSION ${list.map { case (k, _) => new String(k) }}...${Console.RESET}")
     }

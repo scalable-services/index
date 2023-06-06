@@ -28,7 +28,6 @@ sealed class Context[K, V](val indexId: String,
   val META_MAX = NUM_META_ENTRIES
   val META_MIN = META_MAX/2
 
-  val blockReferences = TrieMap.empty[(String, String), (String, String)]
   val newBlocks = TrieMap.empty[(String, String), Block[K, V]]
   val parents = TrieMap.empty[(String, String), (Option[(String, String)], Int)]
 
@@ -57,13 +56,11 @@ sealed class Context[K, V](val indexId: String,
       case Some(block) => Future.successful(block)
     }
 
-    case Some(block) => Future.successful(block.asInstanceOf[Block[K, V]])
+    case Some(block) => Future.successful(block)
   }
 
   def put(block: Block[K, V]): Unit = {
     newBlocks.put(block.unique_id, block)
-    blockReferences += block.unique_id -> block.unique_id
-    //tempBlockReferences += block.unique_id -> block.unique_id
   }
 
   def getLeaf(id: (String, String)): Future[Leaf[K,V]] = {
@@ -78,9 +75,6 @@ sealed class Context[K, V](val indexId: String,
     val leaf = new Leaf[K,V](idGenerator.generateId(this), idGenerator.generatePartition(this), LEAF_MIN, LEAF_MAX)
 
     newBlocks += leaf.unique_id -> leaf
-
-    blockReferences += leaf.unique_id -> leaf.unique_id
-    //tempBlockReferences += leaf.unique_id -> leaf.unique_id
     setParent(leaf.unique_id, 0, None)
 
     leaf
@@ -90,9 +84,6 @@ sealed class Context[K, V](val indexId: String,
     val meta = new Meta[K,V](idGenerator.generateId(this), idGenerator.generatePartition(this), META_MIN, META_MAX)
 
     newBlocks += meta.unique_id -> meta
-
-    blockReferences += meta.unique_id -> meta.unique_id
-    //tempBlockReferences += meta.unique_id -> meta.unique_id
     setParent(meta.unique_id, 0, None)
 
     meta
@@ -100,25 +91,10 @@ sealed class Context[K, V](val indexId: String,
 
   def setParent(unique_id: (String, String), idx: Int, parent: Option[(String, String)]): Unit = {
     parents += unique_id -> (parent, idx)
-    cache.put(unique_id, parent, idx)
   }
 
   def getParent(id: (String, String)): Option[(Option[(String, String)], Int)] = {
-    if(parents.isDefinedAt(id)) return parents.get(id)
-
-    cache.getParent(id) match {
-      case None => None
-      case ctxOpt =>
-
-        logger.debug(s"HIT THE CACHE!\n")
-        //parents += unique_id -> ctxOpt.get
-
-        val (parent, pos) = ctxOpt.get
-
-        setParent(id, pos, parent)
-
-        ctxOpt
-    }
+    parents.get(id)
   }
 
   def isFromCurrentContext(b: Block[K,V]): Boolean = {
@@ -137,20 +113,6 @@ sealed class Context[K, V](val indexId: String,
 
     IndexContext(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, root.map{r => RootRef(r._1, r._2)}, levels,
       num_elements, maxNItems)
-  }
-
-  def copy(): Context[K, V] = {
-    val ctx = new Context[K, V](indexId, root, num_elements, levels, maxNItems, NUM_LEAF_ENTRIES, NUM_META_ENTRIES)(builder)
-
-    newBlocks.foreach { t =>
-      ctx.newBlocks += t
-    }
-
-    parents.foreach { t =>
-      ctx.parents += t
-    }
-
-    ctx
   }
 
   def save(): Future[IndexContext] = {

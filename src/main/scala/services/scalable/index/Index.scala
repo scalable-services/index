@@ -33,8 +33,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
 
   val logger = LoggerFactory.getLogger(this.getClass)
 
-  private var ctx: Context[K, V] = Context.fromIndexContext(descriptor)(builder)
-  implicit var tmpCtx = ctx
+  implicit var ctx = Context.fromIndexContext(descriptor)(builder)
 
   val $this = this
 
@@ -43,21 +42,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
    * @return
    */
   def snapshot(): IndexContext = {
-    tmpCtx.snapshot()
-  }
-
-  def beginTx(): Unit = {
-    tmpCtx = ctx.copy()
-  }
-
-  def commitTx(): Unit = {
-    tmpCtx.blockReferences.clear()
-    ctx = tmpCtx
-  }
-
-  def rollbackTx(): Unit = {
-    tmpCtx.blockReferences.clear()
-    tmpCtx = ctx
+    ctx.snapshot()
   }
 
   def save(): Future[IndexContext] = {
@@ -79,21 +64,21 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
 
         val bid = meta.findPath(k)
 
-        tmpCtx.get(bid).flatMap { block =>
+        ctx.get(bid).flatMap { block =>
           findPath(k, block, limit)
         }
     }
   }
 
   def findPath(k: K, limit: Option[Block[K,V]] = None)(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
-    if(tmpCtx.root.isEmpty) {
+    if(ctx.root.isEmpty) {
       return Future.successful(None)
     }
 
-    val bid = tmpCtx.root.get
+    val bid = ctx.root.get
 
-    tmpCtx.get(tmpCtx.root.get).flatMap { start =>
-      tmpCtx.setParent(bid, 0, None)
+    ctx.get(ctx.root.get).flatMap { start =>
+      ctx.setParent(bid, 0, None)
       findPath(k, start, limit)
     }
   }
@@ -106,29 +91,29 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
           val c = p.pointers(0)._2
           //ctx.root = Some(c.unique_id)
 
-          tmpCtx.levels -= 1
+          ctx.levels -= 1
 
-          tmpCtx.get(c.unique_id).map { block =>
-            block.level = tmpCtx.levels
+          ctx.get(c.unique_id).map { block =>
+            block.level = ctx.levels
 
             val copy = block.copy()
-            tmpCtx.put(copy)
+            ctx.put(copy)
 
-            tmpCtx.root = Some(copy.unique_id)
-            tmpCtx.setParent(copy.unique_id, 0, None)
+            ctx.root = Some(copy.unique_id)
+            ctx.setParent(copy.unique_id, 0, None)
 
             true
           }
         } else {
-          tmpCtx.root = Some(p.unique_id)
-          tmpCtx.setParent(p.unique_id, 0, None)
+          ctx.root = Some(p.unique_id)
+          ctx.setParent(p.unique_id, 0, None)
 
           Future.successful(true)
         }
 
       case p: Leaf[K,V] =>
-        tmpCtx.root = Some(p.unique_id)
-        tmpCtx.setParent(p.unique_id, 0, None)
+        ctx.root = Some(p.unique_id)
+        ctx.setParent(p.unique_id, 0, None)
 
         Future.successful(true)
     }
@@ -136,7 +121,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
 
   protected def recursiveCopy(block: Block[K,V])(implicit ord: Ordering[K]): Future[Boolean] = {
 
-    val opt = tmpCtx.getParent(block.unique_id)
+    val opt = ctx.getParent(block.unique_id)
 
     if(opt.isEmpty){
       return setPath(block).flatMap(_ => recursiveCopy(block))
@@ -146,11 +131,11 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
 
     p match {
       case None => fixRoot(block)
-      case Some(pid) => tmpCtx.getMeta(pid).flatMap { p =>
+      case Some(pid) => ctx.getMeta(pid).flatMap { p =>
         val parent = p.copy()
 
         parent.pointers(pos) = block.last -> Pointer(block.partition, block.id, block.nSubtree, block.level)
-        tmpCtx.setParent(block.unique_id, pos, Some(parent.unique_id))
+        ctx.setParent(block.unique_id, pos, Some(parent.unique_id))
 
         parent.setPointers()
 
@@ -160,12 +145,12 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
   }
 
   protected def insertEmpty(data: Seq[Tuple3[K, V, Boolean]]): Future[Int] = {
-    val leaf = tmpCtx.createLeaf()
+    val leaf = ctx.createLeaf()
 
     leaf.insert(data) match {
       case Success(n) =>
 
-        tmpCtx.levels += 1
+        ctx.levels += 1
 
         recursiveCopy(leaf).map(_ => n)
       case Failure(ex) => Future.failed(ex)
@@ -193,7 +178,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
 
   protected def handleParent(left: Block[K,V], right: Block[K,V]): Future[Boolean] = {
 
-    val opt = tmpCtx.getParent(left.unique_id)
+    val opt = ctx.getParent(left.unique_id)
 
     if(opt.isEmpty) {
       return setPath(left).flatMap(_ => handleParent(left, right))
@@ -206,10 +191,10 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
 
         logger.debug(s"${Console.BLUE_B}NEW LEVEL!${Console.RESET}")
 
-        val meta = tmpCtx.createMeta()
+        val meta = ctx.createMeta()
 
-        tmpCtx.levels += 1
-        meta.level = tmpCtx.levels
+        ctx.levels += 1
+        meta.level = ctx.levels
 
         meta.insert(Seq(
           left.last -> Pointer(left.partition, left.id, left.nSubtree, left.level),
@@ -220,11 +205,11 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
 
         recursiveCopy(meta)
 
-      case Some(pid) => tmpCtx.getMeta(pid).flatMap { p =>
+      case Some(pid) => ctx.getMeta(pid).flatMap { p =>
         val parent = p.copy()
 
         parent.pointers(pos) = left.last -> Pointer(left.partition, left.id, left.nSubtree, left.level)
-        tmpCtx.setParent(left.unique_id, pos, Some(parent.unique_id))
+        ctx.setParent(left.unique_id, pos, Some(parent.unique_id))
 
         insertParent(parent, right)
       }
@@ -284,7 +269,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
 
     if(sorted.exists{case (k, _, _) => sorted.count{case (k1, _, _) => ord.equiv(k, k1)} > 1}){
       return Future.successful(InsertionResult(false, 0,
-        Some(Errors.DUPLICATED_KEYS(data.map(_._1), tmpCtx.builder.ks))))
+        Some(Errors.DUPLICATED_KEYS(data.map(_._1), ctx.builder.ks))))
     }
 
     val len = sorted.length
@@ -306,7 +291,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
           insertLeaf(leaf.copy(), list)
       }.flatMap { n =>
         pos += n
-        tmpCtx.num_elements += n
+        ctx.num_elements += n
         insert()
       }
     }
@@ -334,7 +319,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
       return recursiveCopy(parent)
     }
 
-    val opt = tmpCtx.getParent(parent.unique_id)
+    val opt = ctx.getParent(parent.unique_id)
 
     if(opt.isEmpty){
       return setPath(parent).flatMap(_ => merge(left, lpos, right, rpos, parent))
@@ -346,14 +331,14 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
       return recursiveCopy(left)
     }
 
-    tmpCtx.getMeta(g.get).flatMap { gp =>
+    ctx.getMeta(g.get).flatMap { gp =>
       borrow(parent, gp.copy(), gpos)
     }
   }
 
   protected def borrowRight(target: Block[K, V], left: Option[Block[K, V]], right: Option[(String, String)], parent: Meta[K,V], pos: Int): Future[Boolean] = {
     right match {
-      case Some(id) => tmpCtx.get(id).flatMap { r =>
+      case Some(id) => ctx.get(id).flatMap { r =>
         val right = r.copy()
 
         if(right.canBorrowTo(target)){
@@ -378,7 +363,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
 
   protected def borrowLeft(target: Block[K, V], left: Option[(String, String)], right: Option[(String, String)], parent: Meta[K,V], pos: Int): Future[Boolean] = {
     left match {
-      case Some(id) => tmpCtx.get(id).flatMap { l =>
+      case Some(id) => ctx.get(id).flatMap { l =>
         val left = l.copy()
 
         if(left.canBorrowTo(target)){
@@ -428,7 +413,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
       return recursiveCopy(target).map(_ => result.get)
     }
 
-    val opt = tmpCtx.getParent(target.unique_id)
+    val opt = ctx.getParent(target.unique_id)
 
     if(opt.isEmpty){
       return setPath(target).flatMap(_ => removeFromLeaf(target, keys))
@@ -440,18 +425,18 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
 
       if(target.isEmpty()){
 
-        tmpCtx.levels -= 1
+        ctx.levels -= 1
 
         logger.debug(s"${Console.RED_B}[remove] TREE IS EMPTY${Console.RESET}")
 
-        tmpCtx.root = None
+        ctx.root = None
         return Future.successful(result.get)
       }
 
       return recursiveCopy(target).map(_ => result.get)
     }
 
-    tmpCtx.getMeta(p.get).flatMap { p =>
+    ctx.getMeta(p.get).flatMap { p =>
       borrow(target, p.copy(), pos).map(_ => result.get)
     }
   }
@@ -469,7 +454,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
 
     def remove(): Future[Int] = {
       if(pos == len) {
-        tmpCtx.num_elements -= sorted.length
+        ctx.num_elements -= sorted.length
         return Future.successful(sorted.length)
       }
 
@@ -477,7 +462,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
       val (k, _) = list(0)
 
       findPath(k).flatMap {
-        case None => Future.failed(Errors.KEY_NOT_FOUND[K](k, tmpCtx.builder.ks))
+        case None => Future.failed(Errors.KEY_NOT_FOUND[K](k, ctx.builder.ks))
         case Some(leaf) =>
 
           val idx = list.indexWhere { case (k, _) => ord.gt(k, leaf.last)}
@@ -517,7 +502,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
     val sorted = data.sortBy(_._1)
 
     if(sorted.exists{case (k, _, _) => sorted.count{case (k1, _, _) => ord.equiv(k, k1)} > 1}){
-      return Future.successful(UpdateResult(false, 0, Some(Errors.DUPLICATED_KEYS(sorted.map(_._1), tmpCtx.builder.ks))))
+      return Future.successful(UpdateResult(false, 0, Some(Errors.DUPLICATED_KEYS(sorted.map(_._1), ctx.builder.ks))))
     }
 
     val len = sorted.length
@@ -530,7 +515,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
       val (k, _, _) = list(0)
 
       findPath(k).flatMap {
-        case None => Future.failed(Errors.KEY_NOT_FOUND(k, tmpCtx.builder.ks))
+        case None => Future.failed(Errors.KEY_NOT_FOUND(k, ctx.builder.ks))
         case Some(leaf) =>
 
           val idx = list.indexWhere{case (k, _, _) => ord.gt(k, leaf.last)}
@@ -554,7 +539,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
   def inOrder(f: Tuple[K, V] => Boolean = _ => true)(implicit ord: Ordering[K]): AsyncIterator[Seq[Tuple[K, V]]] = new RichAsyncIterator[K, V](f) {
 
     override def hasNext(): Future[Boolean] = {
-      if(!firstTime) return Future.successful(tmpCtx.root.isDefined)
+      if(!firstTime) return Future.successful(ctx.root.isDefined)
       Future.successful(cur.isDefined)
     }
 
@@ -588,7 +573,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
   def reverse(f: Tuple[K, V] => Boolean = _ => true)(implicit ord: Ordering[K]): AsyncIterator[Seq[Tuple[K, V]]] = new RichAsyncIterator[K, V](f) {
 
     override def hasNext(): Future[Boolean] = {
-      if(!firstTime) return Future.successful(tmpCtx.root.isDefined)
+      if(!firstTime) return Future.successful(ctx.root.isDefined)
       Future.successful(cur.isDefined)
     }
 
@@ -628,7 +613,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
 
           b.setPointers()
 
-          tmpCtx.get(b.pointers(0)._2.unique_id).flatMap(b => getLeftMost(Some(b)))
+          ctx.get(b.pointers(0)._2.unique_id).flatMap(b => getLeftMost(Some(b)))
       }
     }
   }
@@ -639,8 +624,8 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
   def setPath(b: Block[K,V])(implicit ord: Ordering[K]): Future[Boolean] = {
 
     //It makes sure leaf node it is part of current root tree...
-    if(!tmpCtx.isFromCurrentContext(b)){
-      return Future.failed(Errors.BLOCK_NOT_SAME_CONTEXT(b.root, tmpCtx.root))
+    if(!ctx.isFromCurrentContext(b)){
+      return Future.failed(Errors.BLOCK_NOT_SAME_CONTEXT(b.root, ctx.root))
     }
 
     logger.debug(s"\nSETTING PATH...\n")
@@ -651,10 +636,10 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
   }
 
   def first(): Future[Option[Leaf[K,V]]] = {
-    if(tmpCtx.root.isEmpty) return Future.successful(None)
+    if(ctx.root.isEmpty) return Future.successful(None)
 
-    val root = tmpCtx.root.get
-    tmpCtx.setParent(root, 0, None)
+    val root = ctx.root.get
+    ctx.setParent(root, 0, None)
 
     /*if(ctx.isParentDefined(root)){
       return ctx.get(root).flatMap(opt => getLeftMost(opt))
@@ -662,7 +647,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
 
     ctx.get(root).flatMap{opt => setPath(opt.get).flatMap{ _ => getLeftMost(opt)}}*/
 
-    tmpCtx.get(root).flatMap(b => getLeftMost(Some(b)))
+    ctx.get(root).flatMap(b => getLeftMost(Some(b)))
   }
 
   def getRightMost(start: Option[Block[K,V]]): Future[Option[Leaf[K,V]]] = {
@@ -674,16 +659,16 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
 
           b.setPointers()
 
-          tmpCtx.get(b.pointers(b.pointers.length - 1)._2.unique_id).flatMap(b => getRightMost(Some(b)))
+          ctx.get(b.pointers(b.pointers.length - 1)._2.unique_id).flatMap(b => getRightMost(Some(b)))
       }
     }
   }
 
   def last(): Future[Option[Leaf[K,V]]] = {
-    if(tmpCtx.root.isEmpty) return Future.successful(None)
+    if(ctx.root.isEmpty) return Future.successful(None)
 
-    val root = tmpCtx.root.get
-    tmpCtx.setParent(root, 0, None)
+    val root = ctx.root.get
+    ctx.setParent(root, 0, None)
 
     /*if(ctx.isParentDefined(root)){
       return ctx.get(root).flatMap(opt => getRightMost(opt))
@@ -691,14 +676,14 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
 
     ctx.get(root).flatMap{opt => setPath(opt.get).flatMap{ _ => getRightMost(opt)}}*/
 
-    tmpCtx.get(root).flatMap(b => getRightMost(Some(b)))
+    ctx.get(root).flatMap(b => getRightMost(Some(b)))
   }
 
   def next(current: Option[(String, String)])(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
 
     def nxt(b: Block[K,V]): Future[Option[Leaf[K,V]]] = {
 
-      val opt = tmpCtx.getParent(b.unique_id)
+      val opt = ctx.getParent(b.unique_id)
 
       if(opt.isEmpty){
         return setPath(b).flatMap(_ => next(current))
@@ -708,7 +693,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
 
       p match {
         case None => Future.successful(None)
-        case Some(pid) => tmpCtx.getMeta(pid).flatMap { parent =>
+        case Some(pid) => ctx.getMeta(pid).flatMap { parent =>
 
           val pointers = parent.pointers
           val len = pointers.length
@@ -718,7 +703,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
           if (pos == len - 1) {
             nxt(parent)
           } else {
-            tmpCtx.get(pointers(pos + 1)._2.unique_id).flatMap(b => getLeftMost(Some(b)))
+            ctx.get(pointers(pos + 1)._2.unique_id).flatMap(b => getLeftMost(Some(b)))
           }
         }
       }
@@ -726,7 +711,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
 
     current match {
       case None => first()
-      case Some(current) => tmpCtx.get(current).flatMap {nxt(_)}
+      case Some(current) => ctx.get(current).flatMap {nxt(_)}
     }
   }
 
@@ -734,7 +719,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
 
     def prv(b: Block[K,V]): Future[Option[Leaf[K,V]]] = {
 
-      val opt = tmpCtx.getParent(b.unique_id)
+      val opt = ctx.getParent(b.unique_id)
 
       if(opt.isEmpty){
         return setPath(b).flatMap(_ => prev(current))
@@ -744,13 +729,13 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
 
       p match {
         case None => Future.successful(None)
-        case Some(pid) => tmpCtx.getMeta(pid).flatMap { parent =>
+        case Some(pid) => ctx.getMeta(pid).flatMap { parent =>
           parent.setPointers()
 
           if (pos == 0) {
             prev(Some(parent.unique_id))
           } else {
-            tmpCtx.get(parent.pointers(pos - 1)._2.unique_id).flatMap(b => getRightMost(Some(b)))
+            ctx.get(parent.pointers(pos - 1)._2.unique_id).flatMap(b => getRightMost(Some(b)))
           }
         }
       }
@@ -758,7 +743,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
 
     current match {
       case None => first()
-      case Some(current) => tmpCtx.get(current).flatMap {prv(_)}
+      case Some(current) => ctx.get(current).flatMap {prv(_)}
     }
   }
 
@@ -783,14 +768,14 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
     }
   }
 
-  def count(): Long = tmpCtx.num_elements
-  def levels(): Int = tmpCtx.levels
+  def count(): Long = ctx.num_elements
+  def levels(): Int = ctx.levels
 
   /*
    * Prints any subtree from the provided root
    * Caution: prettyPrint is currently synchronous!
    */
-  def prettyPrint(root: Option[(String, String)] = tmpCtx.root, timeout: Duration = Duration.Inf): (Int, Int) = {
+  def prettyPrint(root: Option[(String, String)] = ctx.root, timeout: Duration = Duration.Inf): (Int, Int) = {
 
     val levels = scala.collection.mutable.Map[Int, scala.collection.mutable.ArrayBuffer[Block[K,V]]]()
     var num_data_blocks = 0
@@ -820,14 +805,14 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
           val pointers = meta.pointers
 
           for(i<-0 until length){
-            inOrder(Await.result(tmpCtx.get(pointers(i)._2.unique_id), timeout), level + 1)
+            inOrder(Await.result(ctx.get(pointers(i)._2.unique_id), timeout), level + 1)
           }
 
       }
     }
 
     root match {
-      case Some(id) => inOrder(Await.result(tmpCtx.get(id), timeout), 0)
+      case Some(id) => inOrder(Await.result(ctx.get(id), timeout), 0)
       case _ =>
     }
 
@@ -840,7 +825,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
     levels.size -> num_data_blocks
   }
 
-  protected[index] def getNumLevels(root: Option[(String, String)] = tmpCtx.root): Future[Int] = {
+  protected[index] def getNumLevels(root: Option[(String, String)] = ctx.root): Future[Int] = {
 
     val levels = TrieMap.empty[Int, scala.collection.mutable.ArrayBuffer[Block[K,V]]]
     val num_data_blocks = new AtomicInteger(0)
@@ -873,7 +858,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
           var tasks = Seq.empty[Future[Unit]]
 
           for(i<-0 until length){
-            tasks :+= tmpCtx.get(pointers(i)._2.unique_id).flatMap(b => inOrder(b, level + 1))
+            tasks :+= ctx.get(pointers(i)._2.unique_id).flatMap(b => inOrder(b, level + 1))
           }
 
           Future.sequence(tasks).map(_ => {})
@@ -882,23 +867,19 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
     }
 
     root match {
-      case Some(id) => tmpCtx.get(id).flatMap(b => inOrder(b, 0)).map(_ => levels.size)
+      case Some(id) => ctx.get(id).flatMap(b => inOrder(b, 0)).map(_ => levels.size)
       case _ => Future.successful(0)
     }
   }
 
   def execute(cmds: Seq[Command[K, V]]): Future[BatchResult] = {
 
-    beginTx()
-
     def process(pos: Int, error: Option[Throwable]): Future[BatchResult] = {
       if(error.isDefined) {
-        rollbackTx()
         return Future.successful(BatchResult(false, error))
       }
 
       if(pos == cmds.length) {
-        commitTx()
         return Future.successful(BatchResult(true))
       }
 
