@@ -6,7 +6,7 @@ import org.apache.commons.lang3.RandomStringUtils
 import org.slf4j.LoggerFactory
 import services.scalable.index.grpc.{IndexContext, TemporalContext}
 import services.scalable.index.impl._
-import services.scalable.index.{Commands, DefaultComparators, DefaultPrinters, DefaultSerializers, IndexBuilder, QueryableIndex, TemporalIndex}
+import services.scalable.index.{Cache, Commands, DefaultComparators, DefaultPrinters, DefaultSerializers, IndexBuilder, QueryableIndex, TemporalIndex}
 
 import java.util.UUID
 import scala.concurrent.Await
@@ -47,13 +47,17 @@ class TemporalIndexSpec extends Repeatable {
       IndexContext(s"$historyIndexId-history", NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
     )), Duration.Inf).get
 
+    val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
+
     val indexBuilder = IndexBuilder.create[K, V](DefaultComparators.bytesOrd)
       .storage(storage)
+      .cache(cache)
       .serializer(grpcBytesBytesSerializer)
       .keyToStringConverter(DefaultPrinters.byteArrayToStringPrinter)
 
     val historyBuilder = IndexBuilder.create[Long, IndexContext](DefaultComparators.ordLong)
       .storage(storage)
+      .cache(cache)
       .serializer(DefaultSerializers.grpcLongIndexContextSerializer)
 
     var hDB = new TemporalIndex[K, V](tctx)(indexBuilder, historyBuilder)
