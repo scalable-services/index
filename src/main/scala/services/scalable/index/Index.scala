@@ -4,7 +4,7 @@ import org.slf4j.LoggerFactory
 import services.scalable.index.Commands._
 import services.scalable.index.Errors.IndexError
 import services.scalable.index.grpc.IndexContext
-import services.scalable.index.impl.RichAsyncIterator
+import services.scalable.index.impl.RichAsyncIndexIterator
 
 import java.util.concurrent.atomic.AtomicInteger
 import scala.collection.concurrent.TrieMap
@@ -536,7 +536,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
     }
   }
 
-  def inOrder(f: Tuple[K, V] => Boolean = _ => true)(implicit ord: Ordering[K]): AsyncIterator[Seq[Tuple[K, V]]] = new RichAsyncIterator[K, V](f) {
+  def inOrder(f: Tuple[K, V] => Boolean = _ => true)(implicit ord: Ordering[K]): AsyncIndexIterator[Seq[Tuple[K, V]]] = new RichAsyncIndexIterator[K, V](f) {
 
     override def hasNext(): Future[Boolean] = {
       if(!firstTime) return Future.successful(ctx.root.isDefined)
@@ -570,7 +570,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
     }
   }
 
-  def reverse(f: Tuple[K, V] => Boolean = _ => true)(implicit ord: Ordering[K]): AsyncIterator[Seq[Tuple[K, V]]] = new RichAsyncIterator[K, V](f) {
+  def reverse(f: Tuple[K, V] => Boolean = _ => true)(implicit ord: Ordering[K]): AsyncIndexIterator[Seq[Tuple[K, V]]] = new RichAsyncIndexIterator[K, V](f) {
 
     override def hasNext(): Future[Boolean] = {
       if(!firstTime) return Future.successful(ctx.root.isDefined)

@@ -65,10 +65,10 @@ class MainSpec extends Repeatable with Matchers {
       for(i<-0 until n){
 
         rand.nextBoolean() match {
-          case x if x && i > 0 && insertDup =>
+          case x if x && list.length > 0 && insertDup =>
 
             // Inserts some duplicate
-            val (k, v, _) = list(rand.nextInt(0, i))
+            val (k, v, _) = list(rand.nextInt(0, list.length))
             list = list :+ (k, v, false)
 
           case _ =>
@@ -83,7 +83,7 @@ class MainSpec extends Repeatable with Matchers {
         }
       }
 
-      //logger.debug(s"${Console.GREEN_B}INSERTING ${list.map{case (k, v, _) => new String(k)}}${Console.RESET}")
+      //logger.debug(s"${Console.GREEN_B}INSERTING ${list.map{case (k, v, _) => builder.ks(k)}}${Console.RESET}")
 
       val cmds = Seq(
         Commands.Insert(indexId, list)
@@ -130,7 +130,7 @@ class MainSpec extends Repeatable with Matchers {
 
       if(result.success){
 
-        logger.debug(s"${Console.MAGENTA_B}UPDATED RIGHT LAST VERSION ${list.map{case (k, _, _) => new String(k)}}...${Console.RESET}")
+        logger.debug(s"${Console.MAGENTA_B}UPDATED RIGHT LAST VERSION ${list.map{case (k, _, _) => builder.ks(k)}}...${Console.RESET}")
 
         val newDescriptor = Await.result(index.save(), Duration.Inf)
         index = new QueryableIndex[K, V](newDescriptor)(builder)
@@ -143,7 +143,7 @@ class MainSpec extends Repeatable with Matchers {
 
       index = new QueryableIndex[K, V](descriptorBackup)(builder)
       result.error.get.printStackTrace()
-      logger.debug(s"${Console.CYAN_B}UPDATED WRONG LAST VERSION ${list.map { case (k, _, _) => new String(k) }}...${Console.RESET}")
+      logger.debug(s"${Console.CYAN_B}UPDATED WRONG LAST VERSION ${list.map { case (k, _, _) => builder.ks(k) }}...${Console.RESET}")
     }
 
     def remove(): Unit = {
@@ -171,7 +171,7 @@ class MainSpec extends Repeatable with Matchers {
         val newDescriptor = Await.result(index.save(), Duration.Inf)
         index = new QueryableIndex[K, V](newDescriptor)(builder)
 
-        logger.debug(s"${Console.YELLOW_B}REMOVED RIGHT VERSION ${list.map { case (k, _) => new String(k) }}...${Console.RESET}")
+        logger.debug(s"${Console.YELLOW_B}REMOVED RIGHT VERSION ${list.map { case (k, _) => builder.ks(k) }}...${Console.RESET}")
         data = data.filterNot { case (k, _, _) => list.exists { case (k1, _) => bytesOrd.equiv(k, k1) } }
 
         return
@@ -179,7 +179,7 @@ class MainSpec extends Repeatable with Matchers {
 
       index = new QueryableIndex[K, V](descriptorBackup)(builder)
       result.error.get.printStackTrace()
-      logger.debug(s"${Console.RED_B}REMOVED WRONG VERSION ${list.map { case (k, _) => new String(k) }}...${Console.RESET}")
+      logger.debug(s"${Console.RED_B}REMOVED WRONG VERSION ${list.map { case (k, _) => builder.ks(k) }}...${Console.RESET}")
     }
 
     val n = 100
@@ -201,8 +201,8 @@ class MainSpec extends Repeatable with Matchers {
     val dlist = data.sortBy(_._1).map{case (k, v, _) => k -> v}
     val ilist = Await.result(TestHelper.all(index.inOrder()), Duration.Inf).map{case (k, v, _) => k -> v}
 
-    logger.debug(s"${Console.GREEN_B}tdata: ${dlist.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
-    logger.debug(s"${Console.MAGENTA_B}idata: ${ilist.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
+    logger.debug(s"${Console.GREEN_B}tdata: ${dlist.map{case (k, v) => builder.ks(k) -> builder.vs(v)}}${Console.RESET}\n")
+    logger.debug(s"${Console.MAGENTA_B}idata: ${ilist.map{case (k, v) => builder.ks(k) -> builder.vs(v)}}${Console.RESET}\n")
 
     Await.result(storage.close(), Duration.Inf)
 

@@ -1,16 +1,17 @@
 package services.scalable.index.impl
 
-import services.scalable.index.{AsyncIterator, Block, Tuple}
+import services.scalable.index.{AsyncIndexIterator, Block, Tuple}
 
 /**
  * This is a single threaded iterator that can be copied.
+ *
  * @param filter
  * @param limit
  * @tparam K
  * @tparam V
  */
-abstract class RichAsyncIterator[K, V](var filter: Tuple[K, V] => Boolean = (_: Tuple[K, V]) => true,
-                                       var limit: Int = Int.MaxValue) extends AsyncIterator[Seq[Tuple[K, V]]] {
+abstract class RichAsyncIndexIterator[K, V](var filter: Tuple[K, V] => Boolean = (_: Tuple[K, V]) => true,
+                                            var limit: Int = Int.MaxValue) extends AsyncIndexIterator[Seq[Tuple[K, V]]] {
 
   protected var counter = 0
   protected var cur: Option[Block[K, V]] = None

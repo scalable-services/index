@@ -127,7 +127,7 @@ class TemporalIndexSpec extends Repeatable {
       val result = Await.result(hDB.execute(cmds), Duration.Inf)
 
       if (result.success) {
-        logger.debug(s"${Console.MAGENTA_B}UPDATED RIGHT LAST VERSION ${list.map { case (k, _, _) => new String(k) }}...${Console.RESET}")
+        logger.debug(s"${Console.MAGENTA_B}UPDATED RIGHT LAST VERSION ${list.map { case (k, _, _) => indexBuilder.ks(k) }}...${Console.RESET}")
 
         data = data.filterNot { case (k, _, _) => list.exists { case (k1, _, _) => bytesOrd.equiv(k, k1) } }
         data = data ++ list.map { case (k, v, _) => (k, v, true) }
@@ -147,7 +147,7 @@ class TemporalIndexSpec extends Repeatable {
 
       hDB = new TemporalIndex[K, V](descriptorBackup)(indexBuilder, historyBuilder)
       result.error.get.printStackTrace()
-      logger.debug(s"${Console.RED_B}UPDATED WRONG LAST VERSION ${list.map { case (k, _, _) => new String(k) }}...${Console.RESET}")
+      logger.debug(s"${Console.RED_B}UPDATED WRONG LAST VERSION ${list.map { case (k, _, _) => indexBuilder.ks(k) }}...${Console.RESET}")
     }
 
     def remove(): Unit = {
@@ -168,7 +168,7 @@ class TemporalIndexSpec extends Repeatable {
       val result = Await.result(hDB.execute(cmds), Duration.Inf)
 
       if (result.success) {
-        logger.debug(s"${Console.RED_B}REMOVED RIGHT VERSION ${list.map { case (k, _) => new String(k) }}...${Console.RESET}")
+        logger.debug(s"${Console.RED_B}REMOVED RIGHT VERSION ${list.map { case (k, _) => indexBuilder.ks(k) }}...${Console.RESET}")
         data = data.filterNot { case (k, _, _) => list.exists { case (k1, _) => bytesOrd.equiv(k, k1) } }
 
         val tmp = System.nanoTime()
@@ -186,7 +186,7 @@ class TemporalIndexSpec extends Repeatable {
 
       hDB = new TemporalIndex[K, V](descriptorBackup)(indexBuilder, historyBuilder)
       result.error.get.printStackTrace()
-      logger.debug(s"${Console.RED_B}REMOVED WRONG VERSION ${list.map { case (k, _) => new String(k) }}...${Console.RESET}")
+      logger.debug(s"${Console.RED_B}REMOVED WRONG VERSION ${list.map { case (k, _) => indexBuilder.ks(k) }}...${Console.RESET}")
     }
 
     val n = 100
