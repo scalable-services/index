@@ -398,7 +398,7 @@ class QueryableIndexDev[K, V](override val descriptor: IndexContext)(override va
   }
 
   def range(from: K, to: K, fromInclusive: Boolean, toInclusive: Boolean, reverse: Boolean): RichAsyncIndexIterator[K, V] = {
-    val it = asc(from, fromInclusive)(builder.ord)
+    val it = if(reverse) desc(to, toInclusive)(builder.ord) else asc(from, fromInclusive)(builder.ord)
 
     it.filter = k => {
       ((fromInclusive && builder.ord.gteq(k._1, from)) || builder.ord.gt(k._1, from)) &&

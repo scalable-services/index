@@ -252,7 +252,7 @@ class QueriesSpecDev2 extends Repeatable with Matchers {
         }
       }
 
-      val reverse = false//rand.nextBoolean()
+      val reverse = rand.nextBoolean()
 
       /*val idx2 = data.indexWhere(x => prefixComp.equiv(x._1, prefix) && (inclusive && suffixComp.gteq(x._1, term) || suffixComp.gt(x._1, term)))
       var slice2 = if (idx2 >= 0) data.slice(idx2, data.length).filter { x => prefixComp.equiv(x._1, prefix) && (inclusive && suffixComp.gteq(x._1, term) || suffixComp.gt(x._1, term)) }.map { x => x._1 -> x._2 }
