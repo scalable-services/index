@@ -42,38 +42,6 @@ class Meta[K, V](override val id: String,
     binSearch(k, pos + 1, end)
   }
 
-  def binSearchGt(k: K, start: Int = 0, end: Int = pointers.length - 1, inclusive: Boolean)(implicit ord: Ordering[K]): (Boolean, Int) = {
-    if(start > end) return false -> start
-
-    val pos = start + (end - start)/2
-    val c = ord.compare(k, pointers(pos)._1)
-
-    if(c < 0) return binSearch(k, start, pos - 1)
-
-    if(c == 0) {
-      if(inclusive) return true -> pos
-      return false -> pos
-    }
-
-    true -> (pos + 1)
-  }
-
-  def binSearchLt(k: K, start: Int = 0, end: Int = pointers.length - 1, inclusive: Boolean)(implicit ord: Ordering[K]): (Boolean, Int) = {
-    if(start > end) return false -> start
-
-    val pos = start + (end - start)/2
-    val c = ord.compare(k, pointers(pos)._1)
-
-    if(c == 0){
-      if(inclusive) return true -> pos
-      return false -> pos
-    }
-
-    if(c < 0) return true -> (pos - 1)
-
-    binSearch(k, pos + 1, end)
-  }
-
   def findPath(k: K)(implicit ord: Ordering[K]): (String, String) = {
     val (_, pos) = binSearch(k)
     pointers(if(pos < pointers.length) pos else pos - 1)._2.unique_id

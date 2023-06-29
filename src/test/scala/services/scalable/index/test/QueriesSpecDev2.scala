@@ -1,19 +1,18 @@
 package services.scalable.index.test
 
-import com.google.common.base.Charsets
 import io.netty.util.internal.ThreadLocalRandom
 import org.apache.commons.lang3.RandomStringUtils
 import org.scalatest.matchers.should.Matchers
 import org.slf4j.LoggerFactory
 import services.scalable.index.grpc._
 import services.scalable.index.impl._
-import services.scalable.index.{Bytes, Commands, DefaultComparators, DefaultPrinters, DefaultSerializers, IndexBuilder, QueryableIndex, QueryableIndexDev}
+import services.scalable.index.{Commands, IndexBuilder, QueryableIndexDev}
 
 import java.util.UUID
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
 
-class QueriesSpec extends Repeatable with Matchers {
+class QueriesSpecDev2 extends Repeatable with Matchers {
 
   override val times: Int = 1000
 
@@ -27,11 +26,11 @@ class QueriesSpec extends Repeatable with Matchers {
     type K = String
     type V = String
 
-    import services.scalable.index.DefaultSerializers._
     import services.scalable.index.DefaultComparators._
+    import services.scalable.index.DefaultSerializers._
 
-    val NUM_LEAF_ENTRIES = 4//rand.nextInt(4, 64)
-    val NUM_META_ENTRIES = 4//rand.nextInt(4, 64)
+    val NUM_LEAF_ENTRIES = 8//rand.nextInt(4, 64)
+    val NUM_META_ENTRIES = 8//rand.nextInt(4, 64)
 
     val indexId = UUID.randomUUID().toString
 
@@ -61,14 +60,14 @@ class QueriesSpec extends Repeatable with Matchers {
     var data = Seq.empty[(K, V, Boolean)]
     var index = new QueryableIndexDev[K, V](indexContext)(builder)
 
-    val prefixes = (0 until 10).map{_ => RandomStringUtils.randomAlphabetic(3)}
+    val prefixes = (0 until 10).map{_ => RandomStringUtils.randomAlphabetic(3).toLowerCase}
       .distinct.toList
 
     def insert(): Unit = {
 
       val descriptorBackup = index.descriptor
 
-      val n = rand.nextInt(1, 1000)
+      val n = 1000//rand.nextInt(20, 1000)
       var list = Seq.empty[Tuple3[K, V, Boolean]]
 
       val insertDup = rand.nextBoolean()
@@ -87,8 +86,8 @@ class QueriesSpec extends Repeatable with Matchers {
             //val k = rand.nextInt(1, 1000)//RandomStringUtils.randomAlphanumeric(5, 10).getBytes(Charsets.UTF_8)
             //val v = rand.nextInt(1, 1000)//RandomStringUtils.randomAlphanumeric(5).getBytes(Charsets.UTF_8)
 
-            val k = s"${prefixes(rand.nextInt(0, prefixes.length))}${RandomStringUtils.randomAlphanumeric(5, 10)}".toLowerCase
-            val v = RandomStringUtils.randomAlphanumeric(5)
+            val k = s"${prefixes(rand.nextInt(0, prefixes.length))}${RandomStringUtils.randomAlphabetic(5)}".toLowerCase
+            val v = RandomStringUtils.randomAlphabetic(5).toLowerCase
 
 
             if (!data.exists { case (k1, _, _) => ordering.equiv(k, k1) } &&
@@ -134,7 +133,7 @@ class QueriesSpec extends Repeatable with Matchers {
 
       val n = if(data.length >= 2) rand.nextInt(1, data.length) else 1
       val list = scala.util.Random.shuffle(data).slice(0, n).map { case (k, v, _) =>
-        (k, RandomStringUtils.randomAlphanumeric(5), lastVersion)
+        (k, RandomStringUtils.randomAlphabetic(5).toLowerCase, lastVersion)
       }
 
       val cmds = Seq(
@@ -197,10 +196,10 @@ class QueriesSpec extends Repeatable with Matchers {
       logger.debug(s"${Console.RED_B}REMOVED WRONG VERSION ${list.map { case (k, _) => builder.ks(k) }}...${Console.RESET}")
     }
 
-    val n = 10
+    val n = 1
 
     for(i<-0 until n){
-      rand.nextInt(1, 4) match {
+      /*rand.nextInt(1, 4)*/1 match {
         case 1 => insert()
         case 2 if !data.isEmpty => update()
         case 3 if !data.isEmpty => remove()
@@ -208,6 +207,7 @@ class QueriesSpec extends Repeatable with Matchers {
       }
     }
 
+    val list = data
     data = data.sortBy(_._1)
 
     val dlist = data.map{case (k, v, _) => k -> v}
@@ -220,14 +220,7 @@ class QueriesSpec extends Repeatable with Matchers {
 
     assert(TestHelper.isColEqual(dlist, ilist))
 
-    if(!data.isEmpty) {
-
-      val prefixComp = new Ordering[K] {
-        override def compare(k: K, term: K): Int = {
-          val pk = k.slice(0, 3)
-          ordering.compare(pk, term)
-        }
-      }
+    if(data.length > 1) {
 
       val suffixComp = new Ordering[K] {
         override def compare(k: K, term: K): Int = {
@@ -237,112 +230,61 @@ class QueriesSpec extends Repeatable with Matchers {
         }
       }
 
-      val inclusive = rand.nextBoolean()
-      val pos = rand.nextInt(0, data.length)
-      val (k, _, _) = data(pos)
-      val prefix = k.slice(0, 3)
+      val fromInclusive = rand.nextBoolean()
+      val toInclusive = rand.nextBoolean()
 
-      var idx = data.indexWhere{x => if(inclusive) builder.ord.gteq(x._1, k) else builder.ord.gt(x._1, k)}
-      val gtData = (if(idx >= 0) data.slice(idx, data.length) else Seq.empty[(K, V, Boolean)])
-        .map(x => x._1 -> x._2).toList
+      val posFrom = rand.nextInt(0, data.length)
+      val posTo = rand.nextInt(posFrom, data.length)
 
-      idx = data.indexWhere { x => builder.ord.gteq(x._1, k) }
-      val ltData = (if (idx >= 0) data.slice(0, if(inclusive) idx + 1 else idx) else Seq.empty[(K, V, Boolean)])
-        .map(x => x._1 -> x._2).toList
+      val (kFrom, _, _) = data(posFrom)
+      val (kTo, _, _) = data(posTo)
 
-      idx = data.indexWhere { x => prefixComp.equiv(x._1, prefix) }
-      val prefixData = (if (idx >= 0) data.slice(idx, data.length).takeWhile(x => prefixComp.equiv(x._1, prefix)) else Seq.empty[(K, V, Boolean)])
-        .map(x => x._1 -> x._2).toList
+      val prefixFrom = kFrom.slice(0, 3)
+      val prefixTo = kTo.slice(0, 3)
 
-      val prefixDataReverse = prefixData.reverse
+      val termFrom = kFrom.slice(3, kFrom.length)
+      val termTo = kTo.slice(3, kTo.length)
 
-      val prefixOrdFilter = 1//Seq(0, 1)(rand.nextInt(0, 2))
-      val term = k.slice(3, k.length)
+      val prefixComp = new Ordering[K] {
+        override def compare(x: K, prefix: K): Int = {
+          val pk = x.slice(0, 3)
+          ordering.compare(pk, prefix)
+        }
+      }
 
-      idx = data.indexWhere { x =>
-        (prefixOrdFilter match {
-          case 0 => prefixComp.equiv(x._1, prefix)
-          case 1 => prefixComp.gt(x._1, prefix)
-        }) && (inclusive && suffixComp.gteq(x._1, term) ||
-        suffixComp.gt(x._1, term)) }
-      val gtPrefixData = (if (idx >= 0) data.slice(idx, data.length).takeWhile(x => (prefixOrdFilter match {
-        case 0 => prefixComp.equiv(x._1, prefix)
-        case 1 => prefixComp.gt(x._1, prefix)
-      }) && (inclusive && suffixComp.gteq(x._1, term) ||
-        suffixComp.gt(x._1, term))) else Seq.empty[(K, V, Boolean)])
-        .map(x => x._1 -> x._2).toList
+      val reverse = false//rand.nextBoolean()
 
-      var itr = index.gt(k, inclusive, false)
-      val gtIndex = Await.result(TestHelper.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
+      /*val idx2 = data.indexWhere(x => prefixComp.equiv(x._1, prefix) && (inclusive && suffixComp.gteq(x._1, term) || suffixComp.gt(x._1, term)))
+      var slice2 = if (idx2 >= 0) data.slice(idx2, data.length).filter { x => prefixComp.equiv(x._1, prefix) && (inclusive && suffixComp.gteq(x._1, term) || suffixComp.gt(x._1, term)) }.map { x => x._1 -> x._2 }
+        else Seq.empty[(K, V)]*/
 
-      itr = index.lt(k, inclusive, false)
-      val ltIndex = Await.result(TestHelper.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
+      /*val idx2 = data.indexWhere(x => prefixComp.equiv(x._1, prefix) && (inclusive && suffixComp.lteq(x._1, term) || suffixComp.lt(x._1, term)))
+      var slice2 = if (idx2 >= 0) data.slice(idx2, data.length).filter { x => prefixComp.equiv(x._1, prefix) && (inclusive && suffixComp.lteq(x._1, term) || suffixComp.lt(x._1, term)) }.map { x => x._1 -> x._2 }
+      else Seq.empty[(K, V)]*/
 
-      itr = index.lt(k, inclusive, true)
-      val ltrIndex = Await.result(TestHelper.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
+      val idx2 = data.indexWhere(k => (fromInclusive && builder.ord.gteq(k._1, kFrom)) || builder.ord.gt(k._1, kFrom))
+      var slice2 = if (idx2 >= 0) data.slice(idx2, data.length).filter { k =>
+        ((fromInclusive && builder.ord.gteq(k._1, kFrom)) || builder.ord.gt(k._1, kFrom)) &&
+          ((toInclusive && builder.ord.lteq(k._1, kTo)) || builder.ord.lt(k._1, kTo))
+      }.map{x => x._1 -> x._2}.toList else Seq.empty[(K, V)]
 
-      itr = index.gt(k, inclusive, true)
-      val gtrIndex = Await.result(TestHelper.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
+      slice2 = if(reverse) slice2.reverse else slice2
 
-      itr = index.prefix(prefix, false)(prefixComp)
-      val prefixIndex = Await.result(TestHelper.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
-
-      itr = index.prefix(prefix, true)(prefixComp)
-      val prefixIndexReverse = Await.result(TestHelper.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
-
-      itr = index.gt(prefix, term, inclusive, false)(prefixComp, ordering)
+      //val itr = index.gt(prefix, k, inclusive, reverse)(prefixComp, ordering)
+      //val itr = index.lt(prefix, k, inclusive, reverse)(prefixComp, ordering)
+      val itr = index.range(kFrom, kTo, fromInclusive, toInclusive, reverse)
       val gtPrefixIndex = Await.result(TestHelper.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
 
-      val cr1 = gtIndex == gtData
-      val cr2 = ltIndex == ltData
+      val cr = slice2 == gtPrefixIndex
 
-      if(!cr1){
+      if(!cr){
+        //index.prettyPrint()
+        //logger.debug(s"""${Console.GREEN_B}INSERTING ${list.map{case (k, v, _) => s""""${builder.ks(k)}" -> "${builder.vs(v)}"""" }}${Console.RESET}""")
+
         println()
       }
 
-      if (!cr2) {
-        println()
-      }
-
-      assert(cr1 && cr2)
-
-      val cr3 = gtrIndex == gtData.reverse
-      val cr4 = ltrIndex == ltData.reverse
-
-      if (!cr3) {
-        println()
-      }
-
-      if (!cr3) {
-        println()
-      }
-
-      assert(cr3 && cr4)
-
-      val cr5 = prefixData == prefixIndex
-      val cr6 = prefixDataReverse == prefixIndexReverse
-
-      if(!cr5){
-        println()
-      }
-
-      if (!cr5) {
-        println()
-      }
-
-      if (!cr6) {
-        println()
-      }
-
-      assert(cr5 && cr6)
-
-      val cr7 = gtPrefixData == gtPrefixIndex
-
-      if(!cr7){
-        println()
-      }
-
-      assert(cr7)
+      assert(cr)
 
       logger.info(Await.result(index.save(), Duration.Inf).toString)
       println()
