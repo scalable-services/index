@@ -272,16 +272,16 @@ class QueriesSpec extends Repeatable with Matchers {
         suffixComp.gt(x._1, term))) else Seq.empty[(K, V, Boolean)])
         .map(x => x._1 -> x._2).toList
 
-      var itr = index.gt(k, inclusive, false)
+      var itr = index.gt(k, inclusive, false)(builder.ord)
       val gtIndex = Await.result(TestHelper.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
 
-      itr = index.lt(k, inclusive, false)
+      itr = index.lt(k, inclusive, false)(builder.ord)
       val ltIndex = Await.result(TestHelper.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
 
-      itr = index.lt(k, inclusive, true)
+      itr = index.lt(k, inclusive, true)(builder.ord)
       val ltrIndex = Await.result(TestHelper.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
 
-      itr = index.gt(k, inclusive, true)
+      itr = index.gt(k, inclusive, true)(builder.ord)
       val gtrIndex = Await.result(TestHelper.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
 
       itr = index.prefix(prefix, false)(prefixComp)
@@ -290,7 +290,7 @@ class QueriesSpec extends Repeatable with Matchers {
       itr = index.prefix(prefix, true)(prefixComp)
       val prefixIndexReverse = Await.result(TestHelper.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
 
-      itr = index.gt(prefix, term, inclusive, false)(prefixComp, ordering)
+      itr = index.gt(prefix, term, inclusive, false)(prefixComp, builder.ord)
       val gtPrefixIndex = Await.result(TestHelper.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
 
       val cr1 = gtIndex == gtData

@@ -207,7 +207,6 @@ class QueriesSpecDev2 extends Repeatable with Matchers {
       }
     }
 
-    val list = data
     data = data.sortBy(_._1)
 
     val dlist = data.map{case (k, v, _) => k -> v}
@@ -220,18 +219,18 @@ class QueriesSpecDev2 extends Repeatable with Matchers {
 
     assert(TestHelper.isColEqual(dlist, ilist))
 
-    if(data.length > 1) {
+    val suffixComp = new Ordering[K] {
+      override def compare(k: K, term: K): Int = {
+        val suffix = k.slice(3, k.length)
 
-      val suffixComp = new Ordering[K] {
-        override def compare(k: K, term: K): Int = {
-          val suffix = k.slice(3, k.length)
-
-          ordering.compare(suffix, term)
-        }
+        ordering.compare(suffix, term)
       }
+    }
 
+    if(!data.isEmpty) {
       val fromInclusive = rand.nextBoolean()
       val toInclusive = rand.nextBoolean()
+      val reverse = rand.nextBoolean()
 
       val posFrom = rand.nextInt(0, data.length)
       val posTo = rand.nextInt(posFrom, data.length)
@@ -252,45 +251,145 @@ class QueriesSpecDev2 extends Repeatable with Matchers {
         }
       }
 
-      val reverse = rand.nextBoolean()
+      def testGt(term: K, inclusive: Boolean, reverse: Boolean)(termComp: Ordering[K]): Unit = {
+        var idx = data.reverse.indexWhere { case (k, _, _) =>
+          inclusive && termComp.gteq(k, term) || termComp.gt(k, term)
+        }
 
-      /*val idx2 = data.indexWhere(x => prefixComp.equiv(x._1, prefix) && (inclusive && suffixComp.gteq(x._1, term) || suffixComp.gt(x._1, term)))
-      var slice2 = if (idx2 >= 0) data.slice(idx2, data.length).filter { x => prefixComp.equiv(x._1, prefix) && (inclusive && suffixComp.gteq(x._1, term) || suffixComp.gt(x._1, term)) }.map { x => x._1 -> x._2 }
-        else Seq.empty[(K, V)]*/
+        idx = if (idx < 0) 0 else idx
 
-      /*val idx2 = data.indexWhere(x => prefixComp.equiv(x._1, prefix) && (inclusive && suffixComp.lteq(x._1, term) || suffixComp.lt(x._1, term)))
-      var slice2 = if (idx2 >= 0) data.slice(idx2, data.length).filter { x => prefixComp.equiv(x._1, prefix) && (inclusive && suffixComp.lteq(x._1, term) || suffixComp.lt(x._1, term)) }.map { x => x._1 -> x._2 }
-      else Seq.empty[(K, V)]*/
+        var slice = if (idx >= 0) data.slice(idx, data.length).filter { x =>
+          inclusive && termComp.gteq(x._1, term) || termComp.gt(x._1, term)
+        }.map { x => x._1 -> x._2 } else Seq.empty[(K, V)]
 
-      val idx2 = data.indexWhere(k => (fromInclusive && builder.ord.gteq(k._1, kFrom)) || builder.ord.gt(k._1, kFrom))
-      var slice2 = if (idx2 >= 0) data.slice(idx2, data.length).filter { k =>
-        ((fromInclusive && builder.ord.gteq(k._1, kFrom)) || builder.ord.gt(k._1, kFrom)) &&
-          ((toInclusive && builder.ord.lteq(k._1, kTo)) || builder.ord.lt(k._1, kTo))
-      }.map{x => x._1 -> x._2}.toList else Seq.empty[(K, V)]
+        slice = if (reverse) slice.reverse else slice
 
-      slice2 = if(reverse) slice2.reverse else slice2
+        val itr = index.gt(term, inclusive, reverse)(termComp)
+        val indexData = Await.result(TestHelper.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
 
-      //val itr = index.gt(prefix, k, inclusive, reverse)(prefixComp, ordering)
-      //val itr = index.lt(prefix, k, inclusive, reverse)(prefixComp, ordering)
-      val itr = index.range(kFrom, kTo, fromInclusive, toInclusive, reverse)
-      val gtPrefixIndex = Await.result(TestHelper.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
+        val cr = slice == indexData
 
-      val cr = slice2 == gtPrefixIndex
+        if (!cr) {
+          println()
+        }
 
-      if(!cr){
-        //index.prettyPrint()
-        //logger.debug(s"""${Console.GREEN_B}INSERTING ${list.map{case (k, v, _) => s""""${builder.ks(k)}" -> "${builder.vs(v)}"""" }}${Console.RESET}""")
-
-        println()
+        assert(cr)
       }
 
-      assert(cr)
+      def testGtPrefix(prefix: K, term: K, inclusive: Boolean, reverse: Boolean)(prefixComp: Ordering[K], termComp: Ordering[K]): Unit = {
+        var idx = data.reverse.indexWhere { case (k, _, _) =>
+          prefixComp.gteq(k, prefix) && (inclusive && termComp.gteq(k, term) || termComp.gt(k, term))
+        }
+
+        idx = if (idx < 0) 0 else idx
+
+        var slice = if (idx >= 0) data.slice(idx, data.length).filter { x =>
+          prefixComp.equiv(x._1, prefix) &&
+            (inclusive && termComp.gteq(x._1, term) || termComp.gt(x._1, term))
+        }.map { x => x._1 -> x._2 } else Seq.empty[(K, V)]
+
+        slice = if (reverse) slice.reverse else slice
+
+        val itr = index.gt(prefix, term, inclusive, reverse)(prefixComp, termComp)
+        val indexData = Await.result(TestHelper.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
+
+        val cr = slice == indexData
+
+        if (!cr) {
+          println()
+        }
+
+        assert(cr)
+      }
+
+      def testLt(term: K, inclusive: Boolean, reverse: Boolean)(termComp: Ordering[K]): Unit = {
+        var idx = data.indexWhere { case (k, _, _) =>
+          inclusive && termComp.lteq(k, term) || termComp.lt(k, term)
+        }
+
+        idx = if (idx < 0) 0 else idx
+
+        var slice = if (idx >= 0) data.slice(idx, data.length).filter { x =>
+          inclusive && termComp.lteq(x._1, term) || termComp.lt(x._1, term)
+        }.map { x => x._1 -> x._2 } else Seq.empty[(K, V)]
+
+        slice = if (reverse) slice.reverse else slice
+
+        val itr = index.lt(term, inclusive, reverse)(termComp)
+        val indexData = Await.result(TestHelper.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
+
+        val cr = slice == indexData
+
+        if (!cr) {
+          println()
+        }
+
+        assert(cr)
+      }
+
+      def testLtPrefix(prefix: K, term: K, inclusive: Boolean, reverse: Boolean)(prefixComp: Ordering[K], termComp: Ordering[K]): Unit = {
+        var idx = data.indexWhere { case (k, _, _) =>
+          prefixComp.lteq(k, prefix) && (inclusive && termComp.lteq(k, term) || termComp.lt(k, term))
+        }
+
+        idx = if (idx < 0) 0 else idx
+
+        var slice = if (idx >= 0) data.slice(idx, data.length).filter { x =>
+          prefixComp.equiv(x._1, prefix) &&
+            (inclusive && termComp.lteq(x._1, term) || termComp.lt(x._1, term))
+        }.map { x => x._1 -> x._2 } else Seq.empty[(K, V)]
+
+        slice = if (reverse) slice.reverse else slice
+
+        val itr = index.lt(prefix, term, inclusive, reverse)(prefixComp, termComp)
+        val indexData = Await.result(TestHelper.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
+
+        val cr = slice == indexData
+
+        if (!cr) {
+          println()
+        }
+
+        assert(cr)
+      }
+
+      def testRange(from: K, to: K, inclusiveFrom: Boolean, inclusiveTo: Boolean, reverse: Boolean)(termComp: Ordering[K]): Unit = {
+        var idx = data.indexWhere { case (k, _, _) =>
+          inclusiveFrom && termComp.gteq(k, from) || termComp.gt(k, from)
+        }
+
+        idx = if (idx < 0) 0 else idx
+
+        var slice = if (idx >= 0) data.slice(idx, data.length).filter { k =>
+          ((fromInclusive && termComp.gteq(k._1, from)) || termComp.gt(k._1, from)) &&
+            ((toInclusive && termComp.lteq(k._1, to)) || termComp.lt(k._1, to))
+        }.map { x => x._1 -> x._2 } else Seq.empty[(K, V)]
+
+        slice = if (reverse) slice.reverse else slice
+
+        val itr = index.range(from, to, fromInclusive, toInclusive, reverse)(termComp)
+        val indexData = Await.result(TestHelper.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
+
+        val cr = slice == indexData
+
+        if (!cr) {
+          println()
+        }
+
+        assert(cr)
+      }
+
+      testGt(kFrom, fromInclusive, reverse)(ordering)
+      testGtPrefix(prefixFrom, kFrom, fromInclusive, reverse)(prefixComp, ordering)
+      testLt(kFrom, fromInclusive, reverse)(ordering)
+      testLtPrefix(prefixFrom, kFrom, fromInclusive, reverse)(prefixComp, ordering)
+
+      if (data.length > 1)
+        testRange(kFrom, kTo, fromInclusive, toInclusive, reverse)(ordering)
 
       logger.info(Await.result(index.save(), Duration.Inf).toString)
       println()
-
     }
-
   }
 
 }

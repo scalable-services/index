@@ -2,8 +2,6 @@ package services.scalable.index
 
 import services.scalable.index.grpc.IndexContext
 import services.scalable.index.impl.RichAsyncIndexIterator
-
-import java.util.concurrent.atomic.AtomicInteger
 import scala.concurrent.Future
 
 /**
@@ -91,11 +89,9 @@ class QueryableIndexDev[K, V](override val descriptor: IndexContext)(override va
       private def next1(): Future[Seq[(K, V, String)]] = {
         if (root.isEmpty || stop) return Future.successful(Seq.empty[(K, V, String)])
         ctx.getLeaf(root.get).map { block =>
-
           val list = block.tuples.filter(filter)
           stop = list.isEmpty
-
-          list
+          if(stop) list else checkCounter(list)
         }
       }
 
@@ -134,11 +130,9 @@ class QueryableIndexDev[K, V](override val descriptor: IndexContext)(override va
       private def prev1(): Future[Seq[(K, V, String)]] = {
         if (root.isEmpty || stop) return Future.successful(Seq.empty[(K, V, String)])
         ctx.getLeaf(root.get).map { block =>
-
           val list = block.tuples.reverse.filter(filter)
           stop = list.isEmpty
-
-          list
+          if(stop) list else checkCounter(list)
         }
       }
 
@@ -177,11 +171,9 @@ class QueryableIndexDev[K, V](override val descriptor: IndexContext)(override va
       private def next1(): Future[Seq[(K, V, String)]] = {
         if (root.isEmpty || stop) return Future.successful(Seq.empty[(K, V, String)])
         ctx.getLeaf(root.get).map { block =>
-
           val list = block.tuples.filter(filter)
           stop = list.isEmpty
-
-          list
+          if(stop) list else checkCounter(list)
         }
       }
 
@@ -220,11 +212,9 @@ class QueryableIndexDev[K, V](override val descriptor: IndexContext)(override va
       private def prev1(): Future[Seq[(K, V, String)]] = {
         if (root.isEmpty || stop) return Future.successful(Seq.empty[(K, V, String)])
         ctx.getLeaf(root.get).map { block =>
-
           val list = block.tuples.reverse.filter(filter)
           stop = list.isEmpty
-
-          list
+          if(stop) list else checkCounter(list)
         }
       }
 
@@ -238,19 +228,19 @@ class QueryableIndexDev[K, V](override val descriptor: IndexContext)(override va
     }
   }
 
-  def lt(term: K, termInclusive: Boolean, reverse: Boolean): RichAsyncIndexIterator[K, V] = {
-    val it = if(reverse) desc(term, termInclusive)(builder.ord) else head()
+  def lt(term: K, termInclusive: Boolean, reverse: Boolean)(termComp: Ordering[K]): RichAsyncIndexIterator[K, V] = {
+    val it = if(reverse) desc(term, termInclusive)(termComp) else head()
 
     it.filter = x => {
-      (termInclusive && builder.ord.lteq(x._1, term)) || builder.ord.lt(x._1, term)
+      (termInclusive && termComp.lteq(x._1, term)) || termComp.lt(x._1, term)
     }
 
     it
   }
 
   def lt(prefix: K, term: K, termInclusive: Boolean, reverse: Boolean)(prefixComp: Ordering[K], termComp: Ordering[K]): RichAsyncIndexIterator[K, V] = {
-    val it = if (reverse) desc(term, termInclusive)(builder.ord) else
-      asc(prefix, true)(builder.ord)
+    val it = if (reverse) desc(term, termInclusive)(termComp) else
+      asc(prefix, true)(termComp)
 
     it.filter = k => {
       prefixComp.equiv(k._1, prefix) && (termInclusive && termComp.lteq(k._1, term) || termComp.lt(k._1, term))
@@ -259,11 +249,11 @@ class QueryableIndexDev[K, V](override val descriptor: IndexContext)(override va
     it
   }
 
-  def gt(term: K, termInclusive: Boolean, reverse: Boolean): RichAsyncIndexIterator[K, V] = {
-    val it = if(reverse) tail() else asc(term, termInclusive)(builder.ord)
+  def gt(term: K, termInclusive: Boolean, reverse: Boolean)(termComp: Ordering[K]): RichAsyncIndexIterator[K, V] = {
+    val it = if(reverse) tail() else asc(term, termInclusive)(termComp)
 
     it.filter = k => {
-      (termInclusive && builder.ord.gteq(k._1, term)) || builder.ord.gt(k._1, term)
+      (termInclusive && termComp.gteq(k._1, term)) || termComp.gt(k._1, term)
     }
 
     it
@@ -294,11 +284,9 @@ class QueryableIndexDev[K, V](override val descriptor: IndexContext)(override va
       private def prev1(): Future[Seq[(K, V, String)]] = {
         if (root.isEmpty || stop) return Future.successful(Seq.empty[(K, V, String)])
         ctx.getLeaf(root.get).map { block =>
-
           val list = block.tuples.reverse.filter(filter)
           stop = list.isEmpty
-
-          list
+          if(stop) list else checkCounter(list)
         }
       }
 
@@ -314,7 +302,7 @@ class QueryableIndexDev[K, V](override val descriptor: IndexContext)(override va
 
   def prefix(term: K, reverse: Boolean)(prefixComp: Ordering[K], termComp: Ordering[K] = ord): RichAsyncIndexIterator[K, V] = {
     val it = if(reverse) desc2(term, true)(termComp)
-      else asc(term, true)(builder.ord)
+      else asc(term, true)(termComp)
 
     it.filter = x => {
       prefixComp.equiv(x._1, term)
@@ -336,7 +324,7 @@ class QueryableIndexDev[K, V](override val descriptor: IndexContext)(override va
           val reversed = m.pointers.reverse
 
           var idx = reversed.indexWhere{ case (k, p) =>
-            prefixComp.gteq(k, term) && (termInclusive && termComp.gteq(k, term) || termComp.gt(k, term))
+            prefixComp.gteq(k, prefix) && (termInclusive && termComp.gteq(k, term) || termComp.gt(k, term))
           }
 
           idx = if(idx < 0) 0 else idx
@@ -357,22 +345,11 @@ class QueryableIndexDev[K, V](override val descriptor: IndexContext)(override va
         }
       }
 
-      var firstBlock = false
-
       private def prev1(): Future[Seq[(K, V, String)]] = {
         if (root.isEmpty || stop) return Future.successful(Seq.empty[(K, V, String)])
         ctx.getLeaf(root.get).map { block =>
-
-          if(!firstBlock)
-            println(s"\nfirst block: ${block.tuples.reverse.map{x => builder.ks(x._1)}}\n")
-
           val list = block.tuples.reverse.filter(filter)
-
-          firstBlock = true
-
-          //stop = list.isEmpty
-
-          list
+          if(stop) list else checkCounter(list)
         }
       }
 
@@ -397,12 +374,12 @@ class QueryableIndexDev[K, V](override val descriptor: IndexContext)(override va
     it
   }
 
-  def range(from: K, to: K, fromInclusive: Boolean, toInclusive: Boolean, reverse: Boolean): RichAsyncIndexIterator[K, V] = {
-    val it = if(reverse) desc(to, toInclusive)(builder.ord) else asc(from, fromInclusive)(builder.ord)
+  def range(from: K, to: K, fromInclusive: Boolean, toInclusive: Boolean, reverse: Boolean)(termComp: Ordering[K]): RichAsyncIndexIterator[K, V] = {
+    val it = if(reverse) desc(to, toInclusive)(termComp) else asc(from, fromInclusive)(termComp)
 
     it.filter = k => {
-      ((fromInclusive && builder.ord.gteq(k._1, from)) || builder.ord.gt(k._1, from)) &&
-        ((toInclusive && builder.ord.lteq(k._1, to)) || builder.ord.lt(k._1, to))
+      ((fromInclusive && termComp.gteq(k._1, from)) || termComp.gt(k._1, from)) &&
+        ((toInclusive && termComp.lteq(k._1, to)) || termComp.lt(k._1, to))
     }
 
     it

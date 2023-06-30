@@ -11,7 +11,9 @@ import services.scalable.index.{AsyncIndexIterator, Block, Tuple}
  * @tparam V
  */
 abstract class RichAsyncIndexIterator[K, V](var filter: Tuple[K, V] => Boolean = (_: Tuple[K, V]) => true,
-                                            var limit: Int = Int.MaxValue) extends AsyncIndexIterator[Seq[Tuple[K, V]]] {
+                                            var limit: Int = -1) extends AsyncIndexIterator[Seq[Tuple[K, V]]] {
+
+  assert(limit != 0, "Limit must be < 0 (infinite) or > 0!")
 
   protected var counter = 0
   protected var cur: Option[Block[K, V]] = None
@@ -20,13 +22,18 @@ abstract class RichAsyncIndexIterator[K, V](var filter: Tuple[K, V] => Boolean =
   protected var stop = false
 
   def checkCounter(filtered: Seq[Tuple[K, V]]): Seq[Tuple[K, V]] = {
-    val len = filtered.length
+    if(limit < 0) {
+      counter += filtered.length
+      return filtered
+    }
 
-    if(counter + len >= limit){
+    if(counter + filtered.length >= limit){
       stop = true
     }
 
-    val n = Math.min(len, limit - counter)
+    val n = Math.min(filtered.length, limit - counter)
+
+    if(n <= 0) return Seq.empty[Tuple[K, V]]
 
     counter += n
 
