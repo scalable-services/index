@@ -41,11 +41,6 @@ class QueriesSpecDev2 extends Repeatable with Matchers {
 
     val ordering = ordString
 
-    /*val builder = IndexBuilder.create[K, V](DefaultComparators.ordInt)
-      .storage(storage)
-      .serializer(DefaultSerializers.grpcIntIntSerializer)
-      .keyToStringConverter(DefaultPrinters.intToStringPrinter)*/
-
     val builder = IndexBuilder.create[K, V](ordering)
       .storage(storage)
       .serializer(grpcStringStringSerializer)
@@ -67,7 +62,7 @@ class QueriesSpecDev2 extends Repeatable with Matchers {
 
       val descriptorBackup = index.descriptor
 
-      val n = 1000//rand.nextInt(20, 1000)
+      val n = rand.nextInt(20, 1000)
       var list = Seq.empty[Tuple3[K, V, Boolean]]
 
       val insertDup = rand.nextBoolean()
@@ -196,10 +191,10 @@ class QueriesSpecDev2 extends Repeatable with Matchers {
       logger.debug(s"${Console.RED_B}REMOVED WRONG VERSION ${list.map { case (k, _) => builder.ks(k) }}...${Console.RESET}")
     }
 
-    val n = 1
+    val n = rand.nextInt(1, 10)
 
     for(i<-0 until n){
-      /*rand.nextInt(1, 4)*/1 match {
+      rand.nextInt(1, 4) match {
         case 1 => insert()
         case 2 if !data.isEmpty => update()
         case 3 if !data.isEmpty => remove()
@@ -228,9 +223,9 @@ class QueriesSpecDev2 extends Repeatable with Matchers {
     }
 
     if(!data.isEmpty) {
-      val fromInclusive = rand.nextBoolean()
-      val toInclusive = rand.nextBoolean()
-      val reverse = rand.nextBoolean()
+      //val fromInclusive = rand.nextBoolean()
+      //val toInclusive = rand.nextBoolean()
+      //val reverse = rand.nextBoolean()
 
       val posFrom = rand.nextInt(0, data.length)
       val posTo = rand.nextInt(posFrom, data.length)
@@ -361,13 +356,13 @@ class QueriesSpecDev2 extends Repeatable with Matchers {
         idx = if (idx < 0) 0 else idx
 
         var slice = if (idx >= 0) data.slice(idx, data.length).filter { k =>
-          ((fromInclusive && termComp.gteq(k._1, from)) || termComp.gt(k._1, from)) &&
-            ((toInclusive && termComp.lteq(k._1, to)) || termComp.lt(k._1, to))
+          ((inclusiveFrom && termComp.gteq(k._1, from)) || termComp.gt(k._1, from)) &&
+            ((inclusiveTo && termComp.lteq(k._1, to)) || termComp.lt(k._1, to))
         }.map { x => x._1 -> x._2 } else Seq.empty[(K, V)]
 
         slice = if (reverse) slice.reverse else slice
 
-        val itr = index.range(from, to, fromInclusive, toInclusive, reverse)(termComp)
+        val itr = index.range(from, to, inclusiveFrom, inclusiveTo, reverse)(termComp)
         val indexData = Await.result(TestHelper.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
 
         val cr = slice == indexData
@@ -379,13 +374,13 @@ class QueriesSpecDev2 extends Repeatable with Matchers {
         assert(cr)
       }
 
-      testGt(kFrom, fromInclusive, reverse)(ordering)
-      testGtPrefix(prefixFrom, kFrom, fromInclusive, reverse)(prefixComp, ordering)
-      testLt(kFrom, fromInclusive, reverse)(ordering)
-      testLtPrefix(prefixFrom, kFrom, fromInclusive, reverse)(prefixComp, ordering)
+      testGt(kFrom, rand.nextBoolean(), rand.nextBoolean())(ordering)
+      testGtPrefix(prefixFrom, kFrom, rand.nextBoolean(), rand.nextBoolean())(prefixComp, ordering)
+      testLt(kFrom, rand.nextBoolean(), rand.nextBoolean())(ordering)
+      testLtPrefix(prefixFrom, kFrom, rand.nextBoolean(), rand.nextBoolean())(prefixComp, ordering)
 
       if (data.length > 1)
-        testRange(kFrom, kTo, fromInclusive, toInclusive, reverse)(ordering)
+        testRange(kFrom, kTo, rand.nextBoolean(), rand.nextBoolean(), rand.nextBoolean())(ordering)
 
       logger.info(Await.result(index.save(), Duration.Inf).toString)
       println()
