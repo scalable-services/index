@@ -4,7 +4,7 @@ import org.slf4j.LoggerFactory
 import services.scalable.index.Commands._
 import services.scalable.index.Errors.IndexError
 import services.scalable.index.grpc.IndexContext
-import services.scalable.index.impl.RichAsyncIterator
+import services.scalable.index.impl.RichAsyncIndexIterator
 
 import java.util.concurrent.atomic.AtomicInteger
 import scala.collection.concurrent.TrieMap
@@ -49,7 +49,9 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
     ctx.save()
   }
 
-  def findPath(k: K, start: Block[K,V], limit: Option[Block[K,V]])(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
+  def findPath(k: K, start: Block[K,V], limit: Option[Block[K,V]],
+               findPathFn: (K, Meta[K, V], Ordering[K]) => (String, String))
+              (implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
 
     if(limit.isDefined && limit.get.unique_id.equals(start.unique_id)){
       logger.debug(s"reached limit!")
@@ -62,15 +64,18 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
 
         meta.setPointers()
 
-        val bid = meta.findPath(k)
+        val bid = findPathFn(k, meta, ord)
 
         ctx.get(bid).flatMap { block =>
-          findPath(k, block, limit)
+          findPath(k, block, limit, findPathFn)
         }
     }
   }
 
-  def findPath(k: K, limit: Option[Block[K,V]] = None)(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
+  def findPath(k: K, limit: Option[Block[K,V]] = None,
+               findPathFn: (K, Meta[K, V], Ordering[K]) => (String, String) =
+               (k, m, ord) => m.findPath(k)(ord))
+              (implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
     if(ctx.root.isEmpty) {
       return Future.successful(None)
     }
@@ -79,7 +84,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
 
     ctx.get(ctx.root.get).flatMap { start =>
       ctx.setParent(bid, 0, None)
-      findPath(k, start, limit)
+      findPath(k, start, limit, findPathFn)
     }
   }
 
@@ -536,7 +541,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
     }
   }
 
-  def inOrder(f: Tuple[K, V] => Boolean = _ => true)(implicit ord: Ordering[K]): AsyncIterator[Seq[Tuple[K, V]]] = new RichAsyncIterator[K, V](f) {
+  def inOrder(f: Tuple[K, V] => Boolean = _ => true)(implicit ord: Ordering[K]): AsyncIndexIterator[Seq[Tuple[K, V]]] = new RichAsyncIndexIterator[K, V](f) {
 
     override def hasNext(): Future[Boolean] = {
       if(!firstTime) return Future.successful(ctx.root.isDefined)
@@ -570,7 +575,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
     }
   }
 
-  def reverse(f: Tuple[K, V] => Boolean = _ => true)(implicit ord: Ordering[K]): AsyncIterator[Seq[Tuple[K, V]]] = new RichAsyncIterator[K, V](f) {
+  def reverse(f: Tuple[K, V] => Boolean = _ => true)(implicit ord: Ordering[K]): AsyncIndexIterator[Seq[Tuple[K, V]]] = new RichAsyncIndexIterator[K, V](f) {
 
     override def hasNext(): Future[Boolean] = {
       if(!firstTime) return Future.successful(ctx.root.isDefined)

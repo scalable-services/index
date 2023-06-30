@@ -63,10 +63,10 @@ class CassandraSpec extends Repeatable with Matchers {
       for(i<-0 until n){
 
         rand.nextBoolean() match {
-          case x if x && i > 0 && insertDup =>
+          case x if x && list.length > 0 && insertDup =>
 
             // Inserts some duplicate
-            val (k, v, _) = list(rand.nextInt(0, i))
+            val (k, v, _) = list(rand.nextInt(0, list.length))
             list = list :+ (k, v, false)
 
           case _ =>

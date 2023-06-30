@@ -1,7 +1,7 @@
 package services.scalable.index
 
 import services.scalable.index.grpc.{IndexContext, RootRef}
-import services.scalable.index.impl.RichAsyncIterator
+import services.scalable.index.impl.RichAsyncIndexIterator
 
 import java.util.UUID
 import scala.concurrent.{ExecutionContext, Future}
@@ -21,8 +21,8 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override val b
   import builder._
 
   protected def ltr(fromPrefix: Option[K], fromWord: K, inclusiveFrom: Boolean,
-                    prefixOrd: Option[Ordering[K]], order: Ordering[K]): RichAsyncIterator[K, V] = {
-    new RichAsyncIterator[K, V] {
+                    prefixOrd: Option[Ordering[K]], order: Ordering[K]): RichAsyncIndexIterator[K, V] = {
+    new RichAsyncIndexIterator[K, V] {
 
       val sord = if(inclusiveFrom) new Ordering[K]{
         override def compare(term: K, y: K): Int = {
@@ -97,13 +97,13 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override val b
   }
 
   def lt(fromPrefix: Option[K], fromWord: K, inclusiveFrom: Boolean, reverse: Boolean)
-        (prefixOrd: Option[Ordering[K]], order: Ordering[K]): RichAsyncIterator[K, V] = {
+        (prefixOrd: Option[Ordering[K]], order: Ordering[K]): RichAsyncIndexIterator[K, V] = {
 
     if(reverse){
       return ltr(fromPrefix, fromWord, inclusiveFrom, prefixOrd, order)
     }
 
-    new RichAsyncIterator[K, V] {
+    new RichAsyncIndexIterator[K, V] {
 
       val sord: Ordering[K] = if(fromPrefix.isDefined){
         new Ordering[K]{
@@ -169,9 +169,9 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override val b
   }
 
   protected def gtr(fromWord: K, inclusiveFrom: Boolean, fromPrefix: Option[K],
-                    prefixOrd: Option[Ordering[K]], order: Ordering[K]): RichAsyncIterator[K, V] = {
+                    prefixOrd: Option[Ordering[K]], order: Ordering[K]): RichAsyncIndexIterator[K, V] = {
 
-    new RichAsyncIterator[K, V] {
+    new RichAsyncIndexIterator[K, V] {
 
       val sord: Ordering[K] = if(fromPrefix.isEmpty){
         new Ordering[K]{
@@ -241,13 +241,13 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override val b
   }
 
   def gt(fromPrefix: Option[K], fromWord: K, inclusiveFrom: Boolean, reverse: Boolean)
-        (prefixOrd: Option[Ordering[K]], order: Ordering[K]): RichAsyncIterator[K, V] = {
+        (prefixOrd: Option[Ordering[K]], order: Ordering[K]): RichAsyncIndexIterator[K, V] = {
 
     if(reverse){
       return gtr(fromWord, inclusiveFrom, fromPrefix, prefixOrd, order)
     }
 
-    new RichAsyncIterator[K, V] {
+    new RichAsyncIndexIterator[K, V] {
 
       val sord = if(inclusiveFrom) new Ordering[K]{
         override def compare(term: K, y: K): Int = {
@@ -323,9 +323,9 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override val b
     }
   }
 
-  protected def ranger(fromWord: K, toWord: K, inclusiveFrom: Boolean, inclusiveTo: Boolean, order: Ordering[K]): RichAsyncIterator[K, V] = {
+  protected def ranger(fromWord: K, toWord: K, inclusiveFrom: Boolean, inclusiveTo: Boolean, order: Ordering[K]): RichAsyncIndexIterator[K, V] = {
 
-    new RichAsyncIterator[K, V] {
+    new RichAsyncIndexIterator[K, V] {
 
       val sord = if(inclusiveFrom) new Ordering[K]{
         override def compare(term: K, y: K): Int = {
@@ -404,13 +404,13 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override val b
     }
   }
 
-  def range(fromWord: K, toWord: K, inclusiveFrom: Boolean, inclusiveTo: Boolean, reverse: Boolean)(implicit order: Ordering[K]): RichAsyncIterator[K, V] = {
+  def range(fromWord: K, toWord: K, inclusiveFrom: Boolean, inclusiveTo: Boolean, reverse: Boolean)(implicit order: Ordering[K]): RichAsyncIndexIterator[K, V] = {
 
     if(reverse){
       return ranger(fromWord, toWord, inclusiveFrom, inclusiveTo, order)
     }
 
-    new RichAsyncIterator[K, V] {
+    new RichAsyncIndexIterator[K, V] {
 
       val sord = if(inclusiveFrom) new Ordering[K]{
         override def compare(term: K, y: K): Int = {
@@ -489,7 +489,7 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override val b
     }
   }
 
-  protected def findr(word: K)(implicit order: Ordering[K]): RichAsyncIterator[K, V] = {
+  protected def findr(word: K)(implicit order: Ordering[K]): RichAsyncIndexIterator[K, V] = {
 
     val sord = new Ordering[K]{
       override def compare(word: K, y: K): Int = {
@@ -501,7 +501,7 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override val b
       }
     }
 
-    new RichAsyncIterator[K, V] {
+    new RichAsyncIndexIterator[K, V] {
 
       override def hasNext(): Future[Boolean] = {
         if(!firstTime) return Future.successful(ctx.root.isDefined)
@@ -560,13 +560,13 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override val b
     }
   }
 
-  def find(word: K, reverse: Boolean)(implicit order: Ordering[K]): RichAsyncIterator[K, V] = {
+  def find(word: K, reverse: Boolean)(implicit order: Ordering[K]): RichAsyncIndexIterator[K, V] = {
 
     if(reverse){
       return findr(word)(order)
     }
 
-    new RichAsyncIterator[K, V] {
+    new RichAsyncIndexIterator[K, V] {
       override def hasNext(): Future[Boolean] = {
         if(!firstTime) return Future.successful(ctx.root.isDefined)
         Future.successful(!stop && cur.isDefined)
@@ -624,19 +624,19 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override val b
     }
   }
 
-  def gt(term: K, inclusive: Boolean, reverse: Boolean)(implicit order: Ordering[K]): RichAsyncIterator[K, V] = {
+  def gt(term: K, inclusive: Boolean, reverse: Boolean)(implicit order: Ordering[K]): RichAsyncIndexIterator[K, V] = {
     gt(None, term, inclusive, reverse)(None, order)
   }
 
-  def gt(prefix: K, term: K, inclusive: Boolean, reverse: Boolean)(prefixOrd: Ordering[K], order: Ordering[K]): RichAsyncIterator[K, V] = {
+  def gt(prefix: K, term: K, inclusive: Boolean, reverse: Boolean)(prefixOrd: Ordering[K], order: Ordering[K]): RichAsyncIndexIterator[K, V] = {
     gt(Some(prefix), term, inclusive, reverse)(Some(prefixOrd), order)
   }
 
-  def lt(term: K, inclusive: Boolean, reverse: Boolean)(implicit order: Ordering[K]): RichAsyncIterator[K, V] = {
+  def lt(term: K, inclusive: Boolean, reverse: Boolean)(implicit order: Ordering[K]): RichAsyncIndexIterator[K, V] = {
     lt(None, term, inclusive, reverse)(None, order)
   }
 
-  def lt(prefix: K, term: K, inclusive: Boolean, reverse: Boolean)(prefixOrd: Ordering[K], order: Ordering[K]): RichAsyncIterator[K, V] = {
+  def lt(prefix: K, term: K, inclusive: Boolean, reverse: Boolean)(prefixOrd: Ordering[K], order: Ordering[K]): RichAsyncIndexIterator[K, V] = {
     lt(Some(prefix), term, inclusive, reverse)(Some(prefixOrd), order)
   }
 

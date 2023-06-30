@@ -6,7 +6,7 @@ import org.apache.commons.lang3.RandomStringUtils
 import org.slf4j.LoggerFactory
 import services.scalable.index.grpc.{IndexContext, TemporalContext}
 import services.scalable.index.impl._
-import services.scalable.index.{Commands, DefaultComparators, DefaultPrinters, DefaultSerializers, IndexBuilder, QueryableIndex, TemporalIndex}
+import services.scalable.index.{Cache, Commands, DefaultComparators, DefaultPrinters, DefaultSerializers, IndexBuilder, QueryableIndex, TemporalIndex}
 
 import java.util.UUID
 import scala.concurrent.Await
@@ -47,13 +47,17 @@ class TemporalIndexSpec extends Repeatable {
       IndexContext(s"$historyIndexId-history", NUM_LEAF_ENTRIES, NUM_META_ENTRIES)
     )), Duration.Inf).get
 
+    val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
+
     val indexBuilder = IndexBuilder.create[K, V](DefaultComparators.bytesOrd)
       .storage(storage)
+      .cache(cache)
       .serializer(grpcBytesBytesSerializer)
       .keyToStringConverter(DefaultPrinters.byteArrayToStringPrinter)
 
     val historyBuilder = IndexBuilder.create[Long, IndexContext](DefaultComparators.ordLong)
       .storage(storage)
+      .cache(cache)
       .serializer(DefaultSerializers.grpcLongIndexContextSerializer)
 
     var hDB = new TemporalIndex[K, V](tctx)(indexBuilder, historyBuilder)
@@ -123,7 +127,7 @@ class TemporalIndexSpec extends Repeatable {
       val result = Await.result(hDB.execute(cmds), Duration.Inf)
 
       if (result.success) {
-        logger.debug(s"${Console.MAGENTA_B}UPDATED RIGHT LAST VERSION ${list.map { case (k, _, _) => new String(k) }}...${Console.RESET}")
+        logger.debug(s"${Console.MAGENTA_B}UPDATED RIGHT LAST VERSION ${list.map { case (k, _, _) => indexBuilder.ks(k) }}...${Console.RESET}")
 
         data = data.filterNot { case (k, _, _) => list.exists { case (k1, _, _) => bytesOrd.equiv(k, k1) } }
         data = data ++ list.map { case (k, v, _) => (k, v, true) }
@@ -143,7 +147,7 @@ class TemporalIndexSpec extends Repeatable {
 
       hDB = new TemporalIndex[K, V](descriptorBackup)(indexBuilder, historyBuilder)
       result.error.get.printStackTrace()
-      logger.debug(s"${Console.RED_B}UPDATED WRONG LAST VERSION ${list.map { case (k, _, _) => new String(k) }}...${Console.RESET}")
+      logger.debug(s"${Console.RED_B}UPDATED WRONG LAST VERSION ${list.map { case (k, _, _) => indexBuilder.ks(k) }}...${Console.RESET}")
     }
 
     def remove(): Unit = {
@@ -164,7 +168,7 @@ class TemporalIndexSpec extends Repeatable {
       val result = Await.result(hDB.execute(cmds), Duration.Inf)
 
       if (result.success) {
-        logger.debug(s"${Console.RED_B}REMOVED RIGHT VERSION ${list.map { case (k, _) => new String(k) }}...${Console.RESET}")
+        logger.debug(s"${Console.RED_B}REMOVED RIGHT VERSION ${list.map { case (k, _) => indexBuilder.ks(k) }}...${Console.RESET}")
         data = data.filterNot { case (k, _, _) => list.exists { case (k1, _) => bytesOrd.equiv(k, k1) } }
 
         val tmp = System.nanoTime()
@@ -182,7 +186,7 @@ class TemporalIndexSpec extends Repeatable {
 
       hDB = new TemporalIndex[K, V](descriptorBackup)(indexBuilder, historyBuilder)
       result.error.get.printStackTrace()
-      logger.debug(s"${Console.RED_B}REMOVED WRONG VERSION ${list.map { case (k, _) => new String(k) }}...${Console.RESET}")
+      logger.debug(s"${Console.RED_B}REMOVED WRONG VERSION ${list.map { case (k, _) => indexBuilder.ks(k) }}...${Console.RESET}")
     }
 
     val n = 100

@@ -7,7 +7,7 @@ import org.cassandraunit.dataset.cql.ClassPathCQLDataSet
 import org.cassandraunit.utils.EmbeddedCassandraServerHelper
 import services.scalable.index.grpc.{IndexContext, TemporalContext}
 import services.scalable.index.test.TestConfig.{CQL_PWD, CQL_USER, KEYSPACE}
-import services.scalable.index.{AsyncIterator, Storage, Tuple}
+import services.scalable.index.{AsyncIndexIterator, Storage, Tuple}
 
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -35,7 +35,7 @@ object TestHelper {
     storage.loadTemporalIndex(id)
   }
 
-  def all[K, V](it: AsyncIterator[Seq[Tuple[K, V]]])(implicit ec: ExecutionContext): Future[Seq[Tuple[K, V]]] = {
+  def all[K, V](it: AsyncIndexIterator[Seq[Tuple[K, V]]])(implicit ec: ExecutionContext): Future[Seq[Tuple[K, V]]] = {
     it.hasNext().flatMap {
       case true => it.next().flatMap { list =>
         all(it).map {

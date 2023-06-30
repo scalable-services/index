@@ -89,6 +89,9 @@ package object index {
   object DefaultPrinters {
     implicit def byteArrayToStringPrinter(k: Array[Byte]): String = new String(k, Charsets.UTF_8)
     implicit def longToStringPrinter(k: Long): String = k.toString
+
+    implicit def intToStringPrinter(k: Int): String = k.toString
+
     implicit def indexContextStringPrinter(k: IndexContext): String = k.id
   }
 
@@ -204,6 +207,7 @@ package object index {
     implicit val grpcLongIndexContextSerializer = new GrpcByteSerializer[Long, IndexContext]()
     implicit val grpcLongTemporalContextSerializer = new GrpcByteSerializer[Long, TemporalContext]()
     implicit val grpcBytesIndexContextSerializer = new GrpcByteSerializer[Bytes, IndexContext]()
+
     implicit val grpcBytesBytesSerializer = new GrpcByteSerializer[Bytes, Bytes]()
   }
 }
