@@ -101,6 +101,9 @@ sealed class Context[K, V](val indexId: String,
     b.root.equals(root)
   }
 
+  def currentSnapshot() = IndexContext(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, root.map { r => RootRef(r._1, r._2) }, levels,
+    num_elements, maxNItems)
+
   def snapshot(): IndexContext = {
 
     // Freeze the blocks...

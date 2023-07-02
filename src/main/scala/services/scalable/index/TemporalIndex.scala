@@ -26,7 +26,7 @@ class TemporalIndex[K, V](val descriptor: TemporalContext)
     )).map(tmp -> _)
   }
 
-  def find() = index.snapshot()
+  def find(): IndexContext = index.ctx.currentSnapshot()
 
   def find(t: Long): Future[Option[IndexContext]] = {
     history.findPath(t).map(_.map { leaf =>
