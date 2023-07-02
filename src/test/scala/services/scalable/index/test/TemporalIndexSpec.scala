@@ -1,5 +1,6 @@
 package services.scalable.index.test
 
+import com.github.benmanes.caffeine.cache.{Caffeine, RemovalCause, RemovalListener}
 import com.google.common.base.Charsets
 import io.netty.util.internal.ThreadLocalRandom
 import org.apache.commons.lang3.RandomStringUtils
@@ -36,10 +37,9 @@ class TemporalIndexSpec extends Repeatable {
 
     import services.scalable.index.DefaultSerializers._
 
-    //implicit val storage = new MemoryStorage()
-
-    val session = TestHelper.createCassandraSession()
-    implicit val storage = new CassandraStorage(session, true)
+    implicit val storage = new MemoryStorage()
+    //val session = TestHelper.createCassandraSession()
+    //implicit val storage = new CassandraStorage(session, true)
 
     val tctx = Await.result(TestHelper.loadOrCreateTemporalIndex(TemporalContext(
       historyIndexId,
@@ -60,7 +60,14 @@ class TemporalIndexSpec extends Repeatable {
       .cache(cache)
       .serializer(DefaultSerializers.grpcLongIndexContextSerializer)
 
-    var hDB = new TemporalIndex[K, V](tctx)(indexBuilder, historyBuilder)
+    val tcache = Caffeine.newBuilder()
+      .maximumSize(1000)
+      .removalListener((key: (String, Long), value: Option[QueryableIndex[K, V]], cause: RemovalCause) => {
+        logger.debug(s"temporal index removal cause for time t = ${key}: ${cause}")
+      })
+      .build[(String, Long), Option[QueryableIndex[K, V]]]()
+
+    var hDB = new TemporalIndex[K, V](tctx)(indexBuilder, historyBuilder, tcache)
     var data = Seq.empty[(K, V, Boolean)]
     var snapshots = Seq.empty[(Long, Seq[(K, V, Boolean)])]
 
@@ -99,12 +106,12 @@ class TemporalIndexSpec extends Repeatable {
         snapshots = snapshots :+ tmp -> data.sortBy(_._1)
 
         val newDescriptor = Await.result(hDB.save(), Duration.Inf)
-        hDB = new TemporalIndex[K, V](newDescriptor)(indexBuilder, historyBuilder)
+        hDB = new TemporalIndex[K, V](newDescriptor)(indexBuilder, historyBuilder, tcache)
 
         return
       }
 
-      hDB = new TemporalIndex[K, V](descriptorBackup)(indexBuilder, historyBuilder)
+      hDB = new TemporalIndex[K, V](descriptorBackup)(indexBuilder, historyBuilder, tcache)
       result.error.get.printStackTrace()
     }
 
@@ -140,12 +147,12 @@ class TemporalIndexSpec extends Repeatable {
         snapshots = snapshots :+ tmp -> data.sortBy(_._1)
 
         val newDescriptor = Await.result(hDB.save(), Duration.Inf)
-        hDB = new TemporalIndex[K, V](newDescriptor)(indexBuilder, historyBuilder)
+        hDB = new TemporalIndex[K, V](newDescriptor)(indexBuilder, historyBuilder, tcache)
 
         return
       }
 
-      hDB = new TemporalIndex[K, V](descriptorBackup)(indexBuilder, historyBuilder)
+      hDB = new TemporalIndex[K, V](descriptorBackup)(indexBuilder, historyBuilder, tcache)
       result.error.get.printStackTrace()
       logger.debug(s"${Console.RED_B}UPDATED WRONG LAST VERSION ${list.map { case (k, _, _) => indexBuilder.ks(k) }}...${Console.RESET}")
     }
@@ -179,12 +186,12 @@ class TemporalIndexSpec extends Repeatable {
         snapshots = snapshots :+ tmp -> data.sortBy(_._1)
 
         val newDescriptor = Await.result(hDB.save(), Duration.Inf)
-        hDB = new TemporalIndex[K, V](newDescriptor)(indexBuilder, historyBuilder)
+        hDB = new TemporalIndex[K, V](newDescriptor)(indexBuilder, historyBuilder, tcache)
 
         return
       }
 
-      hDB = new TemporalIndex[K, V](descriptorBackup)(indexBuilder, historyBuilder)
+      hDB = new TemporalIndex[K, V](descriptorBackup)(indexBuilder, historyBuilder, tcache)
       result.error.get.printStackTrace()
       logger.debug(s"${Console.RED_B}REMOVED WRONG VERSION ${list.map { case (k, _) => indexBuilder.ks(k) }}...${Console.RESET}")
     }
@@ -204,7 +211,7 @@ class TemporalIndexSpec extends Repeatable {
 
     val hdbCtxSaved = Await.result(hDB.save(), Duration.Inf)
 
-    val hDBFromDisk = new TemporalIndex[K, V](hdbCtxSaved)(indexBuilder, historyBuilder)
+    val hDBFromDisk = new TemporalIndex[K, V](hdbCtxSaved)(indexBuilder, historyBuilder, tcache)
 
     snapshots.foreach { case (tmp, data) =>
       val ldata = data.map{x => x._1 -> x._2}.toList

@@ -1,15 +1,17 @@
 package services.scalable.index
 
+import com.github.benmanes.caffeine.cache.Caffeine
 import services.scalable.index.grpc._
-import scala.collection.concurrent.TrieMap
-import scala.concurrent.{ExecutionContext, Future}
+
+import scala.concurrent.Future
 
 class TemporalIndex[K, V](val descriptor: TemporalContext)
                          (val indexBuilder: IndexBuilder[K, V],
-                          val historyBuilder: IndexBuilder[Long, IndexContext]){
+                          val historyBuilder: IndexBuilder[Long, IndexContext],
+                          val cache: com.github.benmanes.caffeine.cache.Cache[(String, Long), Option[QueryableIndex[K, V]]]){
 
-  import indexBuilder._
   import DefaultSerializers._
+  import indexBuilder._
 
   protected val index = new QueryableIndex[K, V](descriptor.latest)(indexBuilder)
   protected val history = new QueryableIndex[Long, IndexContext](descriptor.history)(historyBuilder)
@@ -38,7 +40,16 @@ class TemporalIndex[K, V](val descriptor: TemporalContext)
   }
 
   def findIndex(t: Long): Future[Option[QueryableIndex[K, V]]] = {
-    find(t).map(_.map(new QueryableIndex[K, V](_)(indexBuilder)))
+    val index = cache.getIfPresent(descriptor.id -> t)
+
+    if(index == null){
+      return find(t).map(_.map(new QueryableIndex[K, V](_)(indexBuilder))).map { index =>
+        cache.put(descriptor.id -> t, index)
+        index
+      }
+    }
+
+    Future.successful(index)
   }
 
   def findIndex(): QueryableIndex[K, V] = index
