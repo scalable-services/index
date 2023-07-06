@@ -45,13 +45,14 @@ sealed class Context[K, V](val indexId: String,
    */
   def get(id: (String, String)): Future[Block[K,V]] = newBlocks.get(id) match {
     case None => cache.get[K, V](id) match {
-      case None =>
-
-        storage.get(id).map { buf =>
+      case None => newBlocks.get(id) match {
+        case None => storage.get(id).map { buf =>
           val block = serializer.deserialize(buf)
           cache.put(block)
           block
         }
+        case Some(block) => Future.successful(block)
+      }
 
       case Some(block) => Future.successful(block)
     }
