@@ -900,7 +900,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
     process(0, None)
   }
 
-  def copy()(indexBuilder: IndexBuilder[K, V] = builder): Index[K, V] = {
+  def copy(indexBuilder: IndexBuilder[K, V] = builder): Index[K, V] = {
     val context = IndexContext(indexBuilder.idGenerator.generateIndexId(), descriptor.numLeafItems,
       descriptor.numMetaItems,
       ctx.root.map { r => RootRef(r._1, r._2) }, levels, ctx.num_elements,
@@ -915,7 +915,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
     copy
   }
 
-  def split()(rightBuilder: IndexBuilder[K, V] = builder): Future[Index[K, V]] = {
+  def split(rightBuilder: IndexBuilder[K, V] = builder): Future[Index[K, V]] = {
     for {
       leftR <- ctx.getMeta(ctx.root.get).flatMap {
         case block if block.length == 1 => ctx.getMeta(block.pointers(0)._2.unique_id)

@@ -405,7 +405,7 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override val b
     ctx.num_elements >= descriptor.maxNItems / 2
   }
 
-  override def copy()(indexBuilder: IndexBuilder[K, V] = builder): QueryableIndex[K, V] = {
+  override def copy(indexBuilder: IndexBuilder[K, V] = builder): QueryableIndex[K, V] = {
     val context = IndexContext(indexBuilder.idGenerator.generateIndexId(), descriptor.numLeafItems,
       descriptor.numMetaItems,
       ctx.root.map { r => RootRef(r._1, r._2) }, levels, ctx.num_elements,
@@ -420,7 +420,7 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override val b
     copy
   }
 
-  override def split()(rightBuilder: IndexBuilder[K, V] = builder): Future[QueryableIndex[K, V]] = {
+  override def split(rightBuilder: IndexBuilder[K, V] = builder): Future[QueryableIndex[K, V]] = {
     for {
       leftR <- ctx.getMeta(ctx.root.get).flatMap {
         case block if block.length == 1 => ctx.getMeta(block.pointers(0)._2.unique_id)
