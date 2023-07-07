@@ -3,7 +3,7 @@ package services.scalable.index
 import org.slf4j.LoggerFactory
 import services.scalable.index.Commands._
 import services.scalable.index.Errors.IndexError
-import services.scalable.index.grpc.IndexContext
+import services.scalable.index.grpc.{IndexContext, RootRef}
 import services.scalable.index.impl.RichAsyncIndexIterator
 
 import java.util.concurrent.atomic.AtomicInteger
@@ -900,4 +900,68 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
     process(0, None)
   }
 
+  def copy()(indexBuilder: IndexBuilder[K, V] = builder): Index[K, V] = {
+    val context = IndexContext(indexBuilder.idGenerator.generateIndexId(), descriptor.numLeafItems,
+      descriptor.numMetaItems,
+      ctx.root.map { r => RootRef(r._1, r._2) }, levels, ctx.num_elements,
+      ctx.maxNItems)
+
+    val copy = new Index[K, V](context)(indexBuilder)
+
+    ctx.newBlocksReferences.foreach { case (id, b) =>
+      copy.ctx.newBlocksReferences += id -> b
+    }
+
+    copy
+  }
+
+  def split()(rightBuilder: IndexBuilder[K, V] = builder): Future[Index[K, V]] = {
+    for {
+      leftR <- ctx.getMeta(ctx.root.get).flatMap {
+        case block if block.length == 1 => ctx.getMeta(block.pointers(0)._2.unique_id)
+        case block => Future.successful(block)
+      }
+    } yield {
+
+      val leftN = leftR.pointers.slice(0, leftR.length / 2).map { case (_, ptr) =>
+        ptr.nElements
+      }.sum
+
+      val rightN = leftR.pointers.slice(leftR.length / 2, leftR.length).map { case (_, ptr) =>
+        ptr.nElements
+      }.sum
+
+      val leftICtx = descriptor
+        .withId(ctx.id)
+        .withMaxNItems(descriptor.maxNItems)
+        .withNumElements(leftN)
+        .withLevels(leftR.level)
+        .withNumLeafItems(descriptor.numLeafItems)
+        .withNumMetaItems(descriptor.numMetaItems)
+
+      val rightICtx = descriptor
+        .withId(builder.idGenerator.generateIndexId())
+        .withMaxNItems(descriptor.maxNItems)
+        .withNumElements(rightN)
+        .withLevels(leftR.level)
+        .withNumLeafItems(descriptor.numLeafItems)
+        .withNumMetaItems(descriptor.numMetaItems)
+
+      val refs = ctx.newBlocksReferences
+
+      ctx = Context.fromIndexContext(leftICtx)(builder)
+
+      ctx.newBlocksReferences ++= refs
+
+      val rindex = new Index[K, V](rightICtx)(rightBuilder)
+
+      val leftRoot = leftR.copy()(ctx)
+      ctx.root = Some(leftRoot.unique_id)
+
+      val rightRoot = leftRoot.split()(rindex.ctx)
+      rindex.ctx.root = Some(rightRoot.unique_id)
+
+      rindex
+    }
+  }
 }

@@ -12,10 +12,7 @@ final class IndexBuilder[K, V](implicit val ord: Ordering[K], val ec: ExecutionC
   implicit var serializer: Serializer[Block[K, V]] = null
   implicit var cache: Cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
 
-  implicit var idGenerator: IdGenerator = new IdGenerator {
-    override def generateId[K, V](ctx: Context[K, V]): String = UUID.randomUUID.toString
-    override def generatePartition[K, V](ctx: Context[K, V]): String = "p0"
-  }
+  implicit var idGenerator: IdGenerator = DefaultIdGenerators.idGenerator
 
   implicit var ks: K => String = k => k.toString
   implicit var vs: V => String = k => k.toString

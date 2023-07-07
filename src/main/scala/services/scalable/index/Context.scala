@@ -69,7 +69,7 @@ sealed class Context[K, V](val indexId: String,
   }
 
   def createLeaf(): Leaf[K,V] = {
-    val leaf = new Leaf[K,V](idGenerator.generateId(this), idGenerator.generatePartition(this), LEAF_MIN, LEAF_MAX)
+    val leaf = new Leaf[K,V](idGenerator.generateBlockId(this), idGenerator.generateBlockPartition(this), LEAF_MIN, LEAF_MAX)
 
     newBlocksReferences += leaf.unique_id -> leaf.unique_id
     cache.put(leaf)
@@ -79,7 +79,7 @@ sealed class Context[K, V](val indexId: String,
   }
 
   def createMeta(): Meta[K,V] = {
-    val meta = new Meta[K,V](idGenerator.generateId(this), idGenerator.generatePartition(this), META_MIN, META_MAX)
+    val meta = new Meta[K,V](idGenerator.generateBlockId(this), idGenerator.generateBlockPartition(this), META_MIN, META_MAX)
 
     newBlocksReferences += meta.unique_id -> meta.unique_id
     cache.put(meta)

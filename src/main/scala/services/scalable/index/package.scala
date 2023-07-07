@@ -81,8 +81,9 @@ package object index {
 
   object DefaultIdGenerators {
     implicit val idGenerator = new IdGenerator {
-      override def generateId[K,V](ctx: Context[K,V]): String = UUID.randomUUID().toString
-      override def generatePartition[K,V](ctx: Context[K,V]): String = UUID.randomUUID().toString
+      override def generateIndexId(): String = UUID.randomUUID.toString
+      override def generateBlockId[K,V](ctx: Context[K,V]): String = UUID.randomUUID().toString
+      override def generateBlockPartition[K,V](ctx: Context[K,V]): String = UUID.randomUUID().toString
     }
   }
 

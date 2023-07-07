@@ -1,8 +1,6 @@
 package services.scalable.index
 
-import com.github.benmanes.caffeine.cache.Caffeine
 import services.scalable.index.grpc._
-
 import scala.concurrent.Future
 
 class TemporalIndex[K, V](val descriptor: TemporalContext)
@@ -80,7 +78,7 @@ class TemporalIndex[K, V](val descriptor: TemporalContext)
       id -> grpcLongIndexContextSerializer.serialize(block)
     }
 
-    storage.save(ctx, blocks.toMap).map { _ =>
+    storage.save(ctx, blocks).map { _ =>
       ctx
     }
   }
