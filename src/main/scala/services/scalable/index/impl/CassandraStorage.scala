@@ -1,6 +1,7 @@
 package services.scalable.index.impl
 
 import com.datastax.oss.driver.api.core.CqlSession
+import com.datastax.oss.driver.api.core.cql.Row
 import com.google.protobuf.any.Any
 import org.slf4j.LoggerFactory
 import services.scalable.index._
@@ -88,8 +89,7 @@ class CassandraStorage(val session: CqlSession,
         println(id)
       }
 
-      val buf = one.getByteBuffer("bin")
-      buf.array()
+      one.getByteBuffer("bin").array()
     }
   }
 

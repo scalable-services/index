@@ -57,9 +57,26 @@ class TemporalIndex[K, V](val descriptor: TemporalContext)
   def save(): Future[TemporalContext] = {
     val ctx = TemporalContext(descriptor.id, index.snapshot(), history.snapshot())
 
-    val blocks = index.ctx.newBlocks.map { case (id, block) =>
+    val indexBlockRefs = index.ctx.newBlocksReferences
+    val historyBlockRefs = history.ctx.newBlocksReferences
+
+    val indexBlocks = indexBlockRefs.map { case (id, _) => id -> indexBuilder.cache.get(id) }
+      .filter(_._2.isDefined).map { case (id, opt) => id -> opt.get.asInstanceOf[Block[K, V]] }.toMap
+
+    val historyBlocks = historyBlockRefs.map { case (id, _) => id -> historyBuilder.cache.get(id) }
+      .filter(_._2.isDefined).map { case (id, opt) => id -> opt.get.asInstanceOf[Block[Long, IndexContext]] }.toMap
+
+    if(indexBlockRefs.size != indexBlocks.size){
+      return Future.failed(new RuntimeException("Some index blocks were evicted from cache before saving to disk!"))
+    }
+
+    if (historyBlockRefs.size != historyBlocks.size) {
+      return Future.failed(new RuntimeException("Some history blocks were evicted from cache before saving to disk!"))
+    }
+
+    val blocks = indexBlocks.map { case (id, block) =>
       id -> serializer.serialize(block)
-    } ++ history.ctx.newBlocks.map { case (id, block) =>
+    } ++ historyBlocks.map { case (id, block) =>
       id -> grpcLongIndexContextSerializer.serialize(block)
     }
 
