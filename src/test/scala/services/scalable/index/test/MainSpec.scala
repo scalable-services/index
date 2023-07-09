@@ -50,12 +50,13 @@ class MainSpec extends Repeatable with Matchers {
       NUM_META_ENTRIES
     ))(storage, global), Duration.Inf).get
 
-    var data = Seq.empty[(K, V, Boolean)]
+    var data = Seq.empty[(K, V, Option[String])]
     var index = builder.build(indexContext)
 
     def insert(): Unit = {
 
-      val descriptorBackup = index.descriptor
+      val currentVersion = Some(index.ctx.id)
+      val indexBackup = index
 
       val n = rand.nextInt(1, 1000)
       var list = Seq.empty[Tuple3[K, V, Boolean]]
@@ -97,29 +98,29 @@ class MainSpec extends Repeatable with Matchers {
         val newDescriptor = Await.result(index.save(), Duration.Inf)
         index = new QueryableIndex[K, V](newDescriptor)(builder)
 
-        data = data ++ list
+        data = data ++ list.map{case (k, v, _) => (k, v, currentVersion)}
 
         return
       }
 
       logger.debug(s"${Console.RED_B}INSERTION FAIL: ${list.map{case (k, v, _) => builder.ks(k)}}${Console.RESET}")
 
-      index = new QueryableIndex[K, V](descriptorBackup)(builder)
+      index = indexBackup
       result.error.get.printStackTrace()
     }
 
     def update(): Unit = {
 
-      val lastVersion: Option[String] = rand.nextBoolean() match {
-        case true => Some(index.ctx.id)
-        case false => Some(UUID.randomUUID.toString)
-      }
+      val currentVersion = Some(index.ctx.id)
+      val indexBackup = index
 
-      val descriptorBackup = index.descriptor
+      val introduceError = rand.nextBoolean()
+      val errorTx = Some(UUID.randomUUID.toString)
 
       val n = if(data.length >= 2) rand.nextInt(1, data.length) else 1
-      val list = scala.util.Random.shuffle(data).slice(0, n).map { case (k, v, _) =>
-        (k, RandomStringUtils.randomAlphanumeric(10).getBytes(Charsets.UTF_8), lastVersion)
+      val list = scala.util.Random.shuffle(data).slice(0, n).map { case (k, v, lv) =>
+        (k, RandomStringUtils.randomAlphanumeric(10).getBytes(Charsets.UTF_8),
+         if(introduceError) errorTx else lv)
       }
 
       val cmds = Seq(
@@ -136,28 +137,27 @@ class MainSpec extends Repeatable with Matchers {
         index = new QueryableIndex[K, V](newDescriptor)(builder)
 
         data = data.filterNot { case (k, _, _) => list.exists { case (k1, _, _) => bytesOrd.equiv(k, k1) } }
-        data = data ++ list.map { case (k, v, _) => (k, v, true) }
+        data = data ++ list.map { case (k, v, _) => (k, v, currentVersion) }
 
         return
       }
 
-      index = new QueryableIndex[K, V](descriptorBackup)(builder)
+      index = indexBackup
       result.error.get.printStackTrace()
       logger.debug(s"${Console.CYAN_B}UPDATED WRONG LAST VERSION ${list.map { case (k, _, _) => builder.ks(k) }}...${Console.RESET}")
     }
 
     def remove(): Unit = {
 
-      val lastVersion: Option[String] = rand.nextBoolean() match {
-        case true => Some(index.ctx.id)
-        case false => Some(UUID.randomUUID.toString)
-      }
+      val currentVersion = Some(index.ctx.id)
+      val indexBackup = index
 
-      val descriptorBackup = index.descriptor
+      val introduceError = rand.nextBoolean()
+      val errorTx = Some(UUID.randomUUID.toString)
 
       val n = if(data.length >= 2) rand.nextInt(1, data.length) else 1
-      val list: Seq[Tuple2[K, Option[String]]] = scala.util.Random.shuffle(data).slice(0, n).map { case (k, _, _) =>
-        (k, lastVersion)
+      val list: Seq[Tuple2[K, Option[String]]] = scala.util.Random.shuffle(data).slice(0, n).map { case (k, _, lv) =>
+        (k, if(introduceError) errorTx else lv)
       }
 
       val cmds = Seq(
@@ -177,7 +177,7 @@ class MainSpec extends Repeatable with Matchers {
         return
       }
 
-      index = new QueryableIndex[K, V](descriptorBackup)(builder)
+      index = indexBackup
       result.error.get.printStackTrace()
       logger.debug(s"${Console.RED_B}REMOVED WRONG VERSION ${list.map { case (k, _) => builder.ks(k) }}...${Console.RESET}")
     }

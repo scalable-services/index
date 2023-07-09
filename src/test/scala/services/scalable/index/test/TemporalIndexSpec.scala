@@ -68,12 +68,14 @@ class TemporalIndexSpec extends Repeatable {
       .build[(String, Long), Option[QueryableIndex[K, V]]]()
 
     var hDB = new TemporalIndex[K, V](tctx)(indexBuilder, historyBuilder, tcache)
-    var data = Seq.empty[(K, V, Boolean)]
-    var snapshots = Seq.empty[(Long, Seq[(K, V, Boolean)])]
+    var data = Seq.empty[(K, V, Option[String])]
+    var snapshots = Seq.empty[(Long, Seq[(K, V, Option[String])])]
 
     def insert(): Unit = {
 
-      val descriptorBackup = hDB.descriptor
+      val hDBBackup = hDB
+      val index = hDB.findIndex()
+      val currentVersion = Some(index.ctx.id)
 
       val n = rand.nextInt(1, 100)
       var list = Seq.empty[Tuple3[K, V, Boolean]]
@@ -96,7 +98,7 @@ class TemporalIndexSpec extends Repeatable {
       assert(result.success)
 
       if (result.success) {
-        data ++= list
+        data ++= list.map{case (k, v, _) => (k, v, currentVersion)}
 
         val tmp = System.nanoTime()
         val (_, bresult) = Await.result(hDB.snapshot(), Duration.Inf)
@@ -111,20 +113,19 @@ class TemporalIndexSpec extends Repeatable {
         return
       }
 
-      hDB = new TemporalIndex[K, V](descriptorBackup)(indexBuilder, historyBuilder, tcache)
+      hDB = hDBBackup
       result.error.get.printStackTrace()
     }
 
     def update(): Unit = {
 
-      val descriptorBackup = hDB.descriptor
+      val hDBBackup = hDB
       val index = hDB.findIndex()
-
-      val lastVersion: Option[String] = Some(index.ctx.id)
+      val currentVersion = Some(index.ctx.id)
 
       val n = if (data.length >= 2) rand.nextInt(1, data.length) else 1
-      val list = scala.util.Random.shuffle(data).slice(0, n).map { case (k, v, _) =>
-        (k, RandomStringUtils.randomAlphanumeric(10).getBytes(Charsets.UTF_8), lastVersion)
+      val list = scala.util.Random.shuffle(data).slice(0, n).map { case (k, v, lv) =>
+        (k, RandomStringUtils.randomAlphanumeric(10).getBytes(Charsets.UTF_8), lv)
       }
 
       val cmds = Seq(
@@ -137,7 +138,7 @@ class TemporalIndexSpec extends Repeatable {
         logger.debug(s"${Console.MAGENTA_B}UPDATED RIGHT LAST VERSION ${list.map { case (k, _, _) => indexBuilder.ks(k) }}...${Console.RESET}")
 
         data = data.filterNot { case (k, _, _) => list.exists { case (k1, _, _) => bytesOrd.equiv(k, k1) } }
-        data = data ++ list.map { case (k, v, _) => (k, v, true) }
+        data = data ++ list.map { case (k, v, _) => (k, v, currentVersion) }
 
         val tmp = System.nanoTime()
         val (_, bresult) = Await.result(hDB.snapshot(), Duration.Inf)
@@ -152,20 +153,20 @@ class TemporalIndexSpec extends Repeatable {
         return
       }
 
-      hDB = new TemporalIndex[K, V](descriptorBackup)(indexBuilder, historyBuilder, tcache)
+      hDB = hDBBackup
       result.error.get.printStackTrace()
       logger.debug(s"${Console.RED_B}UPDATED WRONG LAST VERSION ${list.map { case (k, _, _) => indexBuilder.ks(k) }}...${Console.RESET}")
     }
 
     def remove(): Unit = {
 
-      val descriptorBackup = hDB.descriptor
+      val hDBBackup = hDB
       val index = hDB.findIndex()
-      val lastVersion: Option[String] = Some(index.ctx.id)
+      val currentVersion = Some(index.ctx.id)
 
       val n = if (data.length >= 2) rand.nextInt(1, data.length) else 1
-      val list: Seq[Tuple2[K, Option[String]]] = scala.util.Random.shuffle(data).slice(0, n).map { case (k, _, _) =>
-        (k, lastVersion)
+      val list: Seq[Tuple2[K, Option[String]]] = scala.util.Random.shuffle(data).slice(0, n).map { case (k, _, lv) =>
+        (k, lv)
       }
 
       val cmds = Seq(
@@ -191,7 +192,7 @@ class TemporalIndexSpec extends Repeatable {
         return
       }
 
-      hDB = new TemporalIndex[K, V](descriptorBackup)(indexBuilder, historyBuilder, tcache)
+      hDB = hDBBackup
       result.error.get.printStackTrace()
       logger.debug(s"${Console.RED_B}REMOVED WRONG VERSION ${list.map { case (k, _) => indexBuilder.ks(k) }}...${Console.RESET}")
     }
