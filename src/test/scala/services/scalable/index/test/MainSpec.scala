@@ -39,7 +39,7 @@ class MainSpec extends Repeatable with Matchers {
     //val session = TestHelper.createCassandraSession()
     val storage = /*new CassandraStorage(session, true)*/new MemoryStorage()
 
-    val builder = IndexBuilder.create[K, V](DefaultComparators.bytesOrd)
+    val builder = IndexBuilder.create[K, V](DefaultComparators.bytesOrd, DefaultSerializers.bytesSerializer, DefaultSerializers.bytesSerializer)
       .storage(storage)
       .serializer(DefaultSerializers.grpcBytesBytesSerializer)
       .keyToStringConverter(DefaultPrinters.byteArrayToStringPrinter)

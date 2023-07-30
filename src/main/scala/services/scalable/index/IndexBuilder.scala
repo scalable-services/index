@@ -6,7 +6,10 @@ import services.scalable.index.impl.{DefaultCache, MemoryStorage}
 import java.util.UUID
 import scala.concurrent.ExecutionContext
 
-final class IndexBuilder[K, V](implicit val ord: Ordering[K], val ec: ExecutionContext) {
+final class IndexBuilder[K, V](implicit val ord: Ordering[K],
+                               val keySerializer: Serializer[K],
+                               val valueSerializer: Serializer[V],
+                               val ec: ExecutionContext) {
 
   implicit var storage: Storage = new MemoryStorage()
   implicit var serializer: Serializer[Block[K, V]] = null
@@ -57,8 +60,7 @@ final class IndexBuilder[K, V](implicit val ord: Ordering[K], val ec: ExecutionC
 }
 
 object IndexBuilder {
-
-  def create[K, V](ordering: Ordering[K])(implicit ec: ExecutionContext): IndexBuilder[K, V] =
-    new IndexBuilder[K, V]()(ordering, ec)
-
+  def create[K, V](ordering: Ordering[K], keySerializer: Serializer[K], valueSerializer: Serializer[V])
+                  (implicit ec: ExecutionContext): IndexBuilder[K, V] =
+    new IndexBuilder[K, V]()(ordering, keySerializer, valueSerializer, ec)
 }

@@ -3,6 +3,7 @@ package services.scalable.index
 import services.scalable.index.grpc.{IndexContext, RootRef}
 import services.scalable.index.impl.RichAsyncIndexIterator
 
+import scala.collection.mutable
 import scala.concurrent.Future
 
 /**
@@ -401,6 +402,10 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override val b
     ctx.num_elements >= descriptor.maxNItems
   }
 
+  def isEmpty(): Boolean = {
+    ctx.root.isEmpty
+  }
+
   def hasMinimum(): Boolean = {
     ctx.num_elements >= descriptor.maxNItems / 2
   }
@@ -428,13 +433,32 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override val b
       }
     } yield {
 
-      val leftN = leftR.pointers.slice(0, leftR.length / 2).map { case (_, ptr) =>
+      val refs = ctx.newBlocksReferences
+      val HALF_POS = leftR.length / 2
+
+      val firstHalf = leftR.pointers.slice(0, HALF_POS)
+      val secondHalf = leftR.pointers.slice(HALF_POS, leftR.length)
+
+      val leftN = firstHalf.map { case (_, ptr) =>
         ptr.nElements
       }.sum
 
-      val rightN = leftR.pointers.slice(leftR.length / 2, leftR.length).map { case (_, ptr) =>
+      val rightN = secondHalf.map { case (_, ptr) =>
         ptr.nElements
       }.sum
+
+      val leftRefs = mutable.WeakHashMap[(String, String), (String, String)]()
+      val rightRefs = mutable.WeakHashMap[(String, String), (String, String)]()
+
+      refs.foreach { case (bid, _) =>
+        val block = cache.get[K, V](bid).get
+        val pos = leftR.findPosition(block.last)
+
+        if (pos < HALF_POS)
+          leftRefs.put(block.unique_id, block.unique_id)
+        else
+          rightRefs.put(block.unique_id, block.unique_id)
+      }
 
       val leftICtx = descriptor
         .withId(ctx.id)
@@ -452,13 +476,11 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override val b
         .withNumLeafItems(descriptor.numLeafItems)
         .withNumMetaItems(descriptor.numMetaItems)
 
-      val refs = ctx.newBlocksReferences
-
       ctx = Context.fromIndexContext(leftICtx)(builder)
-
-      ctx.newBlocksReferences ++= refs
+      ctx.newBlocksReferences = leftRefs
 
       val rindex = new QueryableIndex[K, V](rightICtx)(rightBuilder)
+      rindex.ctx.newBlocksReferences = rightRefs
 
       val leftRoot = leftR.copy()(ctx)
       ctx.root = Some(leftRoot.unique_id)

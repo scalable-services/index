@@ -2,7 +2,6 @@ package services.scalable.index
 
 import org.slf4j.LoggerFactory
 import services.scalable.index.grpc.{IndexContext, RootRef}
-import services.scalable.index.impl.DefaultCache
 
 import java.util.UUID
 import scala.collection.concurrent.TrieMap
@@ -10,6 +9,7 @@ import scala.collection.mutable
 import scala.concurrent.Future
 
 sealed class Context[K, V](val indexId: String,
+                    var lastChangeVersion: String,
                     var root: Option[(String, String)],
                     var num_elements: Long,
                     var levels: Int,
@@ -30,7 +30,7 @@ sealed class Context[K, V](val indexId: String,
   val META_MAX = NUM_META_ENTRIES
   val META_MIN = META_MAX/2
 
-  val newBlocksReferences = mutable.WeakHashMap.empty[(String, String), (String, String)]
+  var newBlocksReferences = mutable.WeakHashMap.empty[(String, String), (String, String)]
   val parents = TrieMap.empty[(String, String), (Option[(String, String)], Int)]
 
   if(root.isDefined) {
@@ -101,7 +101,7 @@ sealed class Context[K, V](val indexId: String,
   }
 
   def currentSnapshot() = IndexContext(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, root.map { r => RootRef(r._1, r._2) }, levels,
-    num_elements, maxNItems)
+    num_elements, maxNItems, lastChangeVersion)
 
   def snapshot(): IndexContext = {
 
@@ -117,7 +117,7 @@ sealed class Context[K, V](val indexId: String,
     logger.debug(s"\nSAVING $indexId: ${root.map{r => RootRef(r._1, r._2)}}\n")
 
     IndexContext(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, root.map{r => RootRef(r._1, r._2)}, levels,
-      num_elements, maxNItems)
+      num_elements, maxNItems, lastChangeVersion)
   }
 
   def clear(): Unit = {
@@ -145,7 +145,7 @@ sealed class Context[K, V](val indexId: String,
 
 object Context {
   def fromIndexContext[K, V](ictx: IndexContext)(builder: IndexBuilder[K, V]): Context[K, V] = {
-    new Context[K, V](ictx.id, ictx.root.map{ r => (r.partition, r.id)}, ictx.numElements,
+    new Context[K, V](ictx.id, ictx.lastChangeVersion, ictx.root.map{ r => (r.partition, r.id)}, ictx.numElements,
       ictx.levels, ictx.maxNItems, ictx.numLeafItems, ictx.numMetaItems)(builder)
   }
 }

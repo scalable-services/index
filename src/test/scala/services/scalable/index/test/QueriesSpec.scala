@@ -6,7 +6,7 @@ import org.scalatest.matchers.should.Matchers
 import org.slf4j.LoggerFactory
 import services.scalable.index.grpc._
 import services.scalable.index.impl._
-import services.scalable.index.{Commands, IndexBuilder, QueryableIndex}
+import services.scalable.index.{Commands, DefaultSerializers, IndexBuilder, QueryableIndex}
 
 import java.util.UUID
 import scala.concurrent.Await
@@ -40,7 +40,7 @@ class QueriesSpec extends Repeatable with Matchers {
 
     val ordering = ordString
 
-    val builder = IndexBuilder.create[K, V](ordering)
+    val builder = IndexBuilder.create[K, V](ordering, DefaultSerializers.stringSerializer, DefaultSerializers.stringSerializer)
       .storage(storage)
       .serializer(grpcStringStringSerializer)
       //.keyToStringConverter(DefaultPrinters.intToStringPrinter)

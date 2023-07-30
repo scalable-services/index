@@ -8,6 +8,7 @@ import services.scalable.index.impl.RichAsyncIndexIterator
 
 import java.util.concurrent.atomic.AtomicInteger
 import scala.collection.concurrent.TrieMap
+import scala.collection.mutable
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.{Failure, Success}
@@ -923,13 +924,32 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
       }
     } yield {
 
-      val leftN = leftR.pointers.slice(0, leftR.length / 2).map { case (_, ptr) =>
+      val refs = ctx.newBlocksReferences
+      val HALF_POS = leftR.length / 2
+
+      val firstHalf = leftR.pointers.slice(0, HALF_POS)
+      val secondHalf = leftR.pointers.slice(HALF_POS, leftR.length)
+
+      val leftN = firstHalf.map { case (_, ptr) =>
         ptr.nElements
       }.sum
 
-      val rightN = leftR.pointers.slice(leftR.length / 2, leftR.length).map { case (_, ptr) =>
+      val rightN = secondHalf.map { case (_, ptr) =>
         ptr.nElements
       }.sum
+
+      val leftRefs = mutable.WeakHashMap[(String, String), (String, String)]()
+      val rightRefs = mutable.WeakHashMap[(String, String), (String, String)]()
+
+      refs.foreach { case (bid, _) =>
+        val block = cache.get[K, V](bid).get
+        val pos = leftR.findPosition(block.last)
+
+        if(pos < HALF_POS)
+          leftRefs.put(block.unique_id, block.unique_id)
+        else
+          rightRefs.put(block.unique_id, block.unique_id)
+      }
 
       val leftICtx = descriptor
         .withId(ctx.id)
@@ -947,13 +967,11 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
         .withNumLeafItems(descriptor.numLeafItems)
         .withNumMetaItems(descriptor.numMetaItems)
 
-      val refs = ctx.newBlocksReferences
-
       ctx = Context.fromIndexContext(leftICtx)(builder)
-
-      ctx.newBlocksReferences ++= refs
+      ctx.newBlocksReferences = leftRefs
 
       val rindex = new Index[K, V](rightICtx)(rightBuilder)
+      rindex.ctx.newBlocksReferences = rightRefs
 
       val leftRoot = leftR.copy()(ctx)
       ctx.root = Some(leftRoot.unique_id)

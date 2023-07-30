@@ -47,6 +47,11 @@ class Meta[K, V](override val id: String,
     pointers(if(pos < pointers.length) pos else pos - 1)._2.unique_id
   }
 
+  def findPosition(k: K)(implicit ord: Ordering[K]): Int = {
+    val (_, pos) = binSearch(k)
+    if (pos < pointers.length) pos else pos - 1
+  }
+
   def insert(data: Seq[(K, Pointer)])(implicit ctx: Context[K,V], ord: Ordering[K]): Try[Int] = {
     if(isFull()) return Failure(Errors.META_BLOCK_FULL)
 
@@ -160,7 +165,7 @@ class Meta[K, V](override val id: String,
     copy
   }
 
-  override def split()(implicit ctx: Context[K,V]): Meta[K,V] = {
+  override def split()(implicit ctx: Context[K,V]): Meta[K, V] = {
     val right = ctx.createMeta()
 
     val len = pointers.length

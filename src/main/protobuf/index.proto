@@ -67,6 +67,7 @@ message IndexContext {
   int64 num_elements = 6;
 
   int32 maxNItems = 7;
+  string lastChangeVersion = 8;
 }
 
 message TemporalContext {
