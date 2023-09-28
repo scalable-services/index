@@ -56,8 +56,7 @@ class DefaultCache(val MAX_BLOCK_CACHE_SIZE: Long = 100L * 1024L * 1024L,
   }
 
   override def invalidate[K, V](id: (String, String)): Unit = {
-    if(newBlocks.remove(id).isEmpty){
-      blocks.invalidate(id)
-    }
+    newBlocks.remove(id)
+    blocks.invalidate(id)
   }
 }
