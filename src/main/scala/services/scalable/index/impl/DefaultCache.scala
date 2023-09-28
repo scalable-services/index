@@ -13,7 +13,7 @@ class DefaultCache(val MAX_BLOCK_CACHE_SIZE: Long = 100L * 1024L * 1024L,
                    val MAX_PARENT_ENTRIES: Int = 1000)
                   (implicit val ec: ExecutionContext) extends Cache {
 
-  val newBlocks = mutable.WeakHashMap.empty[(String, String), Block[_, _]]
+  val newBlocks = TrieMap.empty[(String, String), Block[_, _]]
   val logger = LoggerFactory.getLogger(this.getClass)
 
   val blocks = Caffeine.newBuilder()

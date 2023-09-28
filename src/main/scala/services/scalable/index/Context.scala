@@ -20,6 +20,7 @@ sealed class Context[K, V](val indexId: String,
 
   import builder._
 
+  private var disposable = false
   val id: String = UUID.randomUUID().toString
 
   val logger = LoggerFactory.getLogger(this.getClass)
@@ -41,6 +42,19 @@ sealed class Context[K, V](val indexId: String,
     case None =>
     case Some(r) => parents += r -> (None, 0)
   }
+
+  def getRootPosition(id: (String, String)): Int = {
+    if(root.isEmpty) return -1
+
+    var parent = parents(id)
+
+    while(parent._1.isDefined){
+      parent = parents(parent._1.get)
+    }
+
+    parent._2
+  }
+
   /**
    *
    * To work the blocks being manipulated must be in memory before saving...
@@ -103,15 +117,16 @@ sealed class Context[K, V](val indexId: String,
   def currentSnapshot() = IndexContext(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, root.map { r => RootRef(r._1, r._2) }, levels,
     num_elements, maxNItems, lastChangeVersion)
 
+  /**
+   * When creating a snapshot, the new blocks are now immutable!
+   * @return
+   */
   def snapshot(): IndexContext = {
 
-    // Freeze the blocks...
-    newBlocksReferences.values.map{cache.get(_)}.foreach { opt =>
-      if(opt.isDefined){
-        val block = opt.get
-        block.isNew = false
-        block.root = root
-      }
+    // Turn new blocks immutable
+    newBlocksReferences.values.map{cache.get(_).get}.foreach { block =>
+      block.isNew = false
+      block.root = root
     }
 
     logger.debug(s"\nSAVING $indexId: ${root.map{r => RootRef(r._1, r._2)}}\n")
@@ -124,9 +139,15 @@ sealed class Context[K, V](val indexId: String,
     newBlocksReferences.foreach { case (id, _) =>
       cache.invalidate(id)
     }
+
+    newBlocksReferences.clear()
   }
 
   def save(): Future[IndexContext] = {
+    assert(!disposable, s"The context for index ${indexId} was already saved! Please instantiate another index instance to perform new operations!")
+
+    disposable = true
+
     val snap = snapshot()
 
     val blocks = newBlocksReferences.map { case (id, _) => id -> cache.get(id)}

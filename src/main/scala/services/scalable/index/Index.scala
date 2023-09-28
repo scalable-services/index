@@ -6,6 +6,7 @@ import services.scalable.index.Errors.IndexError
 import services.scalable.index.grpc.{IndexContext, RootRef}
 import services.scalable.index.impl.RichAsyncIndexIterator
 
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 import scala.collection.concurrent.TrieMap
 import scala.collection.mutable
@@ -25,7 +26,7 @@ import scala.util.{Failure, Success}
  * the context. Once you done, the resulting context can be saved and passed to future instances of the class representing another set of
  * operations.
  */
-class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V]){
+class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuilder[K, V]){
 
   import builder._
 
@@ -37,6 +38,10 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
   implicit var ctx = Context.fromIndexContext(descriptor)(builder)
 
   val $this = this
+
+  def currentSnapshot(): IndexContext = {
+    ctx.currentSnapshot()
+  }
 
   /**
    * Creates a snapshot of the tree that could be saved and accessed later
@@ -150,10 +155,10 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
     }
   }
 
-  protected def insertEmpty(data: Seq[Tuple3[K, V, Boolean]]): Future[Int] = {
+  protected def insertEmpty(data: Seq[Tuple3[K, V, Boolean]], insertVersion: String): Future[Int] = {
     val leaf = ctx.createLeaf()
 
-    leaf.insert(data) match {
+    leaf.insert(data, insertVersion) match {
       case Success(n) =>
 
         ctx.levels += 1
@@ -222,7 +227,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
     }
   }
 
-  protected def splitLeaf(left: Leaf[K, V], data: Seq[Tuple3[K, V, Boolean]]): Future[Int] = {
+  protected def splitLeaf(left: Leaf[K, V], data: Seq[Tuple3[K, V, Boolean]], insertVersion: String): Future[Int] = {
     val right = left.split()
 
     val (k, _, _) = data(0)
@@ -238,27 +243,27 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
         list = list.takeWhile{case (k, _, _) => ord.lt(k, rightLast)}
       }
 
-      val rn = right.insert(list)
+      val rn = right.insert(list, insertVersion)
 
       return handleParent(left, right).map(_ => rn.get)
     }
 
-    val ln = left.insert(list.takeWhile{case (k, _, _) => ord.lt(k, leftLast)})
+    val ln = left.insert(list.takeWhile{case (k, _, _) => ord.lt(k, leftLast)}, insertVersion)
 
     handleParent(left, right).map{_ => ln.get}
   }
 
-  protected def insertLeaf(left: Leaf[K, V], data: Seq[Tuple3[K, V, Boolean]]): Future[Int] = {
+  protected def insertLeaf(left: Leaf[K, V], data: Seq[Tuple3[K, V, Boolean]], insertVersion: String): Future[Int] = {
     if(left.isFull()){
       logger.debug(s"${Console.RED_B}LEAF FULL...${Console.RESET}")
 
       /*val right = left.split()
       return handleParent(left, right).map{_ => 0}*/
 
-      return splitLeaf(left, data)
+      return splitLeaf(left, data, insertVersion)
     }
 
-    left.insert(data) match {
+    left.insert(data, insertVersion) match {
       case Success(n) => recursiveCopy(left).map{_ => n}
       case Failure(ex) => Future.failed(ex)
     }
@@ -269,7 +274,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
    * @param ord
    * @return
    */
-  def insert(data: Seq[Tuple3[K, V, Boolean]]): Future[InsertionResult] = {
+  def insert(data: Seq[Tuple3[K, V, Boolean]], insertVersion: String): Future[InsertionResult] = {
 
     val sorted = data.sortBy(_._1)
 
@@ -288,13 +293,13 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
       val (k, _, _) = list(0)
 
       findPath(k).flatMap {
-        case None => insertEmpty(list)
+        case None => insertEmpty(list, insertVersion)
         case Some(leaf) =>
 
           val idx = list.indexWhere{case (k, _, _) => ord.gt(k, leaf.last)}
           if(idx > 0) list = list.slice(0, idx)
 
-          insertLeaf(leaf.copy(), list)
+          insertLeaf(leaf.copy(), list, insertVersion)
       }.flatMap { n =>
         pos += n
         ctx.num_elements += n
@@ -489,8 +494,8 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
     }
   }
 
-  protected def updateLeaf(left: Leaf[K, V], data: Seq[Tuple3[K, V, Option[String]]]): Future[Int] = {
-    val result = left.update(data)
+  protected def updateLeaf(left: Leaf[K, V], data: Seq[Tuple3[K, V, Option[String]]], updateVersion: String): Future[Int] = {
+    val result = left.update(data, updateVersion)
 
     if (result.isFailure) return Future.failed(result.failed.get)
 
@@ -503,7 +508,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
    * @param ord
    * @return
    */
-  def update(data: Seq[Tuple3[K, V, Option[String]]]): Future[UpdateResult] = {
+  def update(data: Seq[Tuple3[K, V, Option[String]]], updateVersion: String): Future[UpdateResult] = {
 
     val sorted = data.sortBy(_._1)
 
@@ -527,7 +532,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
           val idx = list.indexWhere{case (k, _, _) => ord.gt(k, leaf.last)}
           if(idx > 0) list = list.slice(0, idx)
 
-          updateLeaf(leaf.copy(), list)
+          updateLeaf(leaf.copy(), list, updateVersion)
       }.flatMap { n =>
         pos += n
         update()
@@ -878,7 +883,7 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
     }
   }
 
-  def execute(cmds: Seq[Command[K, V]]): Future[BatchResult] = {
+  def execute(cmds: Seq[Command[K, V]], version: String = ctx.id): Future[BatchResult] = {
 
     def process(pos: Int, error: Option[Throwable]): Future[BatchResult] = {
       if(error.isDefined) {
@@ -892,94 +897,12 @@ class Index[K, V](val descriptor: IndexContext)(val builder: IndexBuilder[K, V])
       val cmd = cmds(pos)
 
       (cmd match {
-        case cmd: Insert[K, V] => insert(cmd.list)
+        case cmd: Insert[K, V] => insert(cmd.list, version)
         case cmd: Remove[K, V] => remove(cmd.keys)
-        case cmd: Update[K, V] => update(cmd.list)
+        case cmd: Update[K, V] => update(cmd.list, version)
       }).flatMap(prev => process(pos + 1, prev.error))
     }
 
     process(0, None)
-  }
-
-  def copy(indexBuilder: IndexBuilder[K, V] = builder): Index[K, V] = {
-    val context = IndexContext(indexBuilder.idGenerator.generateIndexId(), descriptor.numLeafItems,
-      descriptor.numMetaItems,
-      ctx.root.map { r => RootRef(r._1, r._2) }, levels, ctx.num_elements,
-      ctx.maxNItems)
-
-    val copy = new Index[K, V](context)(indexBuilder)
-
-    ctx.newBlocksReferences.foreach { case (id, b) =>
-      copy.ctx.newBlocksReferences += id -> b
-    }
-
-    copy
-  }
-
-  def split(rightBuilder: IndexBuilder[K, V] = builder): Future[Index[K, V]] = {
-    for {
-      leftR <- ctx.getMeta(ctx.root.get).flatMap {
-        case block if block.length == 1 => ctx.getMeta(block.pointers(0)._2.unique_id)
-        case block => Future.successful(block)
-      }
-    } yield {
-
-      val refs = ctx.newBlocksReferences
-      val HALF_POS = leftR.length / 2
-
-      val firstHalf = leftR.pointers.slice(0, HALF_POS)
-      val secondHalf = leftR.pointers.slice(HALF_POS, leftR.length)
-
-      val leftN = firstHalf.map { case (_, ptr) =>
-        ptr.nElements
-      }.sum
-
-      val rightN = secondHalf.map { case (_, ptr) =>
-        ptr.nElements
-      }.sum
-
-      val leftRefs = mutable.WeakHashMap[(String, String), (String, String)]()
-      val rightRefs = mutable.WeakHashMap[(String, String), (String, String)]()
-
-      refs.foreach { case (bid, _) =>
-        val block = cache.get[K, V](bid).get
-        val pos = leftR.findPosition(block.last)
-
-        if(pos < HALF_POS)
-          leftRefs.put(block.unique_id, block.unique_id)
-        else
-          rightRefs.put(block.unique_id, block.unique_id)
-      }
-
-      val leftICtx = descriptor
-        .withId(ctx.id)
-        .withMaxNItems(descriptor.maxNItems)
-        .withNumElements(leftN)
-        .withLevels(leftR.level)
-        .withNumLeafItems(descriptor.numLeafItems)
-        .withNumMetaItems(descriptor.numMetaItems)
-
-      val rightICtx = descriptor
-        .withId(builder.idGenerator.generateIndexId())
-        .withMaxNItems(descriptor.maxNItems)
-        .withNumElements(rightN)
-        .withLevels(leftR.level)
-        .withNumLeafItems(descriptor.numLeafItems)
-        .withNumMetaItems(descriptor.numMetaItems)
-
-      ctx = Context.fromIndexContext(leftICtx)(builder)
-      ctx.newBlocksReferences = leftRefs
-
-      val rindex = new Index[K, V](rightICtx)(rightBuilder)
-      rindex.ctx.newBlocksReferences = rightRefs
-
-      val leftRoot = leftR.copy()(ctx)
-      ctx.root = Some(leftRoot.unique_id)
-
-      val rightRoot = leftRoot.split()(rindex.ctx)
-      rindex.ctx.root = Some(rightRoot.unique_id)
-
-      rindex
-    }
   }
 }

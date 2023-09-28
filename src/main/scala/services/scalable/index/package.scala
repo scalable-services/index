@@ -1,12 +1,11 @@
 package services.scalable
 
-import com.datastax.oss.driver.api.core.config.{DefaultDriverOption, DriverConfigLoader}
 import com.google.common.base.Charsets
 import com.google.common.primitives.UnsignedBytes
 import com.google.protobuf.ByteString
 import com.google.protobuf.any.Any
 import services.scalable.index.grpc.{DecimalValue, IndexContext, TemporalContext}
-import services.scalable.index.impl.GrpcByteSerializer
+import services.scalable.index.impl.{GrpcByteSerializer, GrpcCommandSerializer}
 
 import java.math.MathContext
 import java.nio.ByteBuffer
@@ -97,6 +96,7 @@ package object index {
   }
 
   object DefaultSerializers {
+
     implicit val bytesSerializer = new Serializer[Bytes] {
       override def serialize(t: Bytes): Array[Byte] = t
       override def deserialize(b: Array[Byte]): Bytes = b
@@ -206,9 +206,11 @@ package object index {
     }
 
     implicit val grpcLongIndexContextSerializer = new GrpcByteSerializer[Long, IndexContext]()
+
     implicit val grpcLongTemporalContextSerializer = new GrpcByteSerializer[Long, TemporalContext]()
     implicit val grpcBytesIndexContextSerializer = new GrpcByteSerializer[Bytes, IndexContext]()
 
     implicit val grpcBytesBytesSerializer = new GrpcByteSerializer[Bytes, Bytes]()
+    implicit val grpcBytesBytesCommandSerializer = new GrpcCommandSerializer[Bytes, Bytes]()
   }
 }

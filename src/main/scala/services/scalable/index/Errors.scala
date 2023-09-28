@@ -33,7 +33,8 @@ object Errors {
   case class INDEX_ALREADY_EXISTS(id: String) extends RuntimeException(s"Index ${id} already exists!") with IndexError
   case class TEMPORAL_INDEX_ALREADY_EXISTS(id: String) extends RuntimeException(s"Temporal Index ${id} already exists!") with TemporalIndexError
 
-  case class VERSION_CHANGED[K, V](changes: Seq[Tuple2[K, Option[String]]], ks: K => String) extends RuntimeException(s"Key version for ${changes.map{case (k, vs) => ks(k) -> vs}} has changed!") with IndexError
+  case class VERSION_CHANGED[K, V](changes: Seq[Tuple3[K, Option[String], Option[String]]], ks: K => String)
+    extends RuntimeException(s"changed versions: ${changes.map{case (k, vs0, vs1) => ks(k) -> (vs0, vs1)}}!") with IndexError
 
   case class TX_NOT_SUCCESSFUL(tx: String) extends RuntimeException(s"Transaction ${tx} is aborted or not committed!")
   case class TX_NOT_STARTED() extends RuntimeException(s"You must start a transaction first calling beginTx()!")

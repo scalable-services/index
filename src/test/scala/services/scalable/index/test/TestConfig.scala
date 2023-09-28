@@ -14,5 +14,6 @@ object TestConfig {
 
   val NUM_LEAF_ENTRIES = 16
   val NUM_META_ENTRIES = 16
+  val MAX_ITEMS = 100
 
 }

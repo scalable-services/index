@@ -53,7 +53,7 @@ class CassandraSpec extends Repeatable with Matchers {
 
     def insert(): Unit = {
 
-      val descriptorBackup = index.descriptor
+      val indexBkp = index
 
       val n = rand.nextInt(1, 1000)
       var list = Seq.empty[Tuple3[K, V, Boolean]]
@@ -102,7 +102,7 @@ class CassandraSpec extends Repeatable with Matchers {
 
       logger.debug(s"${Console.RED_B}INSERTION FAIL: ${list.map{case (k, v, _) => builder.ks(k)}}${Console.RESET}")
 
-      index = new QueryableIndex[K, V](descriptorBackup)(builder)
+      index = indexBkp
       result.error.get.printStackTrace()
     }
 
@@ -113,7 +113,7 @@ class CassandraSpec extends Repeatable with Matchers {
         case false => Some(UUID.randomUUID.toString)
       }
 
-      val descriptorBackup = index.descriptor
+      val indexBkp = index
 
       val n = if(data.length >= 2) rand.nextInt(1, data.length) else 1
       val list = scala.util.Random.shuffle(data).slice(0, n).map { case (k, v, _) =>
@@ -139,7 +139,7 @@ class CassandraSpec extends Repeatable with Matchers {
         return
       }
 
-      index = new QueryableIndex[K, V](descriptorBackup)(builder)
+      index = indexBkp
       result.error.get.printStackTrace()
       logger.debug(s"${Console.CYAN_B}UPDATED WRONG LAST VERSION ${list.map { case (k, _, _) => new String(k) }}...${Console.RESET}")
     }
@@ -151,7 +151,7 @@ class CassandraSpec extends Repeatable with Matchers {
         case false => Some(UUID.randomUUID.toString)
       }
 
-      val descriptorBackup = index.descriptor
+      val indexBkp = index
 
       val n = if(data.length >= 2) rand.nextInt(1, data.length) else 1
       val list: Seq[Tuple2[K, Option[String]]] = scala.util.Random.shuffle(data).slice(0, n).map { case (k, _, _) =>
@@ -175,7 +175,7 @@ class CassandraSpec extends Repeatable with Matchers {
         return
       }
 
-      index = new QueryableIndex[K, V](descriptorBackup)(builder)
+      index = indexBkp
       result.error.get.printStackTrace()
       logger.debug(s"${Console.RED_B}REMOVED WRONG VERSION ${list.map { case (k, _) => new String(k) }}...${Console.RESET}")
     }

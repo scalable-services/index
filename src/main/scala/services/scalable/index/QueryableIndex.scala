@@ -3,13 +3,15 @@ package services.scalable.index
 import services.scalable.index.grpc.{IndexContext, RootRef}
 import services.scalable.index.impl.RichAsyncIndexIterator
 
+import java.util.UUID
+import scala.collection.concurrent.TrieMap
 import scala.collection.mutable
 import scala.concurrent.Future
 
 /**
  * Any iterator can be constructed using a searching function and a filter function
  */
-class QueryableIndex[K, V](override val descriptor: IndexContext)(override val builder: IndexBuilder[K, V])
+class QueryableIndex[K, V](override protected val descriptor: IndexContext)(override val builder: IndexBuilder[K, V])
   extends Index[K, V](descriptor)(builder) {
 
   override val $this = this
@@ -399,6 +401,7 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override val b
   }
 
   def isFull(): Boolean = {
+    assert(descriptor.maxNItems > 0, s"Maximum size is not defined for this index!")
     ctx.num_elements >= descriptor.maxNItems
   }
 
@@ -410,85 +413,93 @@ class QueryableIndex[K, V](override val descriptor: IndexContext)(override val b
     ctx.num_elements >= descriptor.maxNItems / 2
   }
 
-  override def copy(indexBuilder: IndexBuilder[K, V] = builder): QueryableIndex[K, V] = {
-    val context = IndexContext(indexBuilder.idGenerator.generateIndexId(), descriptor.numLeafItems,
-      descriptor.numMetaItems,
-      ctx.root.map { r => RootRef(r._1, r._2) }, levels, ctx.num_elements,
-      ctx.maxNItems)
+  def copy(sameId: Boolean = false): QueryableIndex[K, V] = {
+    // Copies current snapshot
+    var descriptor = ctx.snapshot()
 
-    val copy = new QueryableIndex[K, V](context)(indexBuilder)
+    if(!sameId){
+      descriptor = descriptor.withId(builder.idGenerator.generateIndexId())
+    }
+
+    val copy = new QueryableIndex[K, V](descriptor)(builder)
 
     ctx.newBlocksReferences.foreach { case (id, b) =>
       copy.ctx.newBlocksReferences += id -> b
     }
 
+    ctx.parents.foreach { case (k, v) =>
+      copy.ctx.parents += k -> v
+    }
+
     copy
   }
 
-  override def split(rightBuilder: IndexBuilder[K, V] = builder): Future[QueryableIndex[K, V]] = {
-    for {
-      leftR <- ctx.getMeta(ctx.root.get).flatMap {
-        case block if block.length == 1 => ctx.getMeta(block.pointers(0)._2.unique_id)
-        case block => Future.successful(block)
-      }
-    } yield {
+  def split(): Future[QueryableIndex[K, V]] = {
+   assert(isFull(), s"The index must be full to be splitten!")
 
-      val refs = ctx.newBlocksReferences
-      val HALF_POS = leftR.length / 2
+   for {
+     leftBlock <- ctx.get(ctx.root.get)
+     rightBlock = leftBlock.split()
 
-      val firstHalf = leftR.pointers.slice(0, HALF_POS)
-      val secondHalf = leftR.pointers.slice(HALF_POS, leftR.length)
+   } yield {
+     val halfPos = leftBlock.length / 2
 
-      val leftN = firstHalf.map { case (_, ptr) =>
-        ptr.nElements
-      }.sum
+     val leftN = leftBlock.nSubtree
+     val rightN = rightBlock.nSubtree
 
-      val rightN = secondHalf.map { case (_, ptr) =>
-        ptr.nElements
-      }.sum
+     assert(ctx.num_elements == leftN + rightN)
 
-      val leftRefs = mutable.WeakHashMap[(String, String), (String, String)]()
-      val rightRefs = mutable.WeakHashMap[(String, String), (String, String)]()
+     val leftRefs = mutable.WeakHashMap.empty[(String, String), (String, String)]
+     val rightRefs = mutable.WeakHashMap.empty[(String, String), (String, String)]
 
-      refs.foreach { case (bid, _) =>
-        val block = cache.get[K, V](bid).get
-        val pos = leftR.findPosition(block.last)
+     val leftParents = TrieMap.empty[(String, String), (Option[(String, String)], Int)]
+     val rightParents = TrieMap.empty[(String, String), (Option[(String, String)], Int)]
 
-        if (pos < HALF_POS)
-          leftRefs.put(block.unique_id, block.unique_id)
-        else
-          rightRefs.put(block.unique_id, block.unique_id)
-      }
+     ctx.newBlocksReferences.foreach { case (id, block) =>
+       val pos = ctx.getRootPosition(id)
 
-      val leftICtx = descriptor
-        .withId(ctx.id)
-        .withMaxNItems(descriptor.maxNItems)
-        .withNumElements(leftN)
-        .withLevels(leftR.level)
-        .withNumLeafItems(descriptor.numLeafItems)
-        .withNumMetaItems(descriptor.numMetaItems)
+       if(pos < halfPos){
+          leftRefs += id -> block
+          leftParents += id -> ctx.parents(id)
+       } else {
+         rightRefs += id -> block
+         rightParents += id -> ctx.parents(id)
+       }
+     }
 
-      val rightICtx = descriptor
-        .withId(builder.idGenerator.generateIndexId())
-        .withMaxNItems(descriptor.maxNItems)
-        .withNumElements(rightN)
-        .withLevels(leftR.level)
-        .withNumLeafItems(descriptor.numLeafItems)
-        .withNumMetaItems(descriptor.numMetaItems)
+     ctx.num_elements = leftN
+     ctx.lastChangeVersion = UUID.randomUUID.toString
+     ctx.root = Some(leftBlock.unique_id)
 
-      ctx = Context.fromIndexContext(leftICtx)(builder)
-      ctx.newBlocksReferences = leftRefs
+     val rdescriptor = IndexContext()
+       .withId(builder.idGenerator.generateIndexId())
+       .withRoot(RootRef(rightBlock.unique_id._1, rightBlock.unique_id._2))
+       .withLastChangeVersion(UUID.randomUUID.toString)
+       .withMaxNItems(descriptor.maxNItems)
+       .withNumElements(rightN)
+       .withLevels(rightBlock.level)
+       .withNumLeafItems(descriptor.numLeafItems)
+       .withNumMetaItems(descriptor.numMetaItems)
 
-      val rindex = new QueryableIndex[K, V](rightICtx)(rightBuilder)
-      rindex.ctx.newBlocksReferences = rightRefs
+     val right = new QueryableIndex[K, V](rdescriptor)(builder)
 
-      val leftRoot = leftR.copy()(ctx)
-      ctx.root = Some(leftRoot.unique_id)
+     ctx.newBlocksReferences = leftRefs
 
-      val rightRoot = leftRoot.split()(rindex.ctx)
-      rindex.ctx.root = Some(rightRoot.unique_id)
+     ctx.parents.clear()
 
-      rindex
-    }
+     leftParents.foreach { e =>
+       ctx.parents += e
+     }
+
+     right.ctx.num_elements = rightN
+     right.ctx.root = Some(rightBlock.unique_id)
+     right.ctx.newBlocksReferences = rightRefs
+
+     rightParents.foreach { e =>
+       right.ctx.parents += e
+     }
+
+     right
+   }
   }
 }

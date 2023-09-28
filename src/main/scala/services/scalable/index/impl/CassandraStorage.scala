@@ -86,7 +86,7 @@ class CassandraStorage(val session: CqlSession,
       val one = rs.one()
 
       if(one == null){
-        println(id)
+        logger.error(s"block ${id} not found!")
       }
 
       one.getByteBuffer("bin").array()
@@ -155,6 +155,6 @@ class CassandraStorage(val session: CqlSession,
   }
 
   override def close(): Future[Unit] = {
-    session.closeAsync().map{_ => {}}
+    Future.successful {}
   }
 }
