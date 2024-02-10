@@ -22,7 +22,11 @@ trait Storage {
 
   def loadTemporalIndex(id: String): Future[Option[TemporalContext]]
 
+  def loadoOrCreateTemporalIndex(ctx: TemporalContext): Future[TemporalContext]
+
   def loadIndex(id: String): Future[Option[IndexContext]]
+
+  def loadOrCreate(ctx: IndexContext): Future[IndexContext]
 
   def close(): Future[Unit]
 

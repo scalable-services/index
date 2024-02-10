@@ -1,9 +1,9 @@
 organization := "services.scalable"
 name := "index"
 
-version := "0.30"
+version := "0.31"
 
-scalaVersion := "2.13.8"
+scalaVersion := "2.13.12"
 
 lazy val root = (project in file("."))
 

@@ -1,18 +1,18 @@
 package services.scalable.index
 
 import services.scalable.index.grpc.IndexContext
-import services.scalable.index.impl.{DefaultCache, MemoryStorage}
+import services.scalable.index.impl.{DefaultCache, GrpcByteSerializer, MemoryStorage}
 
 import java.util.UUID
 import scala.concurrent.ExecutionContext
 
-final class IndexBuilder[K, V](implicit val ord: Ordering[K],
+final class IndexBuilder[K, V](val descriptor: IndexContext)(implicit val ord: Ordering[K],
                                val keySerializer: Serializer[K],
                                val valueSerializer: Serializer[V],
                                val ec: ExecutionContext) {
 
   implicit var storage: Storage = new MemoryStorage()
-  implicit var serializer: Serializer[Block[K, V]] = null
+  implicit var serializer: Serializer[Block[K, V]] = new GrpcByteSerializer[K, V]()
   implicit var cache: Cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
 
   implicit var idGenerator: IdGenerator = DefaultIdGenerators.idGenerator
@@ -50,8 +50,9 @@ final class IndexBuilder[K, V](implicit val ord: Ordering[K],
     this
   }
 
-  def build(descriptor: IndexContext): QueryableIndex[K, V] = {
+  def build(): QueryableIndex[K, V] = {
 
+    assert(descriptor != null, "You must provide an index context!")
     assert(this.storage != null, "You must provide a storage service!")
     assert(this.serializer != null, "You must provide a serializer for data blocks!")
 
@@ -60,7 +61,7 @@ final class IndexBuilder[K, V](implicit val ord: Ordering[K],
 }
 
 object IndexBuilder {
-  def create[K, V](ordering: Ordering[K], keySerializer: Serializer[K], valueSerializer: Serializer[V])
-                  (implicit ec: ExecutionContext): IndexBuilder[K, V] =
-    new IndexBuilder[K, V]()(ordering, keySerializer, valueSerializer, ec)
+  def create[K, V](descriptor: IndexContext)
+                  (implicit ec: ExecutionContext, ordering: Ordering[K], keySerializer: Serializer[K], valueSerializer: Serializer[V]): IndexBuilder[K, V] =
+    new IndexBuilder[K, V](descriptor)(ordering, keySerializer, valueSerializer, ec)
 }

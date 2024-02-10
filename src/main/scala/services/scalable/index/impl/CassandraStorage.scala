@@ -66,6 +66,13 @@ class CassandraStorage(val session: CqlSession,
     }
   }
 
+  override def loadoOrCreateTemporalIndex(ctx: TemporalContext): Future[TemporalContext] = {
+    loadTemporalIndex(ctx.id).flatMap {
+      case None => createTemporalIndex(ctx).map(_ => ctx)
+      case Some(c) => Future.successful(c)
+    }
+  }
+
   override def loadIndex(id: String): Future[Option[IndexContext]] = {
     session.executeAsync(SELECT_INDEX.bind().setString(0, id)).flatMap { rs =>
       val one = rs.one()
@@ -78,6 +85,13 @@ class CassandraStorage(val session: CqlSession,
 
         Future.successful(Some(index))
       }
+    }
+  }
+
+  override def loadOrCreate(ctx: IndexContext): Future[IndexContext] = {
+    loadIndex(ctx.id).flatMap {
+      case None => createIndex(ctx).map(_ => ctx)
+      case Some(c) => Future.successful(c)
     }
   }
 

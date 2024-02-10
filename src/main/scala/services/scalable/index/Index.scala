@@ -2,7 +2,7 @@ package services.scalable.index
 
 import org.slf4j.LoggerFactory
 import services.scalable.index.Commands._
-import services.scalable.index.Errors.IndexError
+import services.scalable.index.Errors.{IndexError, KEY_NOT_FOUND}
 import services.scalable.index.grpc.{IndexContext, RootRef}
 import services.scalable.index.impl.RichAsyncIndexIterator
 
@@ -765,6 +765,71 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
     }
   }
 
+  protected def getKeysFromLeaf(leaf: Leaf[K, V], list: Seq[K], mustFindAll: Boolean): (Seq[Tuple[K, V]], Option[K]) = {
+    var results = Seq.empty[Tuple[K, V]]
+
+    for(k <- list){
+      val v = leaf.find(k)
+
+      if(mustFindAll && v.isEmpty){
+        return results -> Some(k)
+      }
+
+      if(v.isDefined) results :+= v.get
+    }
+
+    results -> None
+  }
+
+  def get(keys: Seq[K], mustFindAll: Boolean = false): Future[GetResult[K, V]] = {
+
+    val sorted = keys.sorted
+
+    val len = sorted.length
+    var pos = 0
+
+    var results = Seq.empty[Tuple[K, V]]
+
+    def get(): Future[Int] = {
+      if(pos == len) return Future.successful(sorted.length)
+
+      var list = sorted.slice(pos, len)
+      val k = list(0)
+
+      findPath(k).map {
+        case None => if(mustFindAll){
+          throw new KEY_NOT_FOUND[K](k, ks)
+        } else {
+          1
+        }
+
+        case Some(leaf) =>
+
+          val idx = list.indexWhere{k => ord.gt(k, leaf.last)}
+          if(idx > 0) list = list.slice(0, idx)
+
+          val (data, keyNotFound) = getKeysFromLeaf(leaf, list, mustFindAll)
+
+          if(keyNotFound.isDefined) {
+            throw new KEY_NOT_FOUND[K](k, ks)
+          }
+
+          results :++= data
+          list.length
+      }.flatMap { n =>
+        pos += n
+        get()
+      }
+    }
+
+    get().map { _ =>
+      GetResult[K, V](true, results, None)
+    }.recover {
+      case t: IndexError => GetResult[K, V](false, results, Some(t))
+      case t: Throwable => throw t
+    }
+  }
+
   def min(): Future[Option[Tuple[K,V]]] = {
     first().flatMap {
       case None => Future.successful(None)
@@ -885,13 +950,15 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
 
   def execute(cmds: Seq[Command[K, V]], version: String = ctx.id): Future[BatchResult] = {
 
-    def process(pos: Int, error: Option[Throwable]): Future[BatchResult] = {
+    def process(pos: Int, error: Option[Throwable], maxKey: Option[K]): Future[BatchResult] = {
       if(error.isDefined) {
-        return Future.successful(BatchResult(false, error))
+        return Future.successful(BatchResult(false, false, error))
       }
 
       if(pos == cmds.length) {
-        return Future.successful(BatchResult(true))
+        return max().map { newMaxKey =>
+          BatchResult(true, newMaxKey == maxKey)
+        }
       }
 
       val cmd = cmds(pos)
@@ -900,9 +967,9 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
         case cmd: Insert[K, V] => insert(cmd.list, version)
         case cmd: Remove[K, V] => remove(cmd.keys)
         case cmd: Update[K, V] => update(cmd.list, version)
-      }).flatMap(prev => process(pos + 1, prev.error))
+      }).flatMap(prev => process(pos + 1, prev.error, maxKey))
     }
 
-    process(0, None)
+    max().flatMap { maxKey => process(0, None, maxKey.map(_._1))}
   }
 }
