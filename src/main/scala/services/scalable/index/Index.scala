@@ -957,7 +957,7 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
 
       if(pos == cmds.length) {
         return max().map { newMaxKey =>
-          BatchResult(true, newMaxKey == maxKey)
+          BatchResult(true, newMaxKey != maxKey)
         }
       }
 
