@@ -11,4 +11,4 @@ case class InsertionResult(override val success: Boolean, n: Int, override val e
 case class UpdateResult(override val success: Boolean, n: Int, override val error: Option[Throwable] = None) extends Result
 case class RemovalResult(override val success: Boolean, n: Int, override val error: Option[Throwable] = None) extends Result
 
-case class BatchResult(override val success: Boolean, maxHasChanged: Boolean = false, error: Option[Throwable] = None) extends Result
+case class BatchResult(override val success: Boolean, error: Option[Throwable] = None) extends Result

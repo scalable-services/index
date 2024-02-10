@@ -950,15 +950,13 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
 
   def execute(cmds: Seq[Command[K, V]], version: String = ctx.id): Future[BatchResult] = {
 
-    def process(pos: Int, error: Option[Throwable], maxKey: Option[K]): Future[BatchResult] = {
+    def process(pos: Int, error: Option[Throwable]): Future[BatchResult] = {
       if(error.isDefined) {
-        return Future.successful(BatchResult(false, false, error))
+        return Future.successful(BatchResult(false, error))
       }
 
       if(pos == cmds.length) {
-        return max().map { newMaxKey =>
-          BatchResult(true, newMaxKey != maxKey)
-        }
+        return Future.successful(BatchResult(true))
       }
 
       val cmd = cmds(pos)
@@ -967,9 +965,9 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
         case cmd: Insert[K, V] => insert(cmd.list, version)
         case cmd: Remove[K, V] => remove(cmd.keys)
         case cmd: Update[K, V] => update(cmd.list, version)
-      }).flatMap(prev => process(pos + 1, prev.error, maxKey))
+      }).flatMap(prev => process(pos + 1, prev.error))
     }
 
-    max().flatMap { maxKey => process(0, None, maxKey.map(_._1))}
+    process(0, None)
   }
 }
