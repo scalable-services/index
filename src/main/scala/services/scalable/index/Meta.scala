@@ -44,7 +44,12 @@ class Meta[K, V](override val id: String,
 
   def findPath(k: K)(implicit ord: Ordering[K]): (String, String) = {
     val (_, pos) = binSearch(k)
-    pointers(if(pos < pointers.length) pos else pos - 1)._2.unique_id
+    val idx = if(pos < pointers.length) pos else pos - 1
+    val e = pointers(idx)._2.unique_id
+
+    logger.debug(s"[meta search in ${id} at pos ${idx}] => ${e}")
+
+    e
   }
 
   def findPosition(k: K)(implicit ord: Ordering[K]): Int = {
@@ -185,7 +190,7 @@ class Meta[K, V](override val id: String,
   override def print()(implicit ctx: Context[K, V]): String = {
     if(pointers.isEmpty) return "[]"
 
-    val sb = new StringBuilder(s"${id}:")
+    val sb = new StringBuilder(s"id=[${id}, len=${length}]:")
     sb ++= Console.RED_B
     sb ++= "["
     sb ++= Console.RESET
@@ -193,14 +198,14 @@ class Meta[K, V](override val id: String,
     for(i<-0 until pointers.length - 1){
       val (k, _) = pointers(i)
 
-      sb ++= ctx.builder.ks(k)
+      sb ++= s"""[${i}]${ctx.builder.ks(k)}"""
       sb ++= ","
     }
 
     sb ++= Console.RED_B
 
     val (k, _) = pointers(pointers.length - 1)
-    sb ++= ctx.builder.ks(k)
+    sb ++= s"""[${pointers.length-1}]${ctx.builder.ks(k)}"""
 
     sb ++= Console.RESET
 

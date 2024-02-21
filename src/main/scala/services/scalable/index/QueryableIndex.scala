@@ -11,7 +11,7 @@ import scala.concurrent.Future
 /**
  * Any iterator can be constructed using a searching function and a filter function
  */
-class QueryableIndex[K, V](override protected val descriptor: IndexContext)(override val builder: IndexBuilder[K, V])
+class QueryableIndex[K, V](override protected val descriptor: IndexContext)(override val builder: IndexBuilt[K, V])
   extends Index[K, V](descriptor)(builder) {
 
   override val $this = this
@@ -22,8 +22,9 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
     findPath(k)
   }
 
-  def previousKey(k: K, orEqual: Boolean)(termComp: Ordering[K]): Future[Option[Leaf[K, V]]] = {
-    findPath(k)(termComp).flatMap {
+  def previousKey(k: K, orEqual: Boolean)(termComp: Ordering[K],
+                                          findPathFn: (K, Meta[K, V], Ordering[K]) => (String, String)): Future[Option[Leaf[K, V]]] = {
+    findPath(k, None, findPathFn)(termComp).flatMap {
       case None => Future.successful(None)
       case Some(leaf) =>
 
@@ -45,8 +46,8 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
     }
   }
 
-  def nextKey(k: K, orEqual: Boolean)(termComp: Ordering[K]): Future[Option[Leaf[K, V]]] = {
-    findPath(k)(termComp).flatMap {
+  def nextKey(k: K, orEqual: Boolean)(termComp: Ordering[K], findPathFn: (K, Meta[K, V], Ordering[K]) => (String, String)): Future[Option[Leaf[K, V]]] = {
+    findPath(k, None, findPathFn)(termComp).flatMap {
       case None => Future.successful(None)
       case Some(leaf) =>
 
@@ -68,7 +69,7 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
     }
   }
 
-  def asc(term: K, termInclusive: Boolean)(termComp: Ordering[K]): RichAsyncIndexIterator[K, V] = {
+  def asc(term: K, termInclusive: Boolean)(termComp: Ordering[K], findPathFn: (K, Meta[K, V], Ordering[K]) => (String, String)): RichAsyncIndexIterator[K, V] = {
     new RichAsyncIndexIterator[K, V]() {
 
       var root: Option[(String, String)] = None
@@ -77,7 +78,7 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
       override def hasNext(): Future[Boolean] = {
         if (stop) return Future.successful(false)
 
-        if (first) return nextKey(term, termInclusive)(termComp).map { block =>
+        if (first) return nextKey(term, termInclusive)(termComp, findPathFn).map { block =>
           root = block.map(_.unique_id)
           first = false
 
@@ -109,7 +110,7 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
     }
   }
 
-  def desc(term: K, termInclusive: Boolean)(termComp: Ordering[K]): RichAsyncIndexIterator[K, V] = {
+  def desc(term: K, termInclusive: Boolean)(termComp: Ordering[K], findPathFn: (K, Meta[K, V], Ordering[K]) => (String, String)): RichAsyncIndexIterator[K, V] = {
     new RichAsyncIndexIterator[K, V]() {
 
       var root: Option[(String, String)] = None
@@ -118,7 +119,7 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
       override def hasNext(): Future[Boolean] = {
         if (stop) return Future.successful(false)
 
-        if (first) return previousKey(term, termInclusive)(termComp).map { block =>
+        if (first) return previousKey(term, termInclusive)(termComp, findPathFn).map { block =>
           root = block.map(_.unique_id)
           first = false
 
@@ -233,7 +234,10 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
   }
 
   def lt(term: K, termInclusive: Boolean, reverse: Boolean)(termComp: Ordering[K]): RichAsyncIndexIterator[K, V] = {
-    val it = if(reverse) desc(term, termInclusive)(termComp) else head()
+    val it = if(reverse) desc(term, termInclusive)(termComp, (_, meta: Meta[K, V], _) => {
+     val idx = meta.pointers.indexWhere(x => termInclusive && termComp.lteq(x._1, term) || termComp.lt(x._1, term))
+      meta.pointers(if(idx < 0) 0 else idx)._2.unique_id
+    }) else head()
 
     it.filter = x => {
       (termInclusive && termComp.lteq(x._1, term)) || termComp.lt(x._1, term)
@@ -242,9 +246,16 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
     it
   }
 
-  def lt(prefix: K, term: K, termInclusive: Boolean, reverse: Boolean)(prefixComp: Ordering[K], termComp: Ordering[K]): RichAsyncIndexIterator[K, V] = {
-    val it = if (reverse) desc(term, termInclusive)(termComp) else
-      asc(prefix, true)(termComp)
+  def lt(prefix: K, term: K, termInclusive: Boolean, reverse: Boolean)(prefixComp: Ordering[K],
+                                                                       termComp: Ordering[K]): RichAsyncIndexIterator[K, V] = {
+    val fpfn = (k: K, meta: Meta[K, V], ordering: Ordering[K]) => {
+      val idx = meta.pointers.indexWhere(x => prefixComp.equiv(x._1, prefix) &&
+          (termInclusive && termComp.lteq(x._1, term) || termComp.lt(x._1, term)))
+      meta.pointers(if(idx < 0) 0 else idx)._2.unique_id
+    }
+
+    val it = if (reverse) desc(term, termInclusive)(termComp, fpfn) else
+      asc(prefix, true)(termComp, fpfn)
 
     it.filter = k => {
       prefixComp.equiv(k._1, prefix) && (termInclusive && termComp.lteq(k._1, term) || termComp.lt(k._1, term))
@@ -253,8 +264,29 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
     it
   }
 
+  def gt(prefix: K, term: K, termInclusive: Boolean, reverse: Boolean)(prefixComp: Ordering[K],
+                                                                       termComp: Ordering[K]): RichAsyncIndexIterator[K, V] = {
+    val fpfn = (k: K, meta: Meta[K, V], ordering: Ordering[K]) => {
+      val idx = meta.pointers.indexWhere(x => prefixComp.equiv(x._1, prefix) &&
+          (termInclusive && termComp.gteq(x._1, term) || termComp.gt(x._1, term)))
+      meta.pointers(if(idx < 0) 0 else idx)._2.unique_id
+    }
+
+    val it = if(reverse) gtReversePrefix(prefix, term, termInclusive)(prefixComp, termComp)
+      else asc(term, termInclusive)(termComp, fpfn)
+
+    it.filter = k => {
+      prefixComp.equiv(k._1, prefix) && (termInclusive && termComp.gteq(k._1, term) || termComp.gt(k._1, term))
+    }
+
+    it
+  }
+
   def gt(term: K, termInclusive: Boolean, reverse: Boolean)(termComp: Ordering[K]): RichAsyncIndexIterator[K, V] = {
-    val it = if(reverse) tail() else asc(term, termInclusive)(termComp)
+    val it = if(reverse) tail() else asc(term, termInclusive)(termComp, (_, meta, _) => {
+      val idx = meta.pointers.indexWhere(x => termInclusive && termComp.gteq(x._1, term) || termComp.gt(x._1, term))
+      meta.pointers(if(idx < 0) 0 else idx)._2.unique_id
+    })
 
     it.filter = k => {
       (termInclusive && termComp.gteq(k._1, term)) || termComp.gt(k._1, term)
@@ -315,9 +347,9 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
     }
   }
 
-  def prefix(prefix: K, reverse: Boolean)(prefixComp: Ordering[K]): RichAsyncIndexIterator[K, V] = {
+  def prefix(prefix: K, reverse: Boolean)(prefixComp: Ordering[K], findPathFn: (K, Meta[K, V], Ordering[K]) => (String, String)): RichAsyncIndexIterator[K, V] = {
     val it = if(reverse) prefixReverse(prefix)(prefixComp)
-      else asc(prefix, true)(prefixComp)
+      else asc(prefix, true)(prefixComp, findPathFn)
 
     it.filter = x => {
       prefixComp.equiv(x._1, prefix)
@@ -378,19 +410,9 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
     }
   }
 
-  def gt(prefix: K, term: K, termInclusive: Boolean, reverse: Boolean)(prefixComp: Ordering[K], termComp: Ordering[K]): RichAsyncIndexIterator[K, V] = {
-    val it = if(reverse) gtReversePrefix(prefix, term, termInclusive)(prefixComp, termComp)
-      else asc(term, termInclusive)(termComp)
-
-    it.filter = k => {
-      prefixComp.equiv(k._1, prefix) && (termInclusive && termComp.gteq(k._1, term) || termComp.gt(k._1, term))
-    }
-
-    it
-  }
-
-  def range(from: K, to: K, fromInclusive: Boolean, toInclusive: Boolean, reverse: Boolean)(termComp: Ordering[K]): RichAsyncIndexIterator[K, V] = {
-    val it = if(reverse) desc(to, toInclusive)(termComp) else asc(from, fromInclusive)(termComp)
+  def range(from: K, to: K, fromInclusive: Boolean, toInclusive: Boolean, reverse: Boolean)(termComp: Ordering[K],
+                                                                                            findPathFn: (K, Meta[K, V], Ordering[K]) => (String, String)): RichAsyncIndexIterator[K, V] = {
+    val it = if(reverse) desc(to, toInclusive)(termComp, findPathFn) else asc(from, fromInclusive)(termComp, findPathFn)
 
     it.filter = k => {
       ((fromInclusive && termComp.gteq(k._1, from)) || termComp.gt(k._1, from)) &&
@@ -401,8 +423,8 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
   }
 
   def isFull(): Boolean = {
-    assert(descriptor.maxNItems > 0, s"Maximum size is not defined for this index!")
-    ctx.num_elements >= descriptor.maxNItems
+    if(builder.MAX_N_ITEMS < 0) return false
+    ctx.num_elements >= builder.MAX_N_ITEMS
   }
 
   def isEmpty(): Boolean = {
@@ -410,7 +432,7 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
   }
 
   def hasMinimum(): Boolean = {
-    ctx.num_elements >= descriptor.maxNItems / 2
+    ctx.num_elements >= builder.MAX_N_ITEMS / 2
   }
 
   def copy(sameId: Boolean = false): QueryableIndex[K, V] = {
@@ -475,11 +497,11 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
        .withId(builder.idGenerator.generateIndexId())
        .withRoot(RootRef(rightBlock.unique_id._1, rightBlock.unique_id._2))
        .withLastChangeVersion(UUID.randomUUID.toString)
-       .withMaxNItems(descriptor.maxNItems)
+       .withMaxNItems(builder.MAX_N_ITEMS)
        .withNumElements(rightN)
        .withLevels(rightBlock.level)
-       .withNumLeafItems(descriptor.numLeafItems)
-       .withNumMetaItems(descriptor.numMetaItems)
+       .withNumLeafItems(builder.MAX_LEAF_ITEMS)
+       .withNumMetaItems(builder.MAX_META_ITEMS)
 
      val right = new QueryableIndex[K, V](rdescriptor)(builder)
 

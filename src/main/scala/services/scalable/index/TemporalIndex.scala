@@ -4,8 +4,8 @@ import services.scalable.index.grpc._
 import scala.concurrent.Future
 
 class TemporalIndex[K, V](val descriptor: TemporalContext)
-                         (val indexBuilder: IndexBuilder[K, V],
-                          val historyBuilder: IndexBuilder[Long, IndexContext],
+                         (val indexBuilder: IndexBuilt[K, V],
+                          val historyBuilder: IndexBuilt[Long, IndexContext],
                           val cache: com.github.benmanes.caffeine.cache.Cache[(String, Long), Option[QueryableIndex[K, V]]]){
 
   import DefaultSerializers._

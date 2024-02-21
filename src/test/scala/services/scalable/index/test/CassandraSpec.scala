@@ -37,19 +37,23 @@ class CassandraSpec extends Repeatable with Matchers {
     val session = TestHelper.createCassandraSession()
     val storage = new CassandraStorage(session, true)
 
-    val builder = IndexBuilder.create[K, V](DefaultComparators.bytesOrd, DefaultSerializers.bytesSerializer, DefaultSerializers.bytesSerializer)
-      .storage(storage)
-      .serializer(DefaultSerializers.grpcBytesBytesSerializer)
-      .keyToStringConverter(DefaultPrinters.byteArrayToStringPrinter)
-
     val indexContext = Await.result(TestHelper.loadOrCreateIndex(IndexContext(
       indexId,
       NUM_LEAF_ENTRIES,
-      NUM_META_ENTRIES
+      NUM_META_ENTRIES,
+      maxNItems = -1L
     ))(storage, global), Duration.Inf).get
 
+    val builder = IndexBuilder.create[K, V](global, DefaultComparators.bytesOrd,
+        indexContext.numLeafItems, indexContext.numMetaItems, indexContext.maxNItems,
+        DefaultSerializers.bytesSerializer, DefaultSerializers.bytesSerializer)
+      .storage(storage)
+      .serializer(DefaultSerializers.grpcBytesBytesSerializer)
+      .keyToStringConverter(DefaultPrinters.byteArrayToStringPrinter)
+      .build()
+
     var data = Seq.empty[(K, V, Boolean)]
-    var index = builder.build(indexContext)
+    var index = new QueryableIndex[K, V](indexContext)(builder)
 
     def insert(): Unit = {
 
@@ -197,7 +201,7 @@ class CassandraSpec extends Repeatable with Matchers {
     logger.info(Await.result(index.save(), Duration.Inf).toString)
 
     val dlist = data.sortBy(_._1).map{case (k, v, _) => k -> v}
-    val ilist = Await.result(TestHelper.all(index.inOrder()), Duration.Inf).map{case (k, v, _) => k -> v}
+    val ilist = Await.result(index.all(), Duration.Inf).map{case (k, v, _) => k -> v}
 
     logger.debug(s"${Console.GREEN_B}tdata: ${dlist.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
     logger.debug(s"${Console.MAGENTA_B}idata: ${ilist.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")

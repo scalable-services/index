@@ -181,7 +181,11 @@ class Leaf[K, V](override val id: String,
 
     if(!found) return None
 
-    Some(tuples(pos))
+    val e = tuples(pos)
+
+    logger.debug(s"[leaf search in ${id} at pos ${pos}] => ${e._1}")
+
+    Some(e)
   }
 
   def findPath(k: K)(implicit ord: Ordering[K]): (Boolean, Tuple[K, V]) = {
@@ -224,14 +228,14 @@ class Leaf[K, V](override val id: String,
   override def print()(implicit ctx: Context[K, V]): String = {
     if(tuples.isEmpty) return "[]"
 
-    val sb = new StringBuilder(s"${id}:")
+    val sb = new StringBuilder(s"id=[${id}, len=${length}]:")
     sb ++= Console.GREEN_B
     sb ++= "["
     sb ++= Console.RESET
 
     for(i<-0 until tuples.length - 1){
       val (k, v, _) = tuples(i)
-      sb ++= ctx.builder.ks(k)
+      sb ++= s"""[${i}]${ctx.builder.ks(k)}"""
 
       sb ++= "->"
 
@@ -241,7 +245,7 @@ class Leaf[K, V](override val id: String,
 
     sb ++= Console.RED_B
     val (k, v, _) = tuples(tuples.length - 1)
-    sb ++= ctx.builder.ks(k)
+    sb ++= s"""[${tuples.length-1}]${ctx.builder.ks(k)}"""
     sb ++= Console.RESET
 
     sb ++= "->"

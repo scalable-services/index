@@ -1,12 +1,27 @@
 package services.scalable.index
 
-import services.scalable.index.grpc.IndexContext
 import services.scalable.index.impl.{DefaultCache, GrpcByteSerializer, MemoryStorage}
-
-import java.util.UUID
 import scala.concurrent.ExecutionContext
 
-final class IndexBuilder[K, V](val descriptor: IndexContext)(implicit val ord: Ordering[K],
+final case class IndexBuilt[K, V]()(implicit val ord: Ordering[K],
+                                  val MAX_LEAF_ITEMS: Int,
+                                  val MAX_META_ITEMS: Int,
+                                  val MAX_N_ITEMS: Long,
+                                  val idGenerator: IdGenerator,
+                                  val ks: K => String,
+                                  val vs: V => String,
+                                  val ec: ExecutionContext,
+                                  val keySerializer: Serializer[K],
+                                  val valueSerializer: Serializer[V],
+                                  val storage: Storage,
+                                  val serializer: Serializer[Block[K, V]],
+                                  val cache: Cache
+                                 )
+
+final class IndexBuilder[K, V](implicit val ord: Ordering[K],
+                               val MAX_LEAF_ITEMS: Int,
+                               val MAX_META_ITEMS: Int,
+                               val MAX_N_ITEMS: Long,
                                val keySerializer: Serializer[K],
                                val valueSerializer: Serializer[V],
                                val ec: ExecutionContext) {
@@ -50,18 +65,23 @@ final class IndexBuilder[K, V](val descriptor: IndexContext)(implicit val ord: O
     this
   }
 
-  def build(): QueryableIndex[K, V] = {
+  def build(): IndexBuilt[K, V] = {
 
-    assert(descriptor != null, "You must provide an index context!")
     assert(this.storage != null, "You must provide a storage service!")
     assert(this.serializer != null, "You must provide a serializer for data blocks!")
 
-    new QueryableIndex[K, V](descriptor)(this)
+    new IndexBuilt[K, V]()(ord, MAX_LEAF_ITEMS, MAX_META_ITEMS, MAX_N_ITEMS, idGenerator, ks, vs, ec, keySerializer,
+      valueSerializer, storage, serializer, cache)
   }
 }
 
 object IndexBuilder {
-  def create[K, V](descriptor: IndexContext)
-                  (implicit ec: ExecutionContext, ordering: Ordering[K], keySerializer: Serializer[K], valueSerializer: Serializer[V]): IndexBuilder[K, V] =
-    new IndexBuilder[K, V](descriptor)(ordering, keySerializer, valueSerializer, ec)
+  def create[K, V](implicit ec: ExecutionContext,
+                   ordering: Ordering[K],
+                   MAX_LEAF_ITEMS: Int,
+                   MAX_META_ITEMS: Int,
+                   MAX_N_ITEMS: Long,
+                   keySerializer: Serializer[K],
+                   valueSerializer: Serializer[V]): IndexBuilder[K, V] =
+    new IndexBuilder[K, V]()(ordering, MAX_LEAF_ITEMS, MAX_META_ITEMS, MAX_N_ITEMS, keySerializer, valueSerializer, ec)
 }

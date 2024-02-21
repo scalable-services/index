@@ -12,11 +12,8 @@ sealed class Context[K, V](val indexId: String,
                     var lastChangeVersion: String,
                     var root: Option[(String, String)],
                     var num_elements: Long,
-                    var levels: Int,
-                    val maxNItems: Int,
-                    val NUM_LEAF_ENTRIES: Int,
-                    val NUM_META_ENTRIES: Int)
-                   (val builder: IndexBuilder[K, V]) {
+                    var levels: Int)
+                   (val builder: IndexBuilt[K, V]) {
 
   import builder._
 
@@ -25,10 +22,10 @@ sealed class Context[K, V](val indexId: String,
 
   val logger = LoggerFactory.getLogger(this.getClass)
 
-  val LEAF_MAX = NUM_LEAF_ENTRIES
+  val LEAF_MAX = builder.MAX_LEAF_ITEMS
   val LEAF_MIN = LEAF_MAX/2
 
-  val META_MAX = NUM_META_ENTRIES
+  val META_MAX = builder.MAX_META_ITEMS
   val META_MIN = META_MAX/2
 
   var newBlocksReferences = mutable.WeakHashMap.empty[(String, String), (String, String)]
@@ -114,8 +111,8 @@ sealed class Context[K, V](val indexId: String,
     b.root.equals(root)
   }
 
-  def currentSnapshot() = IndexContext(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, root.map { r => RootRef(r._1, r._2) }, levels,
-    num_elements, maxNItems, lastChangeVersion)
+  def currentSnapshot() = IndexContext(indexId, MAX_LEAF_ITEMS, MAX_META_ITEMS, root.map { r => RootRef(r._1, r._2) }, levels,
+    num_elements, builder.MAX_N_ITEMS, lastChangeVersion)
 
   /**
    * When creating a snapshot, the new blocks are now immutable!
@@ -131,8 +128,8 @@ sealed class Context[K, V](val indexId: String,
 
     logger.debug(s"\nSAVING $indexId: ${root.map{r => RootRef(r._1, r._2)}}\n")
 
-    IndexContext(indexId, NUM_LEAF_ENTRIES, NUM_META_ENTRIES, root.map{r => RootRef(r._1, r._2)}, levels,
-      num_elements, maxNItems, lastChangeVersion)
+    IndexContext(indexId, builder.MAX_LEAF_ITEMS, builder.MAX_META_ITEMS, root.map{r => RootRef(r._1, r._2)}, levels,
+      num_elements, builder.MAX_N_ITEMS, lastChangeVersion)
   }
 
   def clear(): Unit = {
@@ -165,8 +162,8 @@ sealed class Context[K, V](val indexId: String,
 }
 
 object Context {
-  def fromIndexContext[K, V](ictx: IndexContext)(builder: IndexBuilder[K, V]): Context[K, V] = {
+  def fromIndexContext[K, V](ictx: IndexContext)(builder: IndexBuilt[K, V]): Context[K, V] = {
     new Context[K, V](ictx.id, ictx.lastChangeVersion, ictx.root.map{ r => (r.partition, r.id)}, ictx.numElements,
-      ictx.levels, ictx.maxNItems, ictx.numLeafItems, ictx.numMetaItems)(builder)
+      ictx.levels)(builder)
   }
 }

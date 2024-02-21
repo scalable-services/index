@@ -38,12 +38,6 @@ class SplitIndexSpec extends Repeatable with Matchers {
     val session = TestHelper.createCassandraSession()
     val storage = new CassandraStorage(session, true)//new MemoryStorage()
 
-    val builder = IndexBuilder.create[K, V](DefaultComparators.bytesOrd, DefaultSerializers.bytesSerializer, DefaultSerializers.bytesSerializer)
-      .storage(storage)
-      .serializer(DefaultSerializers.grpcBytesBytesSerializer)
-      .keyToStringConverter(DefaultPrinters.byteArrayToStringPrinter)
-      .valueToStringConverter(DefaultPrinters.byteArrayToStringPrinter)
-
     val MAX_ITEMS = 300
 
     val indexContext = Await.result(TestHelper.loadOrCreateIndex(IndexContext(
@@ -53,10 +47,19 @@ class SplitIndexSpec extends Repeatable with Matchers {
       maxNItems = MAX_ITEMS
     ))(storage, global), Duration.Inf).get
 
+    val builder = IndexBuilder.create[K, V](global, DefaultComparators.bytesOrd,
+       indexContext.numLeafItems, indexContext.numMetaItems, indexContext.maxNItems,
+        DefaultSerializers.bytesSerializer, DefaultSerializers.bytesSerializer)
+      .storage(storage)
+      .serializer(DefaultSerializers.grpcBytesBytesSerializer)
+      .keyToStringConverter(DefaultPrinters.byteArrayToStringPrinter)
+      .valueToStringConverter(DefaultPrinters.byteArrayToStringPrinter)
+      .build()
+
     val version = UUID.randomUUID.toString
 
     var data = Seq.empty[(K, V, String)]
-    val index = builder.build(indexContext)
+    val index = new QueryableIndex[K, V](indexContext)(builder)
 
     def insert(): Seq[Commands.Command[K, V]] = {
       val n = rand.nextInt(1, 1000)
@@ -118,7 +121,7 @@ class SplitIndexSpec extends Repeatable with Matchers {
      //index.copy()
 
     val dlist = data.sortBy(_._1).map{case (k, v, _) => k -> v}
-    val ilist = Await.result(TestHelper.all(index.inOrder()), Duration.Inf).map{case (k, v, _) => k -> v}
+    val ilist = Await.result(index.all(), Duration.Inf).map{case (k, v, _) => k -> v}
 
     logger.debug(s"${Console.GREEN_B}tdata [${dlist.length}]: ${dlist.map{case (k, v) => builder.ks(k) -> builder.vs(v)}}${Console.RESET}\n")
     logger.debug(s"${Console.MAGENTA_B}idata [${ilist.length}]: ${ilist.map{case (k, v) => builder.ks(k) -> builder.vs(v)}}${Console.RESET}\n")
@@ -129,8 +132,6 @@ class SplitIndexSpec extends Repeatable with Matchers {
 
     logger.info(savedCtx.toString)
 
-    builder.cache(new DefaultCache(MAX_PARENT_ENTRIES = 80000))
-
     val copy = new QueryableIndex[K, V](savedCtx)(builder)
 
     if(copy.isFull()){
@@ -138,8 +139,8 @@ class SplitIndexSpec extends Repeatable with Matchers {
 
       val right = Await.result(copy.split(), Duration.Inf)
 
-      val leftList = Await.result(TestHelper.all(copy.inOrder()), Duration.Inf).map { case (k, v, _) => k -> v }
-      val rightList = Await.result(TestHelper.all(right.inOrder()), Duration.Inf).map { case (k, v, _) => k -> v }
+      val leftList = Await.result(copy.all(), Duration.Inf).map { case (k, v, _) => k -> v }
+      val rightList = Await.result(right.all(), Duration.Inf).map { case (k, v, _) => k -> v }
 
       val mergeSplits = leftList ++ rightList
 

@@ -1,13 +1,13 @@
 package services.scalable.index.test
 
-import com.github.benmanes.caffeine.cache.{Caffeine, RemovalCause, RemovalListener}
+import com.github.benmanes.caffeine.cache.{Caffeine, RemovalCause}
 import com.google.common.base.Charsets
 import io.netty.util.internal.ThreadLocalRandom
 import org.apache.commons.lang3.RandomStringUtils
 import org.slf4j.LoggerFactory
 import services.scalable.index.grpc.{IndexContext, TemporalContext}
 import services.scalable.index.impl._
-import services.scalable.index.{Cache, Commands, DefaultComparators, DefaultPrinters, DefaultSerializers, IndexBuilder, QueryableIndex, TemporalIndex}
+import services.scalable.index.{Commands, DefaultComparators, DefaultPrinters, DefaultSerializers, IndexBuilder, QueryableIndex, TemporalIndex}
 
 import java.util.UUID
 import scala.concurrent.Await
@@ -49,16 +49,22 @@ class TemporalIndexSpec extends Repeatable {
 
     val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
 
-    val indexBuilder = IndexBuilder.create[K, V](DefaultComparators.bytesOrd, DefaultSerializers.bytesSerializer, DefaultSerializers.bytesSerializer)
+    val indexBuilder = IndexBuilder.create[K, V](global, DefaultComparators.bytesOrd,
+        NUM_LEAF_ENTRIES, NUM_META_ENTRIES, -1L,
+        DefaultSerializers.bytesSerializer, DefaultSerializers.bytesSerializer)
       .storage(storage)
       .cache(cache)
       .serializer(grpcBytesBytesSerializer)
       .keyToStringConverter(DefaultPrinters.byteArrayToStringPrinter)
+      .build()
 
-    val historyBuilder = IndexBuilder.create[Long, IndexContext](DefaultComparators.ordLong, DefaultSerializers.longSerializer, DefaultSerializers.indexContextSerializer)
+    val historyBuilder = IndexBuilder.create[Long, IndexContext](global, DefaultComparators.ordLong,
+        NUM_LEAF_ENTRIES, NUM_META_ENTRIES, -1L,
+        DefaultSerializers.longSerializer, DefaultSerializers.indexContextSerializer)
       .storage(storage)
       .cache(cache)
       .serializer(DefaultSerializers.grpcLongIndexContextSerializer)
+      .build()
 
     val tcache = Caffeine.newBuilder()
       .maximumSize(1000)
@@ -218,7 +224,7 @@ class TemporalIndexSpec extends Repeatable {
       val ldata = data.map{x => x._1 -> x._2}.toList
 
       val idx = Await.result(hDBFromDisk.findIndex(tmp), Duration.Inf).get
-      val idata = Await.result(TestHelper.all(idx.inOrder()), Duration.Inf).map{x => x._1 -> x._2}
+      val idata = Await.result(idx.all(), Duration.Inf).map{x => x._1 -> x._2}
 
       logger.debug(s"${Console.GREEN_B}idata: ${idata.map { case (k, _) => indexBuilder.ks(k) }}${Console.RESET}\n")
       logger.debug(s"${Console.GREEN_B}ldata: ${ldata.map { case (k, _) => indexBuilder.ks(k) }}${Console.RESET}\n")

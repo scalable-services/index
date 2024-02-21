@@ -35,7 +35,7 @@ object TestHelper {
     storage.loadTemporalIndex(id)
   }
 
-  def all[K, V](it: AsyncIndexIterator[Seq[Tuple[K, V]]])(implicit ec: ExecutionContext): Future[Seq[Tuple[K, V]]] = {
+  /*def all[K, V](it: AsyncIndexIterator[Seq[Tuple[K, V]]])(implicit ec: ExecutionContext): Future[Seq[Tuple[K, V]]] = {
     it.hasNext().flatMap {
       case true => it.next().flatMap { list =>
         all(it).map {
@@ -44,7 +44,7 @@ object TestHelper {
       }
       case false => Future.successful(Seq.empty[Tuple[K, V]])
     }
-  }
+  }*/
 
   def isColEqual[K, V](source: Seq[Tuple2[K, V]], target: Seq[Tuple2[K, V]])(implicit ordk: Ordering[K], ordv: Ordering[V]): Boolean = {
     if (target.length != source.length) return false

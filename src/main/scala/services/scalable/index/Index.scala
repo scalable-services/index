@@ -3,13 +3,11 @@ package services.scalable.index
 import org.slf4j.LoggerFactory
 import services.scalable.index.Commands._
 import services.scalable.index.Errors.{IndexError, KEY_NOT_FOUND}
-import services.scalable.index.grpc.{IndexContext, RootRef}
+import services.scalable.index.grpc.IndexContext
 import services.scalable.index.impl.RichAsyncIndexIterator
 
-import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 import scala.collection.concurrent.TrieMap
-import scala.collection.mutable
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.{Failure, Success}
@@ -26,12 +24,18 @@ import scala.util.{Failure, Success}
  * the context. Once you done, the resulting context can be saved and passed to future instances of the class representing another set of
  * operations.
  */
-class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuilder[K, V]){
+class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuilt[K, V]){
 
   import builder._
 
+  assert(builder.MAX_LEAF_ITEMS == descriptor.numLeafItems,
+    s"Builder and index maxLeafItems are not equal! Corrupted IndexContext or wrong configured builder!")
+  assert(builder.MAX_META_ITEMS == descriptor.numMetaItems,
+    s"Builder and index maxMetaItems are not equal! Corrupted IndexContext or wrong configured builder!")
+  assert(builder.MAX_N_ITEMS == descriptor.maxNItems,
+    s"Builder and index maxNItems are not equal! Corrupted IndexContext or wrong configured builder!")
   assert(descriptor.numLeafItems >= 4 && descriptor.numMetaItems >= 4,
-    "Number of leaf and meta elements must be greater or equal to 4!")
+    s"Number of leaf and meta elements must be greater or equal to 4!")
 
   val logger = LoggerFactory.getLogger(this.getClass)
 
@@ -581,6 +585,17 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
     }
   }
 
+  def all(it: AsyncIndexIterator[Seq[Tuple[K, V]]] = inOrder())(implicit ec: ExecutionContext): Future[Seq[Tuple[K, V]]] = {
+    it.hasNext().flatMap {
+      case true => it.next().flatMap { list =>
+        all(it).map {
+          list ++ _
+        }
+      }
+      case false => Future.successful(Seq.empty[Tuple[K, V]])
+    }
+  }
+
   def reverse(f: Tuple[K, V] => Boolean = _ => true)(implicit ord: Ordering[K]): AsyncIndexIterator[Seq[Tuple[K, V]]] = new RichAsyncIndexIterator[K, V](f) {
 
     override def hasNext(): Future[Boolean] = {
@@ -758,18 +773,18 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
     }
   }
 
-  def get(k: K): Future[Option[Tuple[K,V]]] = {
-    findPath(k).flatMap {
+  def get(k: K)(ord: Ordering[K] = builder.ord): Future[Option[Tuple[K,V]]] = {
+    findPath(k)(ord).flatMap {
       case None => Future.successful(None)
-      case Some(leaf) => Future.successful(leaf.find(k))
+      case Some(leaf) => Future.successful(leaf.find(k)(ord))
     }
   }
 
-  protected def getKeysFromLeaf(leaf: Leaf[K, V], list: Seq[K], mustFindAll: Boolean): (Seq[Tuple[K, V]], Option[K]) = {
+  protected def getKeysFromLeaf(leaf: Leaf[K, V], list: Seq[K], mustFindAll: Boolean)(ord: Ordering[K]): (Seq[Tuple[K, V]], Option[K]) = {
     var results = Seq.empty[Tuple[K, V]]
 
     for(k <- list){
-      val v = leaf.find(k)
+      val v = leaf.find(k)(ord)
 
       if(mustFindAll && v.isEmpty){
         return results -> Some(k)
@@ -781,9 +796,9 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
     results -> None
   }
 
-  def get(keys: Seq[K], mustFindAll: Boolean = false): Future[GetResult[K, V]] = {
+  def getAll(keys: Seq[K], mustFindAll: Boolean = false)(ord: Ordering[K] = builder.ord): Future[GetResult[K, V]] = {
 
-    val sorted = keys.sorted
+    val sorted = keys.sorted(ord)
 
     val len = sorted.length
     var pos = 0
@@ -796,7 +811,7 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
       var list = sorted.slice(pos, len)
       val k = list(0)
 
-      findPath(k).map {
+      findPath(k)(ord).map {
         case None => if(mustFindAll){
           throw new KEY_NOT_FOUND[K](k, ks)
         } else {
@@ -808,7 +823,7 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
           val idx = list.indexWhere{k => ord.gt(k, leaf.last)}
           if(idx > 0) list = list.slice(0, idx)
 
-          val (data, keyNotFound) = getKeysFromLeaf(leaf, list, mustFindAll)
+          val (data, keyNotFound) = getKeysFromLeaf(leaf, list, mustFindAll)(ord)
 
           if(keyNotFound.isDefined) {
             throw new KEY_NOT_FOUND[K](k, ks)

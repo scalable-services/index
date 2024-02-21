@@ -40,16 +40,20 @@ class QueriesSpec extends Repeatable with Matchers {
 
     val ordering = ordString
 
-    val builder = IndexBuilder.create[K, V](ordering, DefaultSerializers.stringSerializer, DefaultSerializers.stringSerializer)
-      .storage(storage)
-      .serializer(grpcStringStringSerializer)
-      //.keyToStringConverter(DefaultPrinters.intToStringPrinter)
-
     val indexContext = Await.result(TestHelper.loadOrCreateIndex(IndexContext(
       indexId,
       NUM_LEAF_ENTRIES,
-      NUM_META_ENTRIES
+      NUM_META_ENTRIES,
+      maxNItems = -1L
     ))(storage, global), Duration.Inf).get
+
+    val builder = IndexBuilder.create[K, V](global, ordering,
+        indexContext.numLeafItems, indexContext.numMetaItems, indexContext.maxNItems,
+        DefaultSerializers.stringSerializer, DefaultSerializers.stringSerializer)
+      .storage(storage)
+      .serializer(grpcStringStringSerializer)
+    //.keyToStringConverter(DefaultPrinters.intToStringPrinter)
+    .build()
 
     var data = Seq.empty[(K, V, Option[String])]
     var index = new QueryableIndex[K, V](indexContext)(builder)
@@ -199,7 +203,7 @@ class QueriesSpec extends Repeatable with Matchers {
     data = data.sortBy(_._1)
 
     val dlist = data.map{case (k, v, _) => k -> v}
-    val ilist = Await.result(TestHelper.all(index.inOrder()), Duration.Inf).map{case (k, v, _) => k -> v}
+    val ilist = Await.result(index.all(), Duration.Inf).map{case (k, v, _) => k -> v}
 
     logger.debug(s"${Console.GREEN_B}tdata: ${dlist.map{case (k, v) => builder.ks(k) -> builder.vs(v)}}${Console.RESET}\n")
     logger.debug(s"${Console.MAGENTA_B}idata: ${ilist.map{case (k, v) => builder.ks(k) -> builder.vs(v)}}${Console.RESET}\n")
@@ -254,7 +258,7 @@ class QueriesSpec extends Repeatable with Matchers {
         slice = if (reverse) slice.reverse else slice
 
         val itr = index.gt(term, inclusive, reverse)(termComp)
-        val indexData = Await.result(TestHelper.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
+        val indexData = Await.result(index.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
 
         val cr = slice == indexData
 
@@ -280,7 +284,7 @@ class QueriesSpec extends Repeatable with Matchers {
         slice = if (reverse) slice.reverse else slice
 
         val itr = index.gt(prefix, term, inclusive, reverse)(prefixComp, termComp)
-        val indexData = Await.result(TestHelper.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
+        val indexData = Await.result(index.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
 
         val cr = slice == indexData
 
@@ -305,7 +309,7 @@ class QueriesSpec extends Repeatable with Matchers {
         slice = if (reverse) slice.reverse else slice
 
         val itr = index.lt(term, inclusive, reverse)(termComp)
-        val indexData = Await.result(TestHelper.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
+        val indexData = Await.result(index.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
 
         val cr = slice == indexData
 
@@ -331,7 +335,7 @@ class QueriesSpec extends Repeatable with Matchers {
         slice = if (reverse) slice.reverse else slice
 
         val itr = index.lt(prefix, term, inclusive, reverse)(prefixComp, termComp)
-        val indexData = Await.result(TestHelper.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
+        val indexData = Await.result(index.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
 
         val cr = slice == indexData
 
@@ -357,7 +361,7 @@ class QueriesSpec extends Repeatable with Matchers {
         slice = if (reverse) slice.reverse else slice
 
         val itr = index.range(from, to, inclusiveFrom, inclusiveTo, reverse)(termComp)
-        val indexData = Await.result(TestHelper.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
+        val indexData = Await.result(index.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
 
         val cr = slice == indexData
 
@@ -373,7 +377,7 @@ class QueriesSpec extends Repeatable with Matchers {
         slice = if (reverse) slice.reverse else slice
 
         val itr = index.prefix(prefix, reverse)(prefixComp)
-        val indexData = Await.result(TestHelper.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
+        val indexData = Await.result(index.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
 
         val cr = slice == indexData
 

@@ -73,7 +73,7 @@ message IndexContext {
   int32 levels = 5;
   int64 num_elements = 6;
 
-  int32 maxNItems = 7;
+  int64 maxNItems = 7;
   string lastChangeVersion = 8;
 }
 

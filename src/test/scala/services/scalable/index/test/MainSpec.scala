@@ -3,17 +3,15 @@ package services.scalable.index.test
 import com.google.common.base.Charsets
 import io.netty.util.internal.ThreadLocalRandom
 import org.apache.commons.lang3.RandomStringUtils
-import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.matchers.should.Matchers
 import org.slf4j.LoggerFactory
 import services.scalable.index.grpc._
 import services.scalable.index.impl._
-import services.scalable.index.{Bytes, Commands, Context, DefaultComparators, DefaultPrinters, DefaultSerializers, IdGenerator, IndexBuilder, QueryableIndex}
+import services.scalable.index.{Bytes, Commands, DefaultComparators, DefaultPrinters, DefaultSerializers, IndexBuilder, QueryableIndex}
 
 import java.util.UUID
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
-import scala.jdk.FutureConverters.CompletionStageOps
 
 class MainSpec extends Repeatable with Matchers {
 
@@ -39,19 +37,23 @@ class MainSpec extends Repeatable with Matchers {
     //val session = TestHelper.createCassandraSession()
     val storage = /*new CassandraStorage(session, true)*/new MemoryStorage()
 
-    val builder = IndexBuilder.create[K, V](DefaultComparators.bytesOrd, DefaultSerializers.bytesSerializer, DefaultSerializers.bytesSerializer)
-      .storage(storage)
-      .serializer(DefaultSerializers.grpcBytesBytesSerializer)
-      .keyToStringConverter(DefaultPrinters.byteArrayToStringPrinter)
-
     val indexContext = Await.result(TestHelper.loadOrCreateIndex(IndexContext(
       indexId,
       NUM_LEAF_ENTRIES,
-      NUM_META_ENTRIES
+      NUM_META_ENTRIES,
+      maxNItems = -1L
     ))(storage, global), Duration.Inf).get
 
+    val builder = IndexBuilder.create[K, V](global, DefaultComparators.bytesOrd,
+        indexContext.numLeafItems, indexContext.numMetaItems, indexContext.maxNItems,
+        DefaultSerializers.bytesSerializer, DefaultSerializers.bytesSerializer)
+      .storage(storage)
+      .serializer(DefaultSerializers.grpcBytesBytesSerializer)
+      .keyToStringConverter(DefaultPrinters.byteArrayToStringPrinter)
+      .build()
+
     var data = Seq.empty[(K, V, Option[String])]
-    var index = builder.build(indexContext)
+    var index = new QueryableIndex[K, V](indexContext)(builder)
 
     def insert(): Unit = {
 
@@ -199,7 +201,7 @@ class MainSpec extends Repeatable with Matchers {
     logger.info(Await.result(index.save(), Duration.Inf).toString)
 
     val dlist = data.sortBy(_._1).map{case (k, v, _) => k -> v}
-    val ilist = Await.result(TestHelper.all(index.inOrder()), Duration.Inf).map{case (k, v, _) => k -> v}
+    val ilist = Await.result(index.all(), Duration.Inf).map{case (k, v, _) => k -> v}
 
     logger.debug(s"${Console.GREEN_B}tdata: ${dlist.map{case (k, v) => builder.ks(k) -> builder.vs(v)}}${Console.RESET}\n")
     logger.debug(s"${Console.MAGENTA_B}idata: ${ilist.map{case (k, v) => builder.ks(k) -> builder.vs(v)}}${Console.RESET}\n")
