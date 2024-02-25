@@ -208,7 +208,7 @@ class GetMultipleKeysSpec extends Repeatable with Matchers {
 
     val mustFindAll = rand.nextBoolean()
 
-    val getResult = Await.result(index.get(findKeysList, mustFindAll), Duration.Inf)
+    val getResult = Await.result(index.getAll(findKeysList, mustFindAll), Duration.Inf)
 
     if(!getResult.success){
       logger.error(getResult.error.get.toString)

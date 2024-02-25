@@ -47,7 +47,7 @@ class Meta[K, V](override val id: String,
     val idx = if(pos < pointers.length) pos else pos - 1
     val e = pointers(idx)._2.unique_id
 
-    logger.debug(s"[meta search in ${id} at pos ${idx}] => ${e}")
+    logger.debug(s"[meta search level ${level - 1} in ${id} at pos ${idx}] => ${e}")
 
     e
   }

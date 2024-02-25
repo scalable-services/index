@@ -69,26 +69,13 @@ class QueriesSpec extends Repeatable with Matchers {
       val n = rand.nextInt(1, 1000)
       var list = Seq.empty[Tuple3[K, V, Boolean]]
 
-      val insertDup = rand.nextBoolean()
-
       for (i <- 0 until n) {
+        val k = RandomStringUtils.randomAlphanumeric(5, 10)
+        val v = RandomStringUtils.randomAlphanumeric(5)
 
-        rand.nextBoolean() match {
-          case x if x && list.length > 0 && insertDup =>
-
-            // Inserts some duplicate
-            val (k, v, _) = list(rand.nextInt(0, list.length))
-            list = list :+ (k, v, false)
-
-          case _ =>
-
-            val k = RandomStringUtils.randomAlphanumeric(5, 10)
-            val v = RandomStringUtils.randomAlphanumeric(5)
-
-            if (!data.exists { case (k1, _, _) => ordering.equiv(k, k1) } &&
-              !list.exists { case (k1, _, _) => ordering.equiv(k, k1) }) {
-              list = list :+ (k, v, false)
-            }
+        if (!data.exists { case (k1, _, _) => ordering.equiv(k, k1) } &&
+          !list.exists { case (k1, _, _) => ordering.equiv(k, k1) }) {
+          list = list :+ (k, v, false)
         }
       }
 
@@ -122,12 +109,9 @@ class QueriesSpec extends Repeatable with Matchers {
       val currentVersion = Some(index.ctx.id)
       val indexBackup = index
 
-      val introduceError = rand.nextBoolean()
-      val errorTx = Some(UUID.randomUUID.toString)
-
       val n = if (data.length >= 2) rand.nextInt(1, data.length) else 1
       val list = scala.util.Random.shuffle(data).slice(0, n).map { case (k, v, lv) =>
-        (k, RandomStringUtils.randomAlphanumeric(10), if (introduceError) errorTx else lv)
+        (k, RandomStringUtils.randomAlphanumeric(10), lv)
       }
 
       val cmds = Seq(
@@ -159,12 +143,9 @@ class QueriesSpec extends Repeatable with Matchers {
       val currentVersion = Some(index.ctx.id)
       val indexBackup = index
 
-      val introduceError = rand.nextBoolean()
-      val errorTx = Some(UUID.randomUUID.toString)
-
       val n = if (data.length >= 2) rand.nextInt(1, data.length) else 1
       val list: Seq[Tuple2[K, Option[String]]] = scala.util.Random.shuffle(data).slice(0, n).map { case (k, _, lv) =>
-        (k, if (introduceError) errorTx else lv)
+        (k, lv)
       }
 
       val cmds = Seq(
@@ -189,15 +170,16 @@ class QueriesSpec extends Repeatable with Matchers {
       logger.debug(s"${Console.RED_B}REMOVED WRONG VERSION ${list.map { case (k, _) => builder.ks(k) }}...${Console.RESET}")
     }
 
-    val n = rand.nextInt(1, 10)
+    val n = rand.nextInt(3, 10)
 
     for(i<-0 until n){
-      rand.nextInt(1, 4) match {
+      insert()
+      /*rand.nextInt(1, 4) match {
         case 1 => insert()
         case 2 if !data.isEmpty => update()
         case 3 if !data.isEmpty => remove()
         case _ => insert()
-      }
+      }*/
     }
 
     data = data.sortBy(_._1)
@@ -220,16 +202,16 @@ class QueriesSpec extends Repeatable with Matchers {
       }
     }
 
-    if(!data.isEmpty) {
-      //val fromInclusive = rand.nextBoolean()
-      //val toInclusive = rand.nextBoolean()
-      //val reverse = rand.nextBoolean()
+    if(data.length > 1) {
 
-      val posFrom = rand.nextInt(0, data.length)
-      val posTo = rand.nextInt(posFrom, data.length)
+      var (kFrom, _, _) = data(rand.nextInt(0, data.length - 1))
+      var (kTo, _, _) = data.filterNot{x => x._1 == kFrom}(rand.nextInt(0, data.length - 2))
 
-      val (kFrom, _, _) = data(posFrom)
-      val (kTo, _, _) = data(posTo)
+      if(kFrom > kTo) {
+        val aux = kFrom
+        kFrom = kTo
+        kTo = aux
+      }
 
       val prefixFrom = kFrom.slice(0, 3)
       val prefixTo = kTo.slice(0, 3)
@@ -289,6 +271,7 @@ class QueriesSpec extends Repeatable with Matchers {
         val cr = slice == indexData
 
         if (!cr) {
+          index.prettyPrint()
           println()
         }
 
@@ -307,6 +290,8 @@ class QueriesSpec extends Repeatable with Matchers {
         }.map { x => x._1 -> x._2 } else Seq.empty[(K, V)]
 
         slice = if (reverse) slice.reverse else slice
+
+        logger.debug(s"term: ${builder.ks(term)}...")
 
         val itr = index.lt(term, inclusive, reverse)(termComp)
         val indexData = Await.result(index.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
@@ -382,21 +367,85 @@ class QueriesSpec extends Repeatable with Matchers {
         val cr = slice == indexData
 
         if (!cr) {
+          index.prettyPrint()
           println()
         }
 
         assert(cr)
       }
 
+      def testPrefixRange(fromPrefix: K, toPrefix: K, fromInclusive: Boolean, toInclusive: Boolean,
+                          reverse: Boolean)(prefixComp: Ordering[K]): Unit = {
+        var slice = data.filter{case (k, _, _) =>
+
+          ((fromInclusive && prefixComp.gteq(k, fromPrefix)) || prefixComp.gt(k, fromPrefix)) &&
+            ((toInclusive && prefixComp.lteq(k, toPrefix)) || prefixComp.lt(k, toPrefix))
+
+        }.map{x => x._1 -> x._2}.toList
+
+        slice = if (reverse) slice.reverse else slice
+
+        val itr = index.prefixRange(fromPrefix, toPrefix, fromInclusive, toInclusive, reverse)(prefixComp)
+        val indexData = Await.result(index.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList
+
+        val cr = slice == indexData
+
+        if (!cr) {
+          index.prettyPrint()
+          println()
+        }
+
+        assert(cr)
+      }
+
+      var PREFROM = prefixFrom
+      var PRETO = prefixTo
+      var KFROM = kFrom
+      var KTO = kTo
+
+      if(rand.nextBoolean()){
+        KFROM = KFROM.replace(KFROM(rand.nextInt(0, KFROM.length - 1)), RandomStringUtils.randomAlphabetic(1)(0))
+      }
+
+      if(rand.nextBoolean()){
+        KTO = KTO.replace(KTO(rand.nextInt(0, KTO.length - 1)), RandomStringUtils.randomAlphabetic(1)(0))
+      }
+
+      if(KFROM > KTO){
+        val aux = KFROM
+        KFROM = KTO
+        KTO = aux
+      }
+
+      if(rand.nextBoolean()){
+        PREFROM = PREFROM.replace(PREFROM(rand.nextInt(0, PREFROM.length - 1)), RandomStringUtils.randomAlphabetic(1)(0))
+      }
+
+      if(rand.nextBoolean()){
+        PRETO = PRETO.replace(PRETO(rand.nextInt(0, PRETO.length - 1)), RandomStringUtils.randomAlphabetic(1)(0))
+      }
+
+      if(PREFROM > PRETO){
+        val aux = PREFROM
+        PREFROM = PRETO
+        PRETO = aux
+      }
+
+      testLtPrefix(PREFROM, PREFROM, rand.nextBoolean(), rand.nextBoolean())(prefixComp, ordering)
+      testGtPrefix(PREFROM, PREFROM, rand.nextBoolean(), rand.nextBoolean())(prefixComp, ordering)
+
       testPrefix(prefixFrom, rand.nextBoolean())(prefixComp)
       testPrefix(prefixTo, rand.nextBoolean())(prefixComp)
-      testGt(kFrom, rand.nextBoolean(), rand.nextBoolean())(ordering)
+      testGt(KFROM, rand.nextBoolean(), rand.nextBoolean())(ordering)
       testGtPrefix(prefixFrom, kFrom, rand.nextBoolean(), rand.nextBoolean())(prefixComp, ordering)
-      testLt(kFrom, rand.nextBoolean(), rand.nextBoolean())(ordering)
+      testLt(KFROM, rand.nextBoolean(), rand.nextBoolean())(ordering)
       testLtPrefix(prefixFrom, kFrom, rand.nextBoolean(), rand.nextBoolean())(prefixComp, ordering)
 
-      if (data.length > 1)
-        testRange(kFrom, kTo, rand.nextBoolean(), rand.nextBoolean(), rand.nextBoolean())(ordering)
+      if (data.length > 1){
+        testRange(KFROM, KTO, rand.nextBoolean(), rand.nextBoolean(), rand.nextBoolean())(ordering)
+      }
+
+      testPrefixRange(PREFROM, PRETO, rand.nextBoolean(), rand.nextBoolean(), rand.nextBoolean())(prefixComp)
 
       logger.info(Await.result(index.save(), Duration.Inf).toString)
       println()

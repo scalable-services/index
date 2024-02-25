@@ -773,30 +773,14 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
     }
   }
 
-  def get(k: K)(ord: Ordering[K] = builder.ord): Future[Option[Tuple[K,V]]] = {
+  def get(k: K)(implicit ord: Ordering[K] = builder.ord): Future[Option[Tuple[K,V]]] = {
     findPath(k)(ord).flatMap {
       case None => Future.successful(None)
       case Some(leaf) => Future.successful(leaf.find(k)(ord))
     }
   }
 
-  protected def getKeysFromLeaf(leaf: Leaf[K, V], list: Seq[K], mustFindAll: Boolean)(ord: Ordering[K]): (Seq[Tuple[K, V]], Option[K]) = {
-    var results = Seq.empty[Tuple[K, V]]
-
-    for(k <- list){
-      val v = leaf.find(k)(ord)
-
-      if(mustFindAll && v.isEmpty){
-        return results -> Some(k)
-      }
-
-      if(v.isDefined) results :+= v.get
-    }
-
-    results -> None
-  }
-
-  def getAll(keys: Seq[K], mustFindAll: Boolean = false)(ord: Ordering[K] = builder.ord): Future[GetResult[K, V]] = {
+  def getAll(keys: Seq[K], mustFindAll: Boolean = false)(implicit ord: Ordering[K] = builder.ord): Future[GetResult[K, V]] = {
 
     val sorted = keys.sorted(ord)
 
@@ -843,6 +827,22 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
       case t: IndexError => GetResult[K, V](false, results, Some(t))
       case t: Throwable => throw t
     }
+  }
+
+  protected def getKeysFromLeaf(leaf: Leaf[K, V], list: Seq[K], mustFindAll: Boolean)(ord: Ordering[K]): (Seq[Tuple[K, V]], Option[K]) = {
+    var results = Seq.empty[Tuple[K, V]]
+
+    for(k <- list){
+      val v = leaf.find(k)(ord)
+
+      if(mustFindAll && v.isEmpty){
+        return results -> Some(k)
+      }
+
+      if(v.isDefined) results :+= v.get
+    }
+
+    results -> None
   }
 
   def min(): Future[Option[Tuple[K,V]]] = {
