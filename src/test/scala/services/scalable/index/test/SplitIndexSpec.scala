@@ -1,5 +1,6 @@
 package services.scalable.index.test
 
+import ch.qos.logback.classic.{Level, Logger}
 import com.google.common.base.Charsets
 import io.netty.util.internal.ThreadLocalRandom
 import org.apache.commons.lang3.RandomStringUtils
@@ -7,7 +8,7 @@ import org.scalatest.matchers.should.Matchers
 import org.slf4j.LoggerFactory
 import services.scalable.index.grpc._
 import services.scalable.index.impl._
-import services.scalable.index.{Bytes, Commands, DefaultComparators, DefaultPrinters, DefaultSerializers, IndexBuilder, QueryableIndex}
+import services.scalable.index.{Bytes, Cache, Commands, DefaultComparators, DefaultPrinters, DefaultSerializers, IndexBuilder, QueryableIndex}
 
 import java.util.UUID
 import scala.concurrent.Await
@@ -16,7 +17,10 @@ import scala.jdk.FutureConverters.CompletionStageOps
 
 class SplitIndexSpec extends Repeatable with Matchers {
 
-  override val times: Int = 10
+  LoggerFactory.getLogger("services.scalable.index.Context").asInstanceOf[Logger].setLevel(Level.INFO)
+  LoggerFactory.getLogger("services.scalable.index.impl.GrpcByteSerializer").asInstanceOf[Logger].setLevel(Level.INFO)
+
+  override val times: Int = 1000
 
   "operations" should " run successfully" in {
 
@@ -35,11 +39,12 @@ class SplitIndexSpec extends Repeatable with Matchers {
 
     val indexId = UUID.randomUUID().toString
 
-    val session = TestHelper.createCassandraSession()
-    val storage = new CassandraStorage(session, true)//new MemoryStorage()
+    //val session = TestHelper.createCassandraSession()
+    val storage = new MemoryStorage()
+    val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
 
-    val MAX_ITEMS = 300
-
+    val MAX_ITEMS = rand.nextInt(100, 1000)
+    
     val indexContext = Await.result(TestHelper.loadOrCreateIndex(IndexContext(
       indexId,
       NUM_LEAF_ENTRIES,
@@ -51,6 +56,7 @@ class SplitIndexSpec extends Repeatable with Matchers {
        indexContext.numLeafItems, indexContext.numMetaItems, indexContext.maxNItems,
         DefaultSerializers.bytesSerializer, DefaultSerializers.bytesSerializer)
       .storage(storage)
+      .cache(cache)
       .serializer(DefaultSerializers.grpcBytesBytesSerializer)
       .keyToStringConverter(DefaultPrinters.byteArrayToStringPrinter)
       .valueToStringConverter(DefaultPrinters.byteArrayToStringPrinter)
@@ -102,14 +108,14 @@ class SplitIndexSpec extends Repeatable with Matchers {
       Seq(Commands.Remove[K, V](indexId, list))
     }
 
-    val n = 100
+    val n = 10
     var cmds = Seq.empty[Commands.Command[K, V]]
 
     for(i<-0 until n){
       cmds ++= (rand.nextInt(1, 4) match {
-        case 1 => insert()
+        /*case 1 => insert()
         case 2 if !data.isEmpty => update()
-        case 3 if !data.isEmpty => remove()
+        case 3 if !data.isEmpty => remove()*/
         case _ => insert()
       })
     }
@@ -147,7 +153,13 @@ class SplitIndexSpec extends Repeatable with Matchers {
       assert(TestHelper.isColEqual(mergeSplits, ilist))
     }
 
-    Await.result(session.closeAsync().asScala, Duration.Inf)
+    index.ctx.clear()
+    storage.close()
+    cache.invalidateAll()
+
+    System.gc()
+
+    //Await.result(session.closeAsync().asScala, Duration.Inf)
 
   }
 

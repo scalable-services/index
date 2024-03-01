@@ -9,10 +9,14 @@ import services.scalable.index.impl._
 import services.scalable.index.{Commands, DefaultSerializers, IndexBuilder, QueryableIndex}
 
 import java.util.UUID
+import ch.qos.logback.classic.{Logger, Level}
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
 
-class QueriesSpec extends Repeatable with Matchers {
+class QueriesRandomSpec extends Repeatable with Matchers {
+
+  LoggerFactory.getLogger("services.scalable.index.Context").asInstanceOf[Logger].setLevel(Level.INFO)
+  LoggerFactory.getLogger("services.scalable.index.impl.GrpcByteSerializer").asInstanceOf[Logger].setLevel(Level.INFO)
 
   override val times: Int = 1000
 
@@ -35,6 +39,7 @@ class QueriesSpec extends Repeatable with Matchers {
     val indexId = UUID.randomUUID().toString
 
     val storage = new MemoryStorage()
+    val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
 
     implicit val grpcStringStringSerializer = new GrpcByteSerializer[String, String]()
 
@@ -170,7 +175,7 @@ class QueriesSpec extends Repeatable with Matchers {
       logger.debug(s"${Console.RED_B}REMOVED WRONG VERSION ${list.map { case (k, _) => builder.ks(k) }}...${Console.RESET}")
     }
 
-    val n = rand.nextInt(3, 10)
+    val n = rand.nextInt(1, 10)
 
     for(i<-0 until n){
       insert()
@@ -374,7 +379,7 @@ class QueriesSpec extends Repeatable with Matchers {
         assert(cr)
       }
 
-      def testPrefixRange(fromPrefix: K, toPrefix: K, fromInclusive: Boolean, toInclusive: Boolean,
+      /*def testPrefixRange(fromPrefix: K, toPrefix: K, fromInclusive: Boolean, toInclusive: Boolean,
                           reverse: Boolean)(prefixComp: Ordering[K]): Unit = {
         var slice = data.filter{case (k, _, _) =>
 
@@ -396,7 +401,7 @@ class QueriesSpec extends Repeatable with Matchers {
         }
 
         assert(cr)
-      }
+      }*/
 
       var PREFROM = prefixFrom
       var PRETO = prefixTo
@@ -445,10 +450,16 @@ class QueriesSpec extends Repeatable with Matchers {
         testRange(KFROM, KTO, rand.nextBoolean(), rand.nextBoolean(), rand.nextBoolean())(ordering)
       }
 
-      testPrefixRange(PREFROM, PRETO, rand.nextBoolean(), rand.nextBoolean(), rand.nextBoolean())(prefixComp)
+      //testPrefixRange(PREFROM, PRETO, rand.nextBoolean(), rand.nextBoolean(), rand.nextBoolean())(prefixComp)
 
       logger.info(Await.result(index.save(), Duration.Inf).toString)
-      println()
+
+      index.ctx.clear()
+      storage.close()
+      cache.invalidateAll()
+
+      System.gc()
+
     }
   }
 

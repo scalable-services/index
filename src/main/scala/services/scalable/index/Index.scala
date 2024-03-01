@@ -93,7 +93,7 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
     val bid = ctx.root.get
 
     ctx.get(ctx.root.get).flatMap { start =>
-      ctx.setParent(bid, 0, None)
+      ctx.setParent(bid, start.lastOption, 0, None)
       findPath(k, start, limit, findPathFn)
     }
   }
@@ -115,20 +115,20 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
             ctx.put(copy)
 
             ctx.root = Some(copy.unique_id)
-            ctx.setParent(copy.unique_id, 0, None)
+            ctx.setParent(copy.unique_id, copy.lastOption, 0, None)
 
             true
           }
         } else {
           ctx.root = Some(p.unique_id)
-          ctx.setParent(p.unique_id, 0, None)
+          ctx.setParent(p.unique_id, p.lastOption, 0, None)
 
           Future.successful(true)
         }
 
       case p: Leaf[K,V] =>
         ctx.root = Some(p.unique_id)
-        ctx.setParent(p.unique_id, 0, None)
+        ctx.setParent(p.unique_id, p.lastOption, 0, None)
 
         Future.successful(true)
     }
@@ -142,15 +142,15 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
       return setPath(block).flatMap(_ => recursiveCopy(block))
     }
 
-    val (p, pos) = opt.get
+    val pinfo = opt.get
 
-    p match {
+    pinfo.parent match {
       case None => fixRoot(block)
       case Some(pid) => ctx.getMeta(pid).flatMap { p =>
         val parent = p.copy()
 
-        parent.pointers(pos) = block.last -> Pointer(block.partition, block.id, block.nSubtree, block.level)
-        ctx.setParent(block.unique_id, pos, Some(parent.unique_id))
+        parent.pointers(pinfo.pos) = block.last -> Pointer(block.partition, block.id, block.nSubtree, block.level)
+        ctx.setParent(block.unique_id, block.lastOption, pinfo.pos, Some(parent.unique_id))
 
         parent.setPointers()
 
@@ -199,9 +199,9 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
       return setPath(left).flatMap(_ => handleParent(left, right))
     }
 
-    val (p, pos) = opt.get
+    val pinfo = opt.get
 
-    p match {
+    pinfo.parent match {
       case None =>
 
         logger.debug(s"${Console.BLUE_B}NEW LEVEL!${Console.RESET}")
@@ -223,8 +223,8 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
       case Some(pid) => ctx.getMeta(pid).flatMap { p =>
         val parent = p.copy()
 
-        parent.pointers(pos) = left.last -> Pointer(left.partition, left.id, left.nSubtree, left.level)
-        ctx.setParent(left.unique_id, pos, Some(parent.unique_id))
+        parent.pointers(pinfo.pos) = left.last -> Pointer(left.partition, left.id, left.nSubtree, left.level)
+        ctx.setParent(left.unique_id, left.lastOption, pinfo.pos, Some(parent.unique_id))
 
         insertParent(parent, right)
       }
@@ -340,14 +340,14 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
       return setPath(parent).flatMap(_ => merge(left, lpos, right, rpos, parent))
     }
 
-    val (g, gpos) = opt.get
+    val ginfo = opt.get
 
-    if(g.isEmpty){
+    if(ginfo.parent.isEmpty){
       return recursiveCopy(left)
     }
 
-    ctx.getMeta(g.get).flatMap { gp =>
-      borrow(parent, gp.copy(), gpos)
+    ctx.getMeta(ginfo.parent.get).flatMap { gp =>
+      borrow(parent, gp.copy(), ginfo.pos)
     }
   }
 
@@ -434,9 +434,9 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
       return setPath(target).flatMap(_ => removeFromLeaf(target, keys))
     }
 
-    val (p, pos) = opt.get
+    val pinfo = opt.get
 
-    if(p.isEmpty){
+    if(pinfo.parent.isEmpty){
 
       if(target.isEmpty()){
 
@@ -451,8 +451,8 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
       return recursiveCopy(target).map(_ => result.get)
     }
 
-    ctx.getMeta(p.get).flatMap { p =>
-      borrow(target, p.copy(), pos).map(_ => result.get)
+    ctx.getMeta(pinfo.parent.get).flatMap { p =>
+      borrow(target, p.copy(), pinfo.pos).map(_ => result.get)
     }
   }
 
@@ -665,7 +665,6 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
     if(ctx.root.isEmpty) return Future.successful(None)
 
     val root = ctx.root.get
-    ctx.setParent(root, 0, None)
 
     /*if(ctx.isParentDefined(root)){
       return ctx.get(root).flatMap(opt => getLeftMost(opt))
@@ -673,7 +672,10 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
 
     ctx.get(root).flatMap{opt => setPath(opt.get).flatMap{ _ => getLeftMost(opt)}}*/
 
-    ctx.get(root).flatMap(b => getLeftMost(Some(b)))
+    ctx.get(root).flatMap{ b =>
+      ctx.setParent(b.unique_id, b.lastOption, 0, None)
+      getLeftMost(Some(b))
+    }
   }
 
   def getRightMost(start: Option[Block[K,V]]): Future[Option[Leaf[K,V]]] = {
@@ -694,7 +696,6 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
     if(ctx.root.isEmpty) return Future.successful(None)
 
     val root = ctx.root.get
-    ctx.setParent(root, 0, None)
 
     /*if(ctx.isParentDefined(root)){
       return ctx.get(root).flatMap(opt => getRightMost(opt))
@@ -702,7 +703,10 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
 
     ctx.get(root).flatMap{opt => setPath(opt.get).flatMap{ _ => getRightMost(opt)}}*/
 
-    ctx.get(root).flatMap(b => getRightMost(Some(b)))
+    ctx.get(root).flatMap{ b =>
+      ctx.setParent(b.unique_id, b.lastOption, 0, None)
+      getRightMost(Some(b))
+    }
   }
 
   def next(current: Option[(String, String)])(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
@@ -715,9 +719,9 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
         return setPath(b).flatMap(_ => next(current))
       }
 
-      val (p, pos) = opt.get
+      val pinfo = opt.get
 
-      p match {
+      pinfo.parent match {
         case None => Future.successful(None)
         case Some(pid) => ctx.getMeta(pid).flatMap { parent =>
 
@@ -726,10 +730,10 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
 
           parent.setPointers()
 
-          if (pos == len - 1) {
+          if (pinfo.pos == len - 1) {
             nxt(parent)
           } else {
-            ctx.get(pointers(pos + 1)._2.unique_id).flatMap(b => getLeftMost(Some(b)))
+            ctx.get(pointers(pinfo.pos + 1)._2.unique_id).flatMap(b => getLeftMost(Some(b)))
           }
         }
       }
@@ -751,17 +755,17 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
         return setPath(b).flatMap(_ => prev(current))
       }
 
-      val (p, pos) = opt.get
+      val pinfo = opt.get
 
-      p match {
+      pinfo.parent match {
         case None => Future.successful(None)
         case Some(pid) => ctx.getMeta(pid).flatMap { parent =>
           parent.setPointers()
 
-          if (pos == 0) {
+          if (pinfo.pos == 0) {
             prev(Some(parent.unique_id))
           } else {
-            ctx.get(parent.pointers(pos - 1)._2.unique_id).flatMap(b => getRightMost(Some(b)))
+            ctx.get(parent.pointers(pinfo.pos - 1)._2.unique_id).flatMap(b => getRightMost(Some(b)))
           }
         }
       }

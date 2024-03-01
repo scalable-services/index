@@ -16,21 +16,31 @@ class Meta[K, V](override val id: String,
   override def last: K = pointers.last._1
   override def first: K = pointers.head._1
 
+  override def middle: K  = pointers(pointers.length/2)._1
+
+  override def lastOption: Option[K] = pointers.lastOption.map(_._1)
+  override def firstOption: Option[K] = pointers.headOption.map(_._1)
+
+  override def middleOption: Option[K] = pointers.length match {
+    case 0 => None
+    case _ => Some(pointers(pointers.length/2)._1)
+  }
+
   override def nSubtree: Long = pointers.map(_._2.nElements).sum
 
   def setPointer(block: Block[K, V], pos: Int)(implicit ctx: Context[K, V]): Unit = {
     pointers(pos) = block.last -> Pointer(block.partition, block.id, block.nSubtree, block.level)
-    ctx.setParent(block.unique_id, pos, Some(unique_id))
+    ctx.setParent(block.unique_id, block.lastOption, pos, Some(unique_id))
   }
 
   def setPointers()(implicit ctx: Context[K,V]): Unit = {
     for(i<-0 until pointers.length){
       val (k, c) = pointers(i)
-      ctx.setParent(c.unique_id, i, Some(unique_id))
+      ctx.setParent(c.unique_id, Some(k), i, Some(unique_id))
     }
   }
 
-  def binSearch(k: K, start: Int = 0, end: Int = pointers.length - 1)(implicit ord: Ordering[K]): (Boolean, Int) = {
+  override def binSearch(k: K, start: Int = 0, end: Int = pointers.length - 1)(implicit ord: Ordering[K]): (Boolean, Int) = {
     if(start > end) return false -> start
 
     val pos = start + (end - start)/2
@@ -52,7 +62,7 @@ class Meta[K, V](override val id: String,
     e
   }
 
-  def findPosition(k: K)(implicit ord: Ordering[K]): Int = {
+  override def findPosition(k: K)(implicit ord: Ordering[K]): Int = {
     val (_, pos) = binSearch(k)
     if (pos < pointers.length) pos else pos - 1
   }
@@ -150,10 +160,12 @@ class Meta[K, V](override val id: String,
   override def copy()(implicit ctx: Context[K,V]): Meta[K,V] = {
     if(isNew) return this
 
-    val (p, pos) = ctx.getParent(unique_id).get
+    logger.debug(s"Creating leaf copy ${unique_id}...")
+
+    val pinfo = ctx.getParent(unique_id).get
 
     val copy = ctx.createMeta()
-    ctx.setParent(copy.unique_id, pos, p)
+    ctx.setParent(copy.unique_id, pinfo.key, pinfo.pos, pinfo.parent)
 
     //copy.pointers = pointers.clone()
 

@@ -16,6 +16,16 @@ class Leaf[K, V](override val id: String,
   override def last: K = tuples.last._1
   override def first: K = tuples.head._1
 
+  override def middle: K  = tuples(tuples.length/2)._1
+
+  override def lastOption: Option[K] = tuples.lastOption.map(_._1)
+  override def firstOption: Option[K] = tuples.headOption.map(_._1)
+
+  override def middleOption: Option[K] = tuples.length match {
+    case 0 => None
+    case _ => Some(tuples(tuples.length/2)._1)
+  }
+
   override def nSubtree: Long = tuples.length.toLong
 
   def insert(data: Seq[Tuple3[K, V, Boolean]], insertVersion: String)(implicit ctx: Context[K,V]): Try[Int] = {
@@ -133,10 +143,12 @@ class Leaf[K, V](override val id: String,
   override def copy()(implicit ctx: Context[K, V]): Leaf[K, V] = {
     if(isNew) return this
 
-    val (p, pos) = ctx.getParent(unique_id).get
+    logger.debug(s"Creating leaf copy ${unique_id}...")
+
+    val pinfo = ctx.getParent(unique_id).get
 
     val copy = ctx.createLeaf()
-    ctx.setParent(copy.unique_id, pos, p)
+    ctx.setParent(copy.unique_id, pinfo.key, pinfo.pos, pinfo.parent)
 
     val len = tuples.length
 
@@ -164,7 +176,7 @@ class Leaf[K, V](override val id: String,
     right
   }
 
-  def binSearch(k: K, start: Int = 0, end: Int = tuples.length - 1)(implicit ord: Ordering[K]): (Boolean, Int) = {
+  override def binSearch(k: K, start: Int = 0, end: Int = tuples.length - 1)(implicit ord: Ordering[K]): (Boolean, Int) = {
     if(start > end) return false -> start
 
     val pos = start + (end - start)/2
@@ -174,6 +186,11 @@ class Leaf[K, V](override val id: String,
     if(c < 0) return binSearch(k, start, pos - 1)
 
     binSearch(k, pos + 1, end)
+  }
+
+  override def findPosition(k: K)(implicit ord: Ordering[K]): Int = {
+    val (_, pos) = binSearch(k)
+    if (pos < tuples.length) pos else pos - 1
   }
 
   def find(k: K)(implicit ord: Ordering[K]): Option[Tuple[K,V]] = {

@@ -88,7 +88,11 @@ class MemoryStorage()(implicit val ec: ExecutionContext) extends Storage {
     Future.successful(true)
   }
 
-  override def close(): Future[Unit] = Future.successful()
+  override def close(): Future[Unit] = Future {
+    history.clear()
+    blocks.clear()
+    indexes.clear()
+  }
 
   override def save(ctx: IndexContext): Future[Boolean] = {
     indexes.put(ctx.id, ctx)

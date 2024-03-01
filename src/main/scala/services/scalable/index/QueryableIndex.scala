@@ -1,12 +1,14 @@
 package services.scalable.index
 
+import services.scalable.index.ParentInfo
 import services.scalable.index.grpc.{IndexContext, RootRef}
 import services.scalable.index.impl.RichAsyncIndexIterator
 
 import java.util.UUID
 import scala.collection.concurrent.TrieMap
 import scala.collection.mutable
-import scala.concurrent.Future
+import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, Future}
 
 /**
  * Any iterator can be constructed using a searching function and a filter function
@@ -321,7 +323,7 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
    */
   def gt(prefix: K, term: K, inclusive: Boolean, reverse: Boolean)(prefixComp: Ordering[K],
                                                                    termComp: Ordering[K]): RichAsyncIndexIterator[K, V] = {
-    assert(prefixComp.equiv(term, prefix), "Term must include the prefix!")
+    assert(prefixComp.equiv(term, prefix) || termComp.equiv(prefix, term), s"Term ${ctx.builder.ks(term)} must include the prefix ${ctx.builder.ks(prefix)}!")
 
     val it = if(reverse) gtReversePrefix(prefix, term, inclusive)(prefixComp, termComp)
       else asc(term, inclusive)(termComp)
@@ -343,7 +345,7 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
    * @return
    */
   def lt(prefix: K, term: K, termInclusive: Boolean, reverse: Boolean)(prefixComp: Ordering[K], termComp: Ordering[K]): RichAsyncIndexIterator[K, V] = {
-    assert(prefixComp.equiv(term, prefix), "Term must include the prefix!")
+    assert(prefixComp.equiv(term, prefix) || termComp.equiv(prefix, term), s"Term ${ctx.builder.ks(term)} must include the prefix ${ctx.builder.ks(prefix)}!")
 
     val it = if (reverse) desc(term, termInclusive)(termComp) else asc(prefix, true)(termComp)
 
@@ -417,9 +419,20 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
   }
 
   def range(from: K, to: K, fromInclusive: Boolean, toInclusive: Boolean, reverse: Boolean)(termComp: Ordering[K]): RichAsyncIndexIterator[K, V] = {
-    assert(termComp.gt(to, from), s"to term must be greater than from term!")
 
-    val it = if(reverse) desc(to, toInclusive)(termComp) else asc(from, fromInclusive)(termComp)
+    assert(termComp.gteq(to, from), s"to term ${ctx.builder.ks(to)} must be greater than from term ${ctx.builder.ks(from)}!")
+
+    val it = if(reverse) desc(to, toInclusive)(termComp, (k, m, ord) => {
+      val reversed = m.pointers.reverse
+
+      var idx = reversed.lastIndexWhere { case (k, _) =>
+        (toInclusive && termComp.gteq(k, to)) || termComp.gt(k, to)
+      }
+
+      idx = if(idx < 0) 0 else idx
+
+      reversed(idx)._2.unique_id
+    }) else asc(from, fromInclusive)(termComp)
 
     it.filter = k => {
       ((fromInclusive && termComp.gteq(k._1, from)) || termComp.gt(k._1, from)) &&
@@ -429,10 +442,62 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
     it
   }
 
-  def prefixRange(prefixFrom: K, prefixTo: K, fromInclusive: Boolean, toInclusive: Boolean, reverse: Boolean)(prefixComp: Ordering[K]): RichAsyncIndexIterator[K, V] = {
-    assert(prefixComp.gt(prefixTo, prefixFrom), s"prefixTo must be greater than prefixFrom!")
+  /*protected def prefixForward(term: K)(comp: Ordering[K]): RichAsyncIndexIterator[K, V] = {
+    new RichAsyncIndexIterator[K, V]() {
 
-    val it = if(reverse) desc(prefixTo, toInclusive)(prefixComp) else asc(prefixFrom, fromInclusive)(prefixComp)
+      var root: Option[(String, String)] = None
+      var first = true
+
+      override def hasNext(): Future[Boolean] = {
+        if (stop) return Future.successful(false)
+
+        if (first) return findPath(term, None, (k, m, ord) => {
+          val pointers = m.pointers
+
+          var idx = pointers.indexWhere { case (k, p) =>
+            comp.gteq(k, term)
+          }
+
+          idx = if (idx < 0) 0 else idx
+
+          val id = pointers(idx)._2.unique_id
+
+          id
+        })(comp).map { block =>
+          root = block.map(_.unique_id)
+          first = false
+
+          block.isDefined
+        }
+
+        $this.next(root)(comp).map { block =>
+          root = block.map(_.unique_id)
+          block.isDefined
+        }
+      }
+
+      private def next1(): Future[Seq[(K, V, String)]] = {
+        if (root.isEmpty || stop) return Future.successful(Seq.empty[(K, V, String)])
+        ctx.getLeaf(root.get).map { block =>
+          val list = block.tuples.filter(filter)
+          if (stop) list else checkCounter(list)
+        }
+      }
+
+      override def next(): Future[Seq[(K, V, String)]] = {
+        if (first) return hasNext().flatMap { _ =>
+          next1()
+        }
+
+        next1()
+      }
+    }
+  }*/
+
+  /*def prefixRange(prefixFrom: K, prefixTo: K, fromInclusive: Boolean, toInclusive: Boolean, reverse: Boolean)(prefixComp: Ordering[K]): RichAsyncIndexIterator[K, V] = {
+    assert(prefixComp.gt(prefixTo, prefixFrom), s"prefixTo ${ctx.builder.ks(prefixTo)} must be greater than prefixFrom ${ctx.builder.ks(prefixFrom)}!")
+
+    val it = if(reverse) prefixReverse(prefixTo)(prefixComp) else prefixForward(prefixFrom)(prefixComp)
 
     it.filter = k => {
       ((fromInclusive && prefixComp.gteq(k._1, prefixFrom)) || prefixComp.gt(k._1, prefixFrom)) &&
@@ -440,7 +505,7 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
     }
 
     it
-  }
+  }*/
 
   def isFull(): Boolean = {
     if(builder.MAX_N_ITEMS < 0) return false
@@ -465,49 +530,92 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
 
     val copy = new QueryableIndex[K, V](descriptor)(builder)
 
-    ctx.newBlocksReferences.foreach { case (id, b) =>
-      copy.ctx.newBlocksReferences += id -> b
+    ctx.newBlocksReferences.foreach { e =>
+      copy.ctx.newBlocksReferences += e
     }
 
-    ctx.parents.foreach { case (k, v) =>
-      copy.ctx.parents += k -> v
+    ctx.parents.foreach { e =>
+      copy.ctx.parents += e
     }
 
     copy
   }
 
   def split(): Future[QueryableIndex[K, V]] = {
-   assert(isFull(), s"The index must be full to be splitten!")
+    assert(isFull(), s"The index must be full to be split!")
 
    for {
-     leftBlock <- ctx.get(ctx.root.get)
-     rightBlock = leftBlock.split()
-
+     rootBlock <- ctx.get(ctx.root.get)
+     leftBlock <- ctx.get(ctx.root.get).map(_.copy())
    } yield {
-     val halfPos = leftBlock.length / 2
+
+     val halfPos = rootBlock.length / 2
+
+     val leftRefs = TrieMap.empty[(String, String), Block[K, V]]
+     val rightRefs = TrieMap.empty[(String, String), Block[K, V]]
+
+     ctx.newBlocksReferences.foreach { case (id, block) =>
+       val pos = rootBlock.findPosition(block.last)
+
+       if(pos < halfPos){
+         logger.debug(s"New block ${id} goes left...")
+         leftRefs += id -> block
+       } else {
+         logger.debug(s"New block ${id} goes right...")
+         rightRefs += id -> block
+       }
+     }
+
+     val leftParents = TrieMap.empty[(String, String), ParentInfo[K]]
+     val rightParents = TrieMap.empty[(String, String), ParentInfo[K]]
+
+     val allRefs = ctx.parents.iterator.toSeq
+     val cachedPositions = TrieMap.empty[(String, String), Int]
+
+     allRefs.filterNot{case (id, _) => id == rootBlock.unique_id}.foreach { case (id, pinfo) =>
+
+       //val pos = ctx.getRootPos(id)(cachedPositions)
+
+       /*val last = Await.result(ctx.get(id).map {
+         b => b.last
+       }, Duration.Inf)*/
+
+       val isLeft = ord.lteq(pinfo.key.get, rootBlock.middle)
+
+       if(!isLeft){
+         println()
+       }
+
+       if(isLeft){
+         logger.debug(s"${id} is on the left!")
+         leftParents.put(id, pinfo)
+       } else {
+         logger.debug(s"${id} is on the right!")
+         rightParents.put(id, pinfo)
+       }
+     }
+
+     val rightBlock = leftBlock.split()
+
+     if(leftBlock.isInstanceOf[Meta[K, V]]){
+       leftBlock.asInstanceOf[Meta[K, V]].pointers.foreach { case (_, p) =>
+         leftParents.put(p.unique_id, ctx.parents(p.unique_id))
+       }
+     }
+
+     if(rightBlock.isInstanceOf[Meta[K, V]]){
+       rightBlock.asInstanceOf[Meta[K, V]].pointers.foreach { case (_, p) =>
+         rightParents.put(p.unique_id, ctx.parents(p.unique_id))
+       }
+     }
+
+     ctx.parents.clear()
 
      val leftN = leftBlock.nSubtree
      val rightN = rightBlock.nSubtree
 
+     logger.debug(s"number of elements: ${ctx.num_elements} leftN: ${leftN} rightN: ${rightN}...")
      assert(ctx.num_elements == leftN + rightN)
-
-     val leftRefs = mutable.WeakHashMap.empty[(String, String), (String, String)]
-     val rightRefs = mutable.WeakHashMap.empty[(String, String), (String, String)]
-
-     val leftParents = TrieMap.empty[(String, String), (Option[(String, String)], Int)]
-     val rightParents = TrieMap.empty[(String, String), (Option[(String, String)], Int)]
-
-     ctx.newBlocksReferences.foreach { case (id, block) =>
-       val pos = ctx.getRootPosition(id)
-
-       if(pos < halfPos){
-          leftRefs += id -> block
-          leftParents += id -> ctx.parents(id)
-       } else {
-         rightRefs += id -> block
-         rightParents += id -> ctx.parents(id)
-       }
-     }
 
      ctx.num_elements = leftN
      ctx.lastChangeVersion = UUID.randomUUID.toString
@@ -526,20 +634,17 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
      val right = new QueryableIndex[K, V](rdescriptor)(builder)
 
      ctx.newBlocksReferences = leftRefs
-
-     ctx.parents.clear()
-
-     leftParents.foreach { e =>
-       ctx.parents += e
-     }
+     ctx.parents.addAll(leftParents)
 
      right.ctx.num_elements = rightN
      right.ctx.root = Some(rightBlock.unique_id)
      right.ctx.newBlocksReferences = rightRefs
+     right.ctx.parents.addAll(rightParents)
 
-     rightParents.foreach { e =>
-       right.ctx.parents += e
-     }
+     ctx.parents += leftBlock.unique_id -> ParentInfo(None, leftBlock.lastOption, 0)
+     right.ctx.parents += rightBlock.unique_id -> ParentInfo(None, rightBlock.lastOption, 0)
+
+     //ctx.parents.foreach(e => right.ctx.parents += e)
 
      right
    }

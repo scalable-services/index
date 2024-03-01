@@ -19,9 +19,21 @@ trait Block[K, V] {
 
   var isNew: Boolean = true
 
+  def lastOption: Option[K]
+  def firstOption: Option[K]
+
+  def middleOption: Option[K]
+
   def last: K
   def first: K
+
+  def middle: K
+
   def length: Int
+
+  def binSearch(k: K, start: Int = 0, end: Int = length - 1)(implicit ord: Ordering[K]): (Boolean, Int)
+
+  def findPosition(k: K)(implicit ord: Ordering[K]): Int
 
   def borrowLeftTo(t: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V]
   def borrowRightTo(t: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V]

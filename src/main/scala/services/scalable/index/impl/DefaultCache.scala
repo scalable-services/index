@@ -59,4 +59,9 @@ class DefaultCache(val MAX_BLOCK_CACHE_SIZE: Long = 100L * 1024L * 1024L,
     newBlocks.remove(id)
     blocks.invalidate(id)
   }
+
+  override def invalidateAll(): Unit = {
+    newBlocks.clear()
+    blocks.cleanUp()
+  }
 }

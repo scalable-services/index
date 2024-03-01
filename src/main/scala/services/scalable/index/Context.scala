@@ -5,7 +5,6 @@ import services.scalable.index.grpc.{IndexContext, RootRef}
 
 import java.util.UUID
 import scala.collection.concurrent.TrieMap
-import scala.collection.mutable
 import scala.concurrent.Future
 
 sealed class Context[K, V](val indexId: String,
@@ -28,29 +27,8 @@ sealed class Context[K, V](val indexId: String,
   val META_MAX = builder.MAX_META_ITEMS
   val META_MIN = META_MAX/2
 
-  var newBlocksReferences = mutable.WeakHashMap.empty[(String, String), (String, String)]
-  val parents = TrieMap.empty[(String, String), (Option[(String, String)], Int)]
-
-  if(root.isDefined) {
-    setParent(root.get, 0, None)
-  }
-
-  root match {
-    case None =>
-    case Some(r) => parents += r -> (None, 0)
-  }
-
-  def getRootPosition(id: (String, String)): Int = {
-    if(root.isEmpty) return -1
-
-    var parent = parents(id)
-
-    while(parent._1.isDefined){
-      parent = parents(parent._1.get)
-    }
-
-    parent._2
-  }
+  var newBlocksReferences = TrieMap.empty[(String, String), Block[K, V]]
+  val parents = TrieMap.empty[(String, String), ParentInfo[K]]
 
   /**
    *
@@ -59,6 +37,11 @@ sealed class Context[K, V](val indexId: String,
   def get(id: (String, String)): Future[Block[K,V]] = cache.get[K, V](id) match {
     case None => storage.get(id).map { buf =>
       val block = serializer.deserialize(buf)
+
+      if(root.isDefined && root.get == block.unique_id){
+        setParent(block.unique_id, block.lastOption, 0, None)
+      }
+
       cache.put(block)
       block
     }
@@ -68,7 +51,7 @@ sealed class Context[K, V](val indexId: String,
 
   def put(block: Block[K, V]): Unit = {
     cache.put(block)
-    newBlocksReferences.put(block.unique_id, block.unique_id)
+    newBlocksReferences.put(block.unique_id, block)
   }
 
   def getLeaf(id: (String, String)): Future[Leaf[K,V]] = {
@@ -79,12 +62,37 @@ sealed class Context[K, V](val indexId: String,
     get(id).map(_.asInstanceOf[Meta[K,V]])
   }
 
+  /*def getRootPos(id: (String, String))(positionsCache: TrieMap[(String, String), Int]): Int = {
+    val cachedPos = positionsCache.get(id)
+
+    if(cachedPos.isDefined) return cachedPos.get
+
+    var parent = parents(id)
+
+    if(parent._1.isEmpty) return 0
+
+    var links = Seq(id)
+
+    while(parent._1.isDefined){
+      links = links :+ parent._1.get
+      parent = parents(parent._1.get)
+    }
+
+    for(id <- links){
+      positionsCache.put(id, parent._2)
+    }
+
+    parent._2
+  }*/
+
   def createLeaf(): Leaf[K,V] = {
     val leaf = new Leaf[K,V](idGenerator.generateBlockId(this), idGenerator.generateBlockPartition(this), LEAF_MIN, LEAF_MAX)
 
-    newBlocksReferences += leaf.unique_id -> leaf.unique_id
+    logger.debug(s"Creating leaf ${leaf.unique_id}...")
+
+    newBlocksReferences += leaf.unique_id -> leaf
     cache.put(leaf)
-    setParent(leaf.unique_id, 0, None)
+    setParent(leaf.unique_id, None, 0, None)
 
     leaf
   }
@@ -92,18 +100,23 @@ sealed class Context[K, V](val indexId: String,
   def createMeta(): Meta[K,V] = {
     val meta = new Meta[K,V](idGenerator.generateBlockId(this), idGenerator.generateBlockPartition(this), META_MIN, META_MAX)
 
-    newBlocksReferences += meta.unique_id -> meta.unique_id
+    logger.debug(s"Creating meta ${meta.unique_id}...")
+
+    newBlocksReferences += meta.unique_id -> meta
     cache.put(meta)
-    setParent(meta.unique_id, 0, None)
+    setParent(meta.unique_id, None, 0, None)
 
     meta
   }
 
-  def setParent(unique_id: (String, String), idx: Int, parent: Option[(String, String)]): Unit = {
-    parents += unique_id -> (parent, idx)
+  def setParent(unique_id: (String, String), lastKey: Option[K], idx: Int, parent: Option[(String, String)]): Unit = {
+    logger.debug(s"Setting parent for ${unique_id} => ${(idx, parent)}...")
+    //parents += unique_id -> ((parent, lastKey), idx)
+
+    parents.put(unique_id, ParentInfo(parent, lastKey, idx))
   }
 
-  def getParent(id: (String, String)): Option[(Option[(String, String)], Int)] = {
+  def getParent(id: (String, String)): Option[ParentInfo[K]] = {
     parents.get(id)
   }
 
@@ -121,7 +134,7 @@ sealed class Context[K, V](val indexId: String,
   def snapshot(): IndexContext = {
 
     // Turn new blocks immutable
-    newBlocksReferences.values.map{cache.get(_).get}.foreach { block =>
+    newBlocksReferences.values.foreach { block =>
       block.isNew = false
       block.root = root
     }
@@ -133,11 +146,14 @@ sealed class Context[K, V](val indexId: String,
   }
 
   def clear(): Unit = {
+    logger.debug(s"Removing new block references ${newBlocksReferences.map(_._1)}...")
+
     newBlocksReferences.foreach { case (id, _) =>
       cache.invalidate(id)
     }
 
     newBlocksReferences.clear()
+    parents.clear()
   }
 
   def save(): Future[IndexContext] = {
