@@ -7,7 +7,7 @@ import org.scalatest.matchers.should.Matchers
 import org.slf4j.LoggerFactory
 import services.scalable.index.grpc._
 import services.scalable.index.impl._
-import services.scalable.index.{Bytes, Commands, Context, IdGenerator, QueryableIndex}
+import services.scalable.index.{Bytes, Commands, DefaultComparators, DefaultPrinters, DefaultSerializers, IndexBuilder, QueryableIndex}
 
 import java.util.UUID
 import scala.concurrent.Await
@@ -32,72 +32,97 @@ class MainSpec extends Repeatable with Matchers {
     val NUM_LEAF_ENTRIES = rand.nextInt(4, 64)
     val NUM_META_ENTRIES = rand.nextInt(4, 64)
 
-    val indexId = "mysusindex"//UUID.randomUUID().toString
+    val indexId = UUID.randomUUID().toString
 
-    import services.scalable.index.DefaultSerializers._
-    import services.scalable.index.DefaultPrinters._
-
-    implicit val idGenerator = new IdGenerator {
-      override def generateId[K, V](ctx: Context[K, V]): String = UUID.randomUUID.toString
-      override def generatePartition[K, V](ctx: Context[K, V]): String = "p0"
-    }
-
-    implicit val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
-    implicit val storage = new MemoryStorage()
-    //implicit val storage = new CassandraStorage(TestConfig.KEYSPACE, false)
+    //val session = TestHelper.createCassandraSession()
+    val storage = /*new CassandraStorage(session, true)*/new MemoryStorage()
 
     val indexContext = Await.result(TestHelper.loadOrCreateIndex(IndexContext(
       indexId,
       NUM_LEAF_ENTRIES,
-      NUM_META_ENTRIES
-    )), Duration.Inf).get
+      NUM_META_ENTRIES,
+      maxNItems = -1L
+    ))(storage, global), Duration.Inf).get
 
-    var data = Seq.empty[(K, V, Boolean)]
-    var index = new QueryableIndex[K, V](indexContext)
+    val builder = IndexBuilder.create[K, V](global, DefaultComparators.bytesOrd,
+        indexContext.numLeafItems, indexContext.numMetaItems, indexContext.maxNItems,
+        DefaultSerializers.bytesSerializer, DefaultSerializers.bytesSerializer)
+      .storage(storage)
+      .serializer(DefaultSerializers.grpcBytesBytesSerializer)
+      .keyToStringConverter(DefaultPrinters.byteArrayToStringPrinter)
+      .build()
+
+    var data = Seq.empty[(K, V, Option[String])]
+    var index = new QueryableIndex[K, V](indexContext)(builder)
 
     def insert(): Unit = {
+
+      val currentVersion = Some(index.ctx.id)
+      val indexBackup = index
+
       val n = rand.nextInt(1, 1000)
       var list = Seq.empty[Tuple3[K, V, Boolean]]
 
-      for(i<-0 until n){
-        val k = RandomStringUtils.randomAlphanumeric(5, 10).getBytes(Charsets.UTF_8)
-        val v = RandomStringUtils.randomAlphanumeric(5).getBytes(Charsets.UTF_8)
+      val insertDup = rand.nextBoolean()
 
-        if(!data.exists { case (k1, _, _) => ord.equiv(k, k1) } &&
-          !list.exists { case (k1, _, _) => ord.equiv(k, k1) }){
-          list = list :+ (k, v, false)
+      for(i<-0 until n){
+
+        rand.nextBoolean() match {
+          case x if x && list.length > 0 && insertDup =>
+
+            // Inserts some duplicate
+            val (k, v, _) = list(rand.nextInt(0, list.length))
+            list = list :+ (k, v, false)
+
+          case _ =>
+
+            val k = RandomStringUtils.randomAlphanumeric(5, 10).getBytes(Charsets.UTF_8)
+            val v = RandomStringUtils.randomAlphanumeric(5).getBytes(Charsets.UTF_8)
+
+            if (!data.exists { case (k1, _, _) => bytesOrd.equiv(k, k1) } &&
+              !list.exists { case (k1, _, _) => bytesOrd.equiv(k, k1) }) {
+              list = list :+ (k, v, false)
+            }
         }
       }
 
-      logger.debug(s"${Console.GREEN_B}INSERTING ${list.map{case (k, v, _) => new String(k)}}${Console.RESET}")
+      //logger.debug(s"${Console.GREEN_B}INSERTING ${list.map{case (k, v, _) => builder.ks(k)}}${Console.RESET}")
 
       val cmds = Seq(
         Commands.Insert(indexId, list)
       )
+
       val result = Await.result(index.execute(cmds), Duration.Inf)
 
-      assert(result.success)
-
       if(result.success){
-        data = data ++ list
+        logger.debug(s"${Console.GREEN_B}INSERTION OK: ${list.map{case (k, v, _) => builder.ks(k)}}${Console.RESET}")
+
+        val newDescriptor = Await.result(index.save(), Duration.Inf)
+        index = new QueryableIndex[K, V](newDescriptor)(builder)
+
+        data = data ++ list.map{case (k, v, _) => (k, v, currentVersion)}
+
         return
       }
 
+      logger.debug(s"${Console.RED_B}INSERTION FAIL: ${list.map{case (k, v, _) => builder.ks(k)}}${Console.RESET}")
+
+      index = indexBackup
       result.error.get.printStackTrace()
     }
 
     def update(): Unit = {
 
-      val lastVersion: Option[String] = rand.nextBoolean() match {
-        case true => None
-        case false => Some(UUID.randomUUID.toString)
-      }
+      val currentVersion = Some(index.ctx.id)
+      val indexBackup = index
 
-      val backupCtx = index.snapshot()
+      val introduceError = rand.nextBoolean()
+      val errorTx = Some(UUID.randomUUID.toString)
 
       val n = if(data.length >= 2) rand.nextInt(1, data.length) else 1
-      val list = scala.util.Random.shuffle(data).slice(0, n).map { case (k, v, _) =>
-        (k, RandomStringUtils.randomAlphanumeric(10).getBytes(Charsets.UTF_8), lastVersion)
+      val list = scala.util.Random.shuffle(data).slice(0, n).map { case (k, v, lv) =>
+        (k, RandomStringUtils.randomAlphanumeric(10).getBytes(Charsets.UTF_8),
+         if(introduceError) errorTx else lv)
       }
 
       val cmds = Seq(
@@ -107,31 +132,34 @@ class MainSpec extends Repeatable with Matchers {
       val result = Await.result(index.execute(cmds), Duration.Inf)
 
       if(result.success){
-        logger.debug(s"${Console.MAGENTA_B}UPDATED RIGHT LAST VERSION ${list.map{case (k, _, _) => new String(k)}}...${Console.RESET}")
 
-        data = data.filterNot { case (k, _, _) => list.exists { case (k1, _, _) => ord.equiv(k, k1) } }
-        data = data ++ list.map { case (k, v, _) => (k, v, true) }
+        logger.debug(s"${Console.MAGENTA_B}UPDATED RIGHT LAST VERSION ${list.map{case (k, _, _) => builder.ks(k)}}...${Console.RESET}")
+
+        val newDescriptor = Await.result(index.save(), Duration.Inf)
+        index = new QueryableIndex[K, V](newDescriptor)(builder)
+
+        data = data.filterNot { case (k, _, _) => list.exists { case (k1, _, _) => bytesOrd.equiv(k, k1) } }
+        data = data ++ list.map { case (k, v, _) => (k, v, currentVersion) }
 
         return
       }
 
+      index = indexBackup
       result.error.get.printStackTrace()
-      logger.debug(s"${Console.RED_B}UPDATED WRONG LAST VERSION ${list.map { case (k, _, _) => new String(k) }}...${Console.RESET}")
-      index = new QueryableIndex[K, V](backupCtx)
+      logger.debug(s"${Console.CYAN_B}UPDATED WRONG LAST VERSION ${list.map { case (k, _, _) => builder.ks(k) }}...${Console.RESET}")
     }
 
     def remove(): Unit = {
 
-      val lastVersion: Option[String] = rand.nextBoolean() match {
-        case true => None
-        case false => Some(UUID.randomUUID.toString)
-      }
+      val currentVersion = Some(index.ctx.id)
+      val indexBackup = index
 
-      val backupCtx = index.snapshot()
+      val introduceError = rand.nextBoolean()
+      val errorTx = Some(UUID.randomUUID.toString)
 
       val n = if(data.length >= 2) rand.nextInt(1, data.length) else 1
-      val list: Seq[Tuple2[K, Option[String]]] = scala.util.Random.shuffle(data).slice(0, n).map { case (k, _, _) =>
-        (k, lastVersion)
+      val list: Seq[Tuple2[K, Option[String]]] = scala.util.Random.shuffle(data).slice(0, n).map { case (k, _, lv) =>
+        (k, if(introduceError) errorTx else lv)
       }
 
       val cmds = Seq(
@@ -141,14 +169,19 @@ class MainSpec extends Repeatable with Matchers {
       val result = Await.result(index.execute(cmds), Duration.Inf)
 
       if(result.success){
-        logger.debug(s"${Console.RED_B}REMOVED RIGHT VERSION ${list.map { case (k, _) => new String(k) }}...${Console.RESET}")
-        data = data.filterNot { case (k, _, _) => list.exists { case (k1, _) => ord.equiv(k, k1) } }
+
+        val newDescriptor = Await.result(index.save(), Duration.Inf)
+        index = new QueryableIndex[K, V](newDescriptor)(builder)
+
+        logger.debug(s"${Console.YELLOW_B}REMOVED RIGHT VERSION ${list.map { case (k, _) => builder.ks(k) }}...${Console.RESET}")
+        data = data.filterNot { case (k, _, _) => list.exists { case (k1, _) => bytesOrd.equiv(k, k1) } }
+
         return
       }
 
+      index = indexBackup
       result.error.get.printStackTrace()
-      logger.debug(s"${Console.RED_B}REMOVED WRONG VERSION ${list.map { case (k, _) => new String(k) }}...${Console.RESET}")
-      index = new QueryableIndex[K, V](backupCtx)
+      logger.debug(s"${Console.RED_B}REMOVED WRONG VERSION ${list.map { case (k, _) => builder.ks(k) }}...${Console.RESET}")
     }
 
     val n = 100
@@ -162,13 +195,18 @@ class MainSpec extends Repeatable with Matchers {
       }
     }
 
+    //insert()
+    //update()
+
     logger.info(Await.result(index.save(), Duration.Inf).toString)
 
     val dlist = data.sortBy(_._1).map{case (k, v, _) => k -> v}
-    val ilist = Await.result(TestHelper.all(index.inOrder()), Duration.Inf).map{case (k, v, _) => k -> v}
+    val ilist = Await.result(index.all(), Duration.Inf).map{case (k, v, _) => k -> v}
 
-    logger.debug(s"${Console.GREEN_B}tdata: ${dlist.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
-    logger.debug(s"${Console.MAGENTA_B}idata: ${ilist.map{case (k, v) => new String(k, Charsets.UTF_8) -> new String(v)}}${Console.RESET}\n")
+    logger.debug(s"${Console.GREEN_B}tdata: ${dlist.map{case (k, v) => builder.ks(k) -> builder.vs(v)}}${Console.RESET}\n")
+    logger.debug(s"${Console.MAGENTA_B}idata: ${ilist.map{case (k, v) => builder.ks(k) -> builder.vs(v)}}${Console.RESET}\n")
+
+    Await.result(storage.close(), Duration.Inf)
 
     assert(TestHelper.isColEqual(dlist, ilist))
   }

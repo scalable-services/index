@@ -44,10 +44,6 @@ class MemoryStorage()(implicit val ec: ExecutionContext) extends Storage {
     Future.successful(history.get(id))
   }
 
-  override def loadIndex(id: String): Future[Option[IndexContext]] = {
-    Future.successful(indexes.get(id))
-  }
-
   override def createIndex(ictx: IndexContext): Future[Boolean] = {
     if(indexes.isDefinedAt(ictx.id)){
       return Future.failed(Errors.INDEX_ALREADY_EXISTS(ictx.id))
@@ -55,6 +51,17 @@ class MemoryStorage()(implicit val ec: ExecutionContext) extends Storage {
 
     indexes.put(ictx.id, ictx)
     Future.successful(true)
+  }
+
+  override def loadIndex(id: String): Future[Option[IndexContext]] = {
+    Future.successful(indexes.get(id))
+  }
+
+  override def loadOrCreate(ctx: IndexContext): Future[IndexContext] = {
+    loadIndex(ctx.id).flatMap {
+      case None => createIndex(ctx).map(_ => ctx)
+      case Some(c) => Future.successful(c)
+    }
   }
 
   override def createTemporalIndex(tctx: TemporalContext): Future[Boolean] = {
@@ -66,6 +73,13 @@ class MemoryStorage()(implicit val ec: ExecutionContext) extends Storage {
     Future.successful(true)
   }
 
+  override def loadoOrCreateTemporalIndex(ctx: TemporalContext): Future[TemporalContext] = {
+    loadTemporalIndex(ctx.id).flatMap {
+      case None => createTemporalIndex(ctx).map(_ => ctx)
+      case Some(c) => Future.successful(c)
+    }
+  }
+
   override def save(blocks: Map[(String, String), Array[Byte]]): Future[Boolean] = {
     blocks.foreach { case (id, b) =>
       this.blocks.put(id, b)
@@ -74,7 +88,11 @@ class MemoryStorage()(implicit val ec: ExecutionContext) extends Storage {
     Future.successful(true)
   }
 
-  override def close(): Future[Unit] = Future.successful()
+  override def close(): Future[Unit] = Future {
+    history.clear()
+    blocks.clear()
+    indexes.clear()
+  }
 
   override def save(ctx: IndexContext): Future[Boolean] = {
     indexes.put(ctx.id, ctx)

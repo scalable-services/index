@@ -1,735 +1,652 @@
 package services.scalable.index
 
+import services.scalable.index.ParentInfo
 import services.scalable.index.grpc.{IndexContext, RootRef}
-import services.scalable.index.impl.RichAsyncIterator
+import services.scalable.index.impl.RichAsyncIndexIterator
 
 import java.util.UUID
-import scala.concurrent.{ExecutionContext, Future}
+import scala.collection.concurrent.TrieMap
+import scala.collection.mutable
+import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, Future}
 
 /**
- * All 'term' parameters in the functions should be provided along the prefix.
- * If the prefix is important in the searching, it should be explicitly provided with the optional parameter, i.e.,
- * fromPrefix.
- * order[T].compare(k, term): the first parameter of the compare function is the key being compared. The second one is
- * the pattern to be compared to.
+ * Any iterator can be constructed using a searching function and a filter function
  */
-class QueryableIndex[K, V](override val descriptor: IndexContext)(override implicit val ec: ExecutionContext,
-                                                                  override val storage: Storage,
-                                                                  override val serializer: Serializer[Block[K, V]],
-                                                                  override val cache: Cache,
-                                                                  override val ord: Ordering[K],
-                                                                  override val idGenerator: IdGenerator,
-                                                                  override val ks: K => String,
-                                                                  override val vs: V => String)
-  extends Index[K, V](descriptor)(ec, storage, serializer, cache, ord, idGenerator, ks, vs) {
+class QueryableIndex[K, V](override protected val descriptor: IndexContext)(override val builder: IndexBuilt[K, V])
+  extends Index[K, V](descriptor)(builder) {
 
   override val $this = this
 
-  protected def ltr(fromPrefix: Option[K], fromWord: K, inclusiveFrom: Boolean,
-                    prefixOrd: Option[Ordering[K]], order: Ordering[K]): RichAsyncIterator[K, V] = {
-    new RichAsyncIterator[K, V] {
+  import builder._
 
-      val sord = if(inclusiveFrom) new Ordering[K]{
-        override def compare(term: K, y: K): Int = {
-          val r = order.compare(term, y)
+  def find(k: K): Future[Option[Leaf[K, V]]] = {
+    findPath(k)
+  }
 
-          if(r != 0) return r
+  /**
+   * Returns the block containing the preceding key for k
+   * @param k
+   * @param orEqual
+   * @param termComp
+   * @return
+   */
+  def previousKey(k: K, orEqual: Boolean, findPathFn: (K, Meta[K, V], Ordering[K]) => (String, String) = (k, m, ord) => m.findPath(k)(ord))(termComp: Ordering[K]): Future[Option[Leaf[K, V]]] = {
+    findPath(k, None, findPathFn)(termComp).flatMap {
+      case None => Future.successful(None)
+      case Some(leaf) =>
 
-          -1
+        val found = leaf.tuples.indexWhere {case (k1, _, _) => (orEqual && termComp.lteq(k1, k)) || termComp.lt(k1, k)}
+
+        logger.debug(s"${Console.GREEN_B}Arrived at leaf: ${leaf.print()} found: ${found}${Console.RESET}")
+
+        if(found >= 0){
+          Future.successful(Some(leaf))
+        } else {
+          prev(Some(leaf.unique_id))
         }
-      } else
-        new Ordering[K]{
-          override def compare(term: K, y: K): Int = {
-            val r = order.compare(term, y)
+    }
+  }
 
-            if(r != 0) return r
+  /**
+   * Returns the block containing the successor key for k
+   * @param k
+   * @param orEqual
+   * @param termComp
+   * @return
+   */
+  def nextKey(k: K, orEqual: Boolean, findPathFn: (K, Meta[K, V], Ordering[K]) => (String, String) = (k, m, ord) => m.findPath(k)(ord))(termComp: Ordering[K]): Future[Option[Leaf[K, V]]] = {
+    findPath(k, None, findPathFn)(termComp).flatMap {
+      case None => Future.successful(None)
+      case Some(leaf) =>
+        val found = leaf.tuples.indexWhere {case (k1, _, _) => (orEqual && termComp.gteq(k1, k)) || termComp.gt(k1, k)}
 
-            1
-          }
+        logger.debug(s"${Console.CYAN_B}Arrived at leaf: ${leaf.print()}${Console.RESET}")
+
+        if(found >= 0){
+          Future.successful(Some(leaf))
+        } else {
+          next(Some(leaf.unique_id))
         }
+    }
+  }
+
+  def head(): RichAsyncIndexIterator[K, V] = {
+    new RichAsyncIndexIterator[K, V]() {
+
+      var root: Option[(String, String)] = None
+      var first = true
 
       override def hasNext(): Future[Boolean] = {
-        if(!firstTime) return Future.successful(ctx.root.isDefined)
-        Future.successful(!stop && cur.isDefined)
-      }
+        if (stop) return Future.successful(false)
 
-      def check(k: K): Boolean = {
-        (fromPrefix.isEmpty || prefixOrd.get.equiv(k, fromPrefix.get)) && (inclusiveFrom && order.lteq(k, fromWord) || !inclusiveFrom && order.lt(k, fromWord))
-      }
+        if (first) return $this.first().map { block =>
+          root = block.map(_.unique_id)
+          first = false
 
-      override def next(): Future[Seq[Tuple[K, V]]] = {
-        if(!firstTime){
-          firstTime = true
-
-          return findPath(fromWord)(sord).flatMap {
-            case None =>
-              cur = None
-              Future.successful(Seq.empty[Tuple[K, V]])
-
-            case Some(b) =>
-              cur = Some(b)
-
-              val filtered = b.tuples.filter{case (k, _, _) => check(k) }.reverse
-              stop = filtered.isEmpty
-
-              /*if(fromWord.isInstanceOf[Datom])
-                println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => k.asInstanceOf[Datom]}.map(d => printDatom(d, d.getA))} filtered: ${filtered.length}${Console.RESET}\n")
-              else println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k.asInstanceOf[Bytes])}} filtered: ${filtered.length}${Console.RESET}\n")
-*/
-              if(filtered.isEmpty){
-                next()
-              } else {
-                Future.successful(checkCounter(filtered.filter(filter)))
-              }
-          }
+          block.isDefined
         }
 
-        $this.prev(cur.map(_.unique_id))(sord).map {
-          case None =>
-            cur = None
-            Seq.empty[Tuple[K, V]]
-
-          case Some(b) =>
-            cur = Some(b)
-
-            val filtered = b.tuples.filter{case (k, _, _) => check(k) }.reverse
-            stop = filtered.isEmpty
-
-            checkCounter(filtered.filter(filter))
+        $this.next(root)(builder.ord).map { block =>
+          root = block.map(_.unique_id)
+          block.isDefined
         }
+      }
+
+      private def next1(): Future[Seq[(K, V, String)]] = {
+        if (root.isEmpty || stop) return Future.successful(Seq.empty[(K, V, String)])
+        ctx.getLeaf(root.get).map { block =>
+          val list = block.tuples.filter(filter)
+          stop = list.isEmpty
+          if(stop) list else checkCounter(list)
+        }
+      }
+
+      override def next(): Future[Seq[(K, V, String)]] = {
+        if (first) return hasNext().flatMap { _ =>
+          next1()
+        }
+
+        next1()
       }
     }
   }
 
-  def lt(fromPrefix: Option[K], fromWord: K, inclusiveFrom: Boolean, reverse: Boolean)
-        (prefixOrd: Option[Ordering[K]], order: Ordering[K]): RichAsyncIterator[K, V] = {
+  def tail(): RichAsyncIndexIterator[K, V] = {
+    new RichAsyncIndexIterator[K, V]() {
 
-    if(reverse){
-      return ltr(fromPrefix, fromWord, inclusiveFrom, prefixOrd, order)
-    }
-
-    new RichAsyncIterator[K, V] {
-
-      val sord: Ordering[K] = if(fromPrefix.isDefined){
-        new Ordering[K]{
-          override def compare(term: K, y: K): Int = {
-            val r = -prefixOrd.get.compare(y, fromPrefix.get)
-
-            if(r != 0) return r
-
-            -1
-          }
-        }
-      } else {
-        new Ordering[K]{
-          override def compare(term: K, y: K): Int = {
-            -1
-          }
-        }
-      }
+      var root: Option[(String, String)] = None
+      var first = true
 
       override def hasNext(): Future[Boolean] = {
-        if(!firstTime) return Future.successful(ctx.root.isDefined)
-        Future.successful(!stop && cur.isDefined)
-      }
+        if (stop) return Future.successful(false)
 
-      def check(k: K): Boolean = {
-        (fromPrefix.isEmpty || prefixOrd.get.equiv(k, fromPrefix.get)) && (inclusiveFrom && order.lteq(k, fromWord) || !inclusiveFrom && order.lt(k, fromWord))
-      }
+        if (first) return $this.last().map { block =>
+          root = block.map(_.unique_id)
+          first = false
 
-      override def next(): Future[Seq[Tuple[K, V]]] = {
-        if(!firstTime){
-          firstTime = true
-
-          return findPath(fromWord)(sord).flatMap {
-            case None =>
-              cur = None
-              Future.successful(Seq.empty[Tuple[K, V]])
-
-            case Some(b) =>
-              cur = Some(b)
-
-              val filtered = b.tuples.filter{case (k, _, _) => check(k) }
-              stop = filtered.isEmpty
-
-              Future.successful(checkCounter(filtered.filter(filter)))
-          }
+          block.isDefined
         }
 
-        $this.next(cur.map(_.unique_id))(sord).map {
-          case None =>
-            cur = None
-            Seq.empty[Tuple[K, V]]
-
-          case Some(b) =>
-            cur = Some(b)
-
-            val filtered = b.tuples.filter{case (k, _, _) => check(k) }
-            stop = filtered.isEmpty
-
-            checkCounter(filtered.filter(filter))
+        $this.prev(root)(builder.ord).map { block =>
+          root = block.map(_.unique_id)
+          block.isDefined
         }
+      }
+
+      private def prev1(): Future[Seq[(K, V, String)]] = {
+        if (root.isEmpty || stop) return Future.successful(Seq.empty[(K, V, String)])
+        ctx.getLeaf(root.get).map { block =>
+          val list = block.tuples.reverse.filter(filter)
+          stop = list.isEmpty
+          if(stop) list else checkCounter(list)
+        }
+      }
+
+      override def next(): Future[Seq[(K, V, String)]] = {
+        if (first) return hasNext().flatMap { _ =>
+          prev1()
+        }
+
+        prev1()
       }
     }
   }
 
-  protected def gtr(fromWord: K, inclusiveFrom: Boolean, fromPrefix: Option[K],
-                    prefixOrd: Option[Ordering[K]], order: Ordering[K]): RichAsyncIterator[K, V] = {
+  def asc(term: K, termInclusive: Boolean)(termComp: Ordering[K], findPathFn: (K, Meta[K, V], Ordering[K]) => (String, String) = (k, m, ord) => m.findPath(k)(ord)): RichAsyncIndexIterator[K, V] = {
+    new RichAsyncIndexIterator[K, V]() {
 
-    new RichAsyncIterator[K, V] {
-
-      val sord: Ordering[K] = if(fromPrefix.isEmpty){
-        new Ordering[K]{
-          override def compare(x: K, y: K): Int = {
-            1
-          }
-        }
-      } else {
-        new Ordering[K]{
-          override def compare(x: K, y: K): Int = {
-            val r = -prefixOrd.get.compare(y, fromPrefix.get)
-
-            if(r != 0) return r
-
-            1
-          }
-        }
-      }
+      var root: Option[(String, String)] = None
+      var first = true
 
       override def hasNext(): Future[Boolean] = {
-        if(!firstTime) return Future.successful(ctx.root.isDefined)
-        Future.successful(!stop && cur.isDefined)
-      }
+        if (stop) return Future.successful(false)
 
-      def check(k: K): Boolean = {
-        (fromPrefix.isEmpty || prefixOrd.get.equiv(k, fromPrefix.get)) && (inclusiveFrom && order.gteq(k, fromWord) || !inclusiveFrom && order.gt(k, fromWord))
-      }
+        if (first) return nextKey(term, termInclusive, findPathFn)(termComp).map { block =>
+          root = block.map(_.unique_id)
+          first = false
 
-      override def next(): Future[Seq[Tuple[K, V]]] = {
-        if(!firstTime){
-          firstTime = true
+          logger.debug(s"${Console.CYAN_B}First leaf search of ${ctx.builder.ks(term)}: ${block.map(_.print())}${Console.RESET}")
 
-          return findPath(fromWord)(sord).flatMap {
-            case None =>
-              cur = None
-              Future.successful(Seq.empty[Tuple[K, V]])
-
-            case Some(b) =>
-              cur = Some(b)
-
-              val filtered = b.tuples.filter{case (k, _, _) => check(k) }.reverse
-              stop = filtered.isEmpty
-
-              if(filtered.isEmpty){
-                next()
-              } else {
-                Future.successful(checkCounter(filtered.filter(filter)))
-              }
-          }
+          block.isDefined
         }
 
-        $this.prev(cur.map(_.unique_id))(sord).map {
-          case None =>
-            cur = None
-            Seq.empty[Tuple[K, V]]
-
-          case Some(b) =>
-            cur = Some(b)
-
-            val filtered = b.tuples.filter{case (k, _, _) => check(k) }.reverse
-            stop = filtered.isEmpty
-
-            checkCounter(filtered.filter(filter))
+        $this.next(root)(termComp).map { block =>
+          root = block.map(_.unique_id)
+          block.isDefined
         }
+      }
+
+      private def next1(): Future[Seq[(K, V, String)]] = {
+        if (root.isEmpty || stop) return Future.successful(Seq.empty[(K, V, String)])
+        ctx.getLeaf(root.get).map { block =>
+          val list = block.tuples.filter(filter)
+          stop = list.isEmpty
+          if(stop) list else checkCounter(list)
+        }
+      }
+
+      override def next(): Future[Seq[(K, V, String)]] = {
+        if (first) return hasNext().flatMap { _ =>
+          next1()
+        }
+
+        next1()
       }
     }
   }
 
-  def gt(fromPrefix: Option[K], fromWord: K, inclusiveFrom: Boolean, reverse: Boolean)
-        (prefixOrd: Option[Ordering[K]], order: Ordering[K]): RichAsyncIterator[K, V] = {
+  def desc(term: K, termInclusive: Boolean)(termComp: Ordering[K], findPathFn: (K, Meta[K, V], Ordering[K]) => (String, String) = (k, m, ord) => m.findPath(k)(ord)): RichAsyncIndexIterator[K, V] = {
+    new RichAsyncIndexIterator[K, V]() {
 
-    if(reverse){
-      return gtr(fromWord, inclusiveFrom, fromPrefix, prefixOrd, order)
-    }
-
-    new RichAsyncIterator[K, V] {
-
-      val sord = if(inclusiveFrom) new Ordering[K]{
-        override def compare(term: K, y: K): Int = {
-          val r = order.compare(term, y)
-
-          if(r != 0) return r
-
-          -1
-        }
-      } else
-        new Ordering[K]{
-        override def compare(term: K, y: K): Int = {
-          val r = order.compare(term, y)
-
-          if(r != 0) return r
-
-          1
-        }
-      }
+      var root: Option[(String, String)] = None
+      var first = true
 
       override def hasNext(): Future[Boolean] = {
-        if(!firstTime) return Future.successful(ctx.root.isDefined)
-        Future.successful(!stop && cur.isDefined)
-      }
+        if (stop) return Future.successful(false)
 
-      def check(k: K): Boolean = {
-        (fromPrefix.isEmpty || prefixOrd.get.equiv(k, fromPrefix.get)) && (inclusiveFrom && order.gteq(k, fromWord) || !inclusiveFrom && order.gt(k, fromWord))
-      }
+        if (first) return previousKey(term, termInclusive, findPathFn)(termComp).map { block =>
+          root = block.map(_.unique_id)
+          first = false
 
-      override def next(): Future[Seq[Tuple[K, V]]] = {
-        if(!firstTime){
-          firstTime = true
+          logger.debug(s"${Console.YELLOW_B}First leaf search of ${ctx.builder.ks(term)}: ${block.map(_.print())}${Console.RESET}")
 
-          return findPath(fromWord)(sord).flatMap {
-            case None =>
-              cur = None
-              Future.successful(Seq.empty[Tuple[K, V]])
-
-            case Some(b) =>
-              cur = Some(b)
-
-              val filtered = b.tuples.filter{case (k, _, _) => check(k) }
-              stop = filtered.isEmpty
-
-              /*if(filtered.isEmpty){
-                next()
-              } else {
-                Future.successful(checkCounter(filtered.filter{case (k, v) => filter(k, v)}))
-              }*/
-
-              Future.successful(checkCounter(filtered.filter(filter)))
-          }
+          block.isDefined
         }
 
-        $this.next(cur.map(_.unique_id))(sord).map {
-          case None =>
-            cur = None
-            Seq.empty[Tuple[K, V]]
-
-          case Some(b) =>
-            cur = Some(b)
-
-            val filtered = b.tuples.filter{case (k, _, _) => check(k) }
-            stop = filtered.isEmpty
-
-            /*if(fromWord.isInstanceOf[Datom])
-              println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => k.asInstanceOf[Datom]}.map(d => printDatom(d, d.getA))} filtered: ${filtered.length}${Console.RESET}\n")
-              else println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k.asInstanceOf[Bytes])}} filtered: ${filtered.length}${Console.RESET}\n")
-*/
-            checkCounter(filtered.filter(filter))
+        $this.prev(root)(termComp).map { block =>
+          root = block.map(_.unique_id)
+          block.isDefined
         }
+      }
+
+      private def prev1(): Future[Seq[(K, V, String)]] = {
+        if (root.isEmpty || stop) return Future.successful(Seq.empty[(K, V, String)])
+        ctx.getLeaf(root.get).map { block =>
+          val list = block.tuples.reverse.filter(filter)
+          stop = list.isEmpty
+          if(stop) list else checkCounter(list)
+        }
+      }
+
+      override def next(): Future[Seq[(K, V, String)]] = {
+        if (first) return hasNext().flatMap { _ =>
+          prev1()
+        }
+
+        prev1()
       }
     }
   }
 
-  protected def ranger(fromWord: K, toWord: K, inclusiveFrom: Boolean, inclusiveTo: Boolean, order: Ordering[K]): RichAsyncIterator[K, V] = {
+  def lt(term: K, termInclusive: Boolean, reverse: Boolean)(termComp: Ordering[K]): RichAsyncIndexIterator[K, V] = {
+    val it = if(reverse) desc(term, termInclusive)(termComp) else head()
 
-    new RichAsyncIterator[K, V] {
+    it.filter = x => {
+      (termInclusive && termComp.lteq(x._1, term)) || termComp.lt(x._1, term)
+    }
 
-      val sord = if(inclusiveFrom) new Ordering[K]{
-        override def compare(term: K, y: K): Int = {
-          val r = order.compare(term, y)
+    it
+  }
 
-          if(r != 0) return r
+  def gt(term: K, termInclusive: Boolean, reverse: Boolean)(termComp: Ordering[K]): RichAsyncIndexIterator[K, V] = {
+    val it = if(reverse) tail() else asc(term, termInclusive)(termComp)
 
-          -1
-        }
-      } else
-        new Ordering[K]{
-          override def compare(term: K, y: K): Int = {
-            val r = order.compare(term, y)
+    it.filter = k => {
+      (termInclusive && termComp.gteq(k._1, term)) || termComp.gt(k._1, term)
+    }
 
-            if(r != 0) return r
+    it
+  }
 
-            1
-          }
-        }
+  protected def gtReversePrefix(prefix: K, term: K, termInclusive: Boolean)(prefixComp: Ordering[K], termComp: Ordering[K]): RichAsyncIndexIterator[K, V] = {
+    new RichAsyncIndexIterator[K, V]() {
+
+      var root: Option[(String, String)] = None
+      var first = true
 
       override def hasNext(): Future[Boolean] = {
-        if(!firstTime) return Future.successful(ctx.root.isDefined)
-        Future.successful(!stop && cur.isDefined)
-      }
+        if (stop) return Future.successful(false)
 
-      def check(k: K): Boolean = {
-        (inclusiveFrom && order.gteq(k, fromWord) || !inclusiveFrom && order.gt(k, fromWord)) &&
-          (inclusiveTo && order.lteq(k, toWord) || !inclusiveTo && order.lt(k, toWord))
-      }
+        if (first) return findPath(term, None, (k, m, ord) => {
+          val reversed = m.pointers.reverse
 
-      override def next(): Future[Seq[Tuple[K, V]]] = {
-        if(!firstTime){
-          firstTime = true
-
-          return findPath(toWord)(sord).flatMap {
-            case None =>
-              cur = None
-              Future.successful(Seq.empty[Tuple[K, V]])
-
-            case Some(b) =>
-              cur = Some(b)
-
-              val filtered = b.tuples.filter{case (k, _, _) => check(k) }.reverse
-              stop = filtered.isEmpty
-
-              /*if(fromWord.isInstanceOf[Datom])
-                println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => k.asInstanceOf[Datom]}.map(d => printDatom(d, d.getA))} filtered: ${filtered.length}${Console.RESET}\n")
-              else println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k.asInstanceOf[Bytes])}} filtered: ${filtered.length}${Console.RESET}\n")
-*/
-              if(filtered.isEmpty){
-                next()
-              } else {
-                Future.successful(checkCounter(filtered.filter(filter)))
-              }
+          var idx = reversed.indexWhere{ case (k, _) =>
+            prefixComp.gteq(k, prefix) && (termInclusive && termComp.gteq(k, term) || termComp.gt(k, term))
           }
+
+          idx = if(idx < 0) 0 else idx
+
+          val id = reversed(idx)._2.unique_id
+
+          id
+        })(termComp).map { block =>
+          root = block.map(_.unique_id)
+          first = false
+
+          block.isDefined
         }
 
-        $this.prev(cur.map(_.unique_id))(sord).map {
-          case None =>
-            cur = None
-            Seq.empty[Tuple[K, V]]
-
-          case Some(b) =>
-            cur = Some(b)
-
-            val filtered = b.tuples.filter{case (k, _, _) => check(k) }.reverse
-            stop = filtered.isEmpty
-
-            /*if(fromWord.isInstanceOf[Datom])
-              println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => k.asInstanceOf[Datom]}.map(d => printDatom(d, d.getA))} filtered: ${filtered.length}${Console.RESET}\n")
-            else println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k.asInstanceOf[Bytes])}} filtered: ${filtered.length}${Console.RESET}\n")
-*/
-            checkCounter(filtered.filter(filter))
+        $this.prev(root)(termComp).map { block =>
+          root = block.map(_.unique_id)
+          block.isDefined
         }
+      }
+
+      private def prev1(): Future[Seq[(K, V, String)]] = {
+        if (root.isEmpty || stop) return Future.successful(Seq.empty[(K, V, String)])
+        ctx.getLeaf(root.get).map { block =>
+          val list = block.tuples.reverse.filter(filter)
+          if(stop) list else checkCounter(list)
+        }
+      }
+
+      override def next(): Future[Seq[(K, V, String)]] = {
+        if (first) return hasNext().flatMap { _ =>
+          prev1()
+        }
+
+        prev1()
       }
     }
   }
 
-  def range(fromWord: K, toWord: K, inclusiveFrom: Boolean, inclusiveTo: Boolean, reverse: Boolean)(implicit order: Ordering[K]): RichAsyncIterator[K, V] = {
+  /**
+   *
+   * @param prefix
+   * @param term Must include the prefix!!!
+   * @param inclusive
+   * @param reverse
+   * @param prefixComp
+   * @param termComp
+   * @return
+   */
+  def gt(prefix: K, term: K, inclusive: Boolean, reverse: Boolean)(prefixComp: Ordering[K],
+                                                                   termComp: Ordering[K]): RichAsyncIndexIterator[K, V] = {
+    assert(prefixComp.equiv(term, prefix) || termComp.equiv(prefix, term), s"Term ${ctx.builder.ks(term)} must include the prefix ${ctx.builder.ks(prefix)}!")
 
-    if(reverse){
-      return ranger(fromWord, toWord, inclusiveFrom, inclusiveTo, order)
+    val it = if(reverse) gtReversePrefix(prefix, term, inclusive)(prefixComp, termComp)
+      else asc(term, inclusive)(termComp)
+
+    it.filter = k => {
+      prefixComp.equiv(k._1, prefix) && (inclusive && termComp.gteq(k._1, term) || termComp.gt(k._1, term))
     }
 
-    new RichAsyncIterator[K, V] {
+    it
+  }
 
-      val sord = if(inclusiveFrom) new Ordering[K]{
-        override def compare(term: K, y: K): Int = {
-          val r = order.compare(term, y)
+  /**
+   * @param prefix Must include the prefix!
+   * @param term
+   * @param termInclusive
+   * @param reverse
+   * @param prefixComp
+   * @param termComp
+   * @return
+   */
+  def lt(prefix: K, term: K, termInclusive: Boolean, reverse: Boolean)(prefixComp: Ordering[K], termComp: Ordering[K]): RichAsyncIndexIterator[K, V] = {
+    assert(prefixComp.equiv(term, prefix) || termComp.equiv(prefix, term), s"Term ${ctx.builder.ks(term)} must include the prefix ${ctx.builder.ks(prefix)}!")
 
-          if(r != 0) return r
+    val it = if (reverse) desc(term, termInclusive)(termComp) else asc(prefix, true)(termComp)
 
-          -1
-        }
-      } else
-        new Ordering[K]{
-          override def compare(term: K, y: K): Int = {
-            val r = order.compare(term, y)
+    it.filter = k => {
+      prefixComp.equiv(k._1, prefix) && (termInclusive && termComp.lteq(k._1, term) || termComp.lt(k._1, term))
+    }
 
-            if(r != 0) return r
+    it
+  }
 
-            1
-          }
-        }
+  protected def prefixReverse(term: K)(comp: Ordering[K]): RichAsyncIndexIterator[K, V] = {
+    new RichAsyncIndexIterator[K, V]() {
+
+      var root: Option[(String, String)] = None
+      var first = true
 
       override def hasNext(): Future[Boolean] = {
-        if(!firstTime) return Future.successful(ctx.root.isDefined)
-        Future.successful(!stop && cur.isDefined)
-      }
+        if (stop) return Future.successful(false)
 
-      def check(k: K): Boolean = {
-        (inclusiveFrom && order.gteq(k, fromWord) || !inclusiveFrom && order.gt(k, fromWord)) &&
-          (inclusiveTo && order.lteq(k, toWord) || !inclusiveTo && order.lt(k, toWord))
-      }
+        if (first) return findPath(term, None, (k, m, ord) => {
+          val reversed = m.pointers.reverse
 
-      override def next(): Future[Seq[Tuple[K, V]]] = {
-        if(!firstTime){
-          firstTime = true
-
-          return findPath(fromWord)(sord).flatMap {
-            case None =>
-              cur = None
-              Future.successful(Seq.empty[Tuple[K, V]])
-
-            case Some(b) =>
-              cur = Some(b)
-
-              val filtered = b.tuples.filter{case (k, _, _) => check(k) }
-              stop = filtered.isEmpty
-
-              /*if(fromWord.isInstanceOf[Datom])
-                println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => k.asInstanceOf[Datom]}.map(d => printDatom(d, d.getA))} filtered: ${filtered.length}${Console.RESET}\n")
-              else println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k.asInstanceOf[Bytes])}} filtered: ${filtered.length}${Console.RESET}\n")
-*/
-              if(filtered.isEmpty){
-                next()
-              } else {
-                Future.successful(checkCounter(filtered.filter(filter)))
-              }
+          var idx = reversed.indexWhere { case (k, p) =>
+            comp.gteq(k, term)
           }
+
+          idx = if (idx < 0) 0 else idx
+
+          val id = reversed(idx)._2.unique_id
+
+          id
+        })(comp).map { block =>
+          root = block.map(_.unique_id)
+          first = false
+
+          block.isDefined
         }
 
-        $this.next(cur.map(_.unique_id))(sord).map {
-          case None =>
-            cur = None
-            Seq.empty[Tuple[K, V]]
-
-          case Some(b) =>
-            cur = Some(b)
-
-            val filtered = b.tuples.filter{case (k, _, _) => check(k) }
-            stop = filtered.isEmpty
-
-            /*if(fromWord.isInstanceOf[Datom])
-              println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => k.asInstanceOf[Datom]}.map(d => printDatom(d, d.getA))} filtered: ${filtered.length}${Console.RESET}\n")
-            else println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k.asInstanceOf[Bytes])}} filtered: ${filtered.length}${Console.RESET}\n")
-*/
-            checkCounter(filtered.filter(filter))
+        $this.prev(root)(comp).map { block =>
+          root = block.map(_.unique_id)
+          block.isDefined
         }
+      }
+
+      private def prev1(): Future[Seq[(K, V, String)]] = {
+        if (root.isEmpty || stop) return Future.successful(Seq.empty[(K, V, String)])
+        ctx.getLeaf(root.get).map { block =>
+          val list = block.tuples.reverse.filter(filter)
+          if (stop) list else checkCounter(list)
+        }
+      }
+
+      override def next(): Future[Seq[(K, V, String)]] = {
+        if (first) return hasNext().flatMap { _ =>
+          prev1()
+        }
+
+        prev1()
       }
     }
   }
 
-  protected def findr(word: K)(implicit order: Ordering[K]): RichAsyncIterator[K, V] = {
+  def prefix(prefix: K, reverse: Boolean)(prefixComp: Ordering[K]): RichAsyncIndexIterator[K, V] = {
+    val it = if(reverse) prefixReverse(prefix)(prefixComp) else asc(prefix, true)(prefixComp)
 
-    val sord = new Ordering[K]{
-      override def compare(word: K, y: K): Int = {
-        val r = -order.compare(y, word)
-
-        if(r != 0) return r
-
-        1
-      }
+    it.filter = x => {
+      prefixComp.equiv(x._1, prefix)
     }
 
-    new RichAsyncIterator[K, V] {
+    it
+  }
+
+  def range(from: K, to: K, fromInclusive: Boolean, toInclusive: Boolean, reverse: Boolean)(termComp: Ordering[K]): RichAsyncIndexIterator[K, V] = {
+
+    assert(termComp.gteq(to, from), s"to term ${ctx.builder.ks(to)} must be greater than from term ${ctx.builder.ks(from)}!")
+
+    val it = if(reverse) desc(to, toInclusive)(termComp, (k, m, ord) => {
+      val reversed = m.pointers.reverse
+
+      var idx = reversed.lastIndexWhere { case (k, _) =>
+        (toInclusive && termComp.gteq(k, to)) || termComp.gt(k, to)
+      }
+
+      idx = if(idx < 0) 0 else idx
+
+      reversed(idx)._2.unique_id
+    }) else asc(from, fromInclusive)(termComp)
+
+    it.filter = k => {
+      ((fromInclusive && termComp.gteq(k._1, from)) || termComp.gt(k._1, from)) &&
+        ((toInclusive && termComp.lteq(k._1, to)) || termComp.lt(k._1, to))
+    }
+
+    it
+  }
+
+  /*protected def prefixForward(term: K)(comp: Ordering[K]): RichAsyncIndexIterator[K, V] = {
+    new RichAsyncIndexIterator[K, V]() {
+
+      var root: Option[(String, String)] = None
+      var first = true
 
       override def hasNext(): Future[Boolean] = {
-        if(!firstTime) return Future.successful(ctx.root.isDefined)
-        Future.successful(!stop && cur.isDefined)
-      }
+        if (stop) return Future.successful(false)
 
-      def check(k: K): Boolean = {
-        order.equiv(k, word)
-      }
+        if (first) return findPath(term, None, (k, m, ord) => {
+          val pointers = m.pointers
 
-      override def next(): Future[Seq[Tuple[K, V]]] = {
-        if(!firstTime){
-          firstTime = true
-
-          return findPath(word)(sord).flatMap {
-            case None =>
-              cur = None
-              Future.successful(Seq.empty[Tuple[K, V]])
-
-            case Some(b) =>
-              cur = Some(b)
-
-              val filtered = b.tuples.filter{case (k, _, _) => check(k)}.reverse
-              stop = filtered.isEmpty
-
-              /*if(fromWord.isInstanceOf[Datom])
-                println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => k.asInstanceOf[Datom]}.map(d => printDatom(d, d.getA))} filtered: ${filtered.length}${Console.RESET}\n")
-              else println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k.asInstanceOf[Bytes])}} filtered: ${filtered.length}${Console.RESET}\n")
-*/
-              if(filtered.isEmpty){
-                next()
-              } else {
-                Future.successful(checkCounter(filtered.filter(filter)))
-              }
+          var idx = pointers.indexWhere { case (k, p) =>
+            comp.gteq(k, term)
           }
+
+          idx = if (idx < 0) 0 else idx
+
+          val id = pointers(idx)._2.unique_id
+
+          id
+        })(comp).map { block =>
+          root = block.map(_.unique_id)
+          first = false
+
+          block.isDefined
         }
 
-        $this.prev(cur.map(_.unique_id))(sord).map {
-          case None =>
-            cur = None
-            Seq.empty[Tuple[K, V]]
-
-          case Some(b) =>
-            cur = Some(b)
-
-            val filtered = b.tuples.filter{case (k, _, _) => check(k) }.reverse
-            stop = filtered.isEmpty
-
-            /*if(fromWord.isInstanceOf[Datom])
-              println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => k.asInstanceOf[Datom]}.map(d => printDatom(d, d.getA))} filtered: ${filtered.length}${Console.RESET}\n")
-            else println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k.asInstanceOf[Bytes])}} filtered: ${filtered.length}${Console.RESET}\n")
-*/
-            checkCounter(filtered.filter(filter))
+        $this.next(root)(comp).map { block =>
+          root = block.map(_.unique_id)
+          block.isDefined
         }
+      }
+
+      private def next1(): Future[Seq[(K, V, String)]] = {
+        if (root.isEmpty || stop) return Future.successful(Seq.empty[(K, V, String)])
+        ctx.getLeaf(root.get).map { block =>
+          val list = block.tuples.filter(filter)
+          if (stop) list else checkCounter(list)
+        }
+      }
+
+      override def next(): Future[Seq[(K, V, String)]] = {
+        if (first) return hasNext().flatMap { _ =>
+          next1()
+        }
+
+        next1()
       }
     }
-  }
+  }*/
 
-  def find(word: K, reverse: Boolean)(implicit order: Ordering[K]): RichAsyncIterator[K, V] = {
+  /*def prefixRange(prefixFrom: K, prefixTo: K, fromInclusive: Boolean, toInclusive: Boolean, reverse: Boolean)(prefixComp: Ordering[K]): RichAsyncIndexIterator[K, V] = {
+    assert(prefixComp.gt(prefixTo, prefixFrom), s"prefixTo ${ctx.builder.ks(prefixTo)} must be greater than prefixFrom ${ctx.builder.ks(prefixFrom)}!")
 
-    if(reverse){
-      return findr(word)(order)
+    val it = if(reverse) prefixReverse(prefixTo)(prefixComp) else prefixForward(prefixFrom)(prefixComp)
+
+    it.filter = k => {
+      ((fromInclusive && prefixComp.gteq(k._1, prefixFrom)) || prefixComp.gt(k._1, prefixFrom)) &&
+        ((toInclusive && prefixComp.lteq(k._1, prefixTo)) || prefixComp.lt(k._1, prefixTo))
     }
 
-    new RichAsyncIterator[K, V] {
-      override def hasNext(): Future[Boolean] = {
-        if(!firstTime) return Future.successful(ctx.root.isDefined)
-        Future.successful(!stop && cur.isDefined)
-      }
-
-      def check(k: K): Boolean = {
-        order.equiv(k, word)
-      }
-
-      override def next(): Future[Seq[Tuple[K, V]]] = {
-        if(!firstTime){
-          firstTime = true
-
-          return findPath(word)(order).flatMap {
-            case None =>
-              cur = None
-              Future.successful(Seq.empty[Tuple[K, V]])
-
-            case Some(b) =>
-              cur = Some(b)
-
-              val filtered = b.tuples.filter{case (k, _, _) => check(k) }
-              stop = filtered.isEmpty
-
-              /*if(fromWord.isInstanceOf[Datom])
-                println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => k.asInstanceOf[Datom]}.map(d => printDatom(d, d.getA))} filtered: ${filtered.length}${Console.RESET}\n")
-              else println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k.asInstanceOf[Bytes])}} filtered: ${filtered.length}${Console.RESET}\n")
-*/
-              if(filtered.isEmpty){
-                next()
-              } else {
-                Future.successful(checkCounter(filtered.filter(filter)))
-              }
-          }
-        }
-
-        $this.next(cur.map(_.unique_id))(order).map {
-          case None =>
-            cur = None
-            Seq.empty[Tuple[K, V]]
-
-          case Some(b) =>
-            cur = Some(b)
-
-            val filtered = b.tuples.filter{case (k, _, _) => check(k) }
-            stop = filtered.isEmpty
-
-            /*if(fromWord.isInstanceOf[Datom])
-              println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => k.asInstanceOf[Datom]}.map(d => printDatom(d, d.getA))} filtered: ${filtered.length}${Console.RESET}\n")
-            else println(s"${Console.GREEN_B}${b.tuples.map{case (k, _) => new String(k.asInstanceOf[Bytes])}} filtered: ${filtered.length}${Console.RESET}\n")
-*/
-            checkCounter(filtered.filter(filter))
-        }
-      }
-    }
-  }
-
-  def gt(term: K, inclusive: Boolean, reverse: Boolean)(implicit order: Ordering[K]): RichAsyncIterator[K, V] = {
-    gt(None, term, inclusive, reverse)(None, order)
-  }
-
-  def gt(prefix: K, term: K, inclusive: Boolean, reverse: Boolean)(prefixOrd: Ordering[K], order: Ordering[K]): RichAsyncIterator[K, V] = {
-    gt(Some(prefix), term, inclusive, reverse)(Some(prefixOrd), order)
-  }
-
-  def lt(term: K, inclusive: Boolean, reverse: Boolean)(implicit order: Ordering[K]): RichAsyncIterator[K, V] = {
-    lt(None, term, inclusive, reverse)(None, order)
-  }
-
-  def lt(prefix: K, term: K, inclusive: Boolean, reverse: Boolean)(prefixOrd: Ordering[K], order: Ordering[K]): RichAsyncIterator[K, V] = {
-    lt(Some(prefix), term, inclusive, reverse)(Some(prefixOrd), order)
-  }
+    it
+  }*/
 
   def isFull(): Boolean = {
-    ctx.num_elements >= descriptor.maxNItems
+    if(builder.MAX_N_ITEMS < 0) return false
+    ctx.num_elements >= builder.MAX_N_ITEMS
+  }
+
+  def isEmpty(): Boolean = {
+    ctx.root.isEmpty
   }
 
   def hasMinimum(): Boolean = {
-    ctx.num_elements >= descriptor.maxNItems/2
+    ctx.num_elements >= builder.MAX_N_ITEMS / 2
   }
 
-  def split(): Future[QueryableIndex[K, V]] = {
+  def copy(sameId: Boolean = false): QueryableIndex[K, V] = {
+    // Copies current snapshot
+    var descriptor = ctx.snapshot()
 
-    for {
-      leftR <- ctx.getMeta(ctx.root.get).flatMap {
-        case block if block.length == 1 => ctx.getMeta(block.pointers(0)._2.unique_id)
-        case block => Future.successful(block)
-      }
-    } yield {
-
-      val leftN = leftR.pointers.slice(0, leftR.length / 2).map { case (_, ptr) =>
-        ptr.nElements
-      }.sum
-
-      val rightN = leftR.pointers.slice(leftR.length / 2, leftR.length).map { case (_, ptr) =>
-        ptr.nElements
-      }.sum
-
-      val leftICtx = descriptor
-        .withId(ctx.id)
-        .withMaxNItems(descriptor.maxNItems)
-        .withNumElements(leftN)
-        .withLevels(leftR.level)
-        .withNumLeafItems(descriptor.numLeafItems)
-        .withNumMetaItems(descriptor.numMetaItems)
-
-      val rightICtx = descriptor
-        .withId(UUID.randomUUID().toString)
-        .withMaxNItems(descriptor.maxNItems)
-        .withNumElements(rightN)
-        .withLevels(leftR.level)
-        .withNumLeafItems(descriptor.numLeafItems)
-        .withNumMetaItems(descriptor.numMetaItems)
-
-      val refs = ctx.blockReferences
-
-      ctx = Context.fromIndexContext(leftICtx)(this.ec,
-        this.storage, this.serializer, this.cache, this.ord, this.idGenerator, ks, vs)
-
-      ctx.blockReferences ++= refs
-
-      val rindex = new QueryableIndex[K, V](rightICtx)(this.ec,
-        this.storage, this.serializer, this.cache, this.ord, this.idGenerator, ks, vs)
-
-      val leftRoot = leftR.copy()(ctx)
-      ctx.root = Some(leftRoot.unique_id)
-
-      val rightRoot = leftRoot.split()(rindex.ctx)
-      rindex.ctx.root = Some(rightRoot.unique_id)
-
-      /*val ileft = Await.result(TestHelper.all(left.inOrder()), Duration.Inf).map { case (k, v, _) => k -> v }
-        logger.debug(s"${Console.BLUE_B}idata data: ${ileft.map { case (k, v) => new String(k, Charsets.UTF_8) -> new String(v) }}${Console.RESET}\n")
-
-        val idataL = Await.result(TestHelper.all(lindex.inOrder()), Duration.Inf).map { case (k, v, _) => k -> v }
-        logger.debug(s"${Console.GREEN_B}idataL data: ${idataL.map { case (k, v) => new String(k, Charsets.UTF_8) -> new String(v) }}${Console.RESET}\n")
-
-        val idataR = Await.result(TestHelper.all(rindex.inOrder()), Duration.Inf).map { case (k, v, _) => k -> v }
-        logger.debug(s"${Console.GREEN_B}idataR data: ${idataR.map { case (k, v) => new String(k, Charsets.UTF_8) -> new String(v) }}${Console.RESET}\n")
-
-        assert(idataR.slice(0, idataL.length) != idataL)
-        assert(ileft == (idataL ++ idataR))*/
-
-      rindex
+    if(!sameId){
+      descriptor = descriptor.withId(builder.idGenerator.generateIndexId())
     }
-  }
 
-  def copy(): QueryableIndex[K, V] = {
-    val context = IndexContext(UUID.randomUUID.toString, descriptor.numLeafItems, descriptor.numMetaItems,
-      ctx.root.map { r => RootRef(r._1, r._2) }, levels, ctx.num_elements, descriptor.maxNItems)
+    val copy = new QueryableIndex[K, V](descriptor)(builder)
 
-    val copy = new QueryableIndex[K, V](context)(this.ec,
-      this.storage, this.serializer, this.cache, this.ord, this.idGenerator, ks, vs)
+    ctx.newBlocksReferences.foreach { e =>
+      copy.ctx.newBlocksReferences += e
+    }
 
-    ctx.blockReferences.foreach { case (id, _) =>
-      copy.ctx.blockReferences += id -> id
+    ctx.parents.foreach { e =>
+      copy.ctx.parents += e
     }
 
     copy
   }
 
+  def split(): Future[QueryableIndex[K, V]] = {
+    assert(isFull(), s"The index must be full to be split!")
+
+   for {
+     rootBlock <- ctx.get(ctx.root.get)
+     leftBlock <- ctx.get(ctx.root.get).map(_.copy())
+   } yield {
+
+     val halfPos = rootBlock.length / 2
+
+     val leftRefs = TrieMap.empty[(String, String), Block[K, V]]
+     val rightRefs = TrieMap.empty[(String, String), Block[K, V]]
+
+     ctx.newBlocksReferences.foreach { case (id, block) =>
+       val pos = rootBlock.findPosition(block.last)
+
+       if(pos < halfPos){
+         logger.debug(s"New block ${id} goes left...")
+         leftRefs += id -> block
+       } else {
+         logger.debug(s"New block ${id} goes right...")
+         rightRefs += id -> block
+       }
+     }
+
+     val leftParents = TrieMap.empty[(String, String), ParentInfo[K]]
+     val rightParents = TrieMap.empty[(String, String), ParentInfo[K]]
+
+     val allRefs = ctx.parents.iterator.toSeq
+     val cachedPositions = TrieMap.empty[(String, String), Int]
+
+     allRefs.filterNot{case (id, _) => id == rootBlock.unique_id}.foreach { case (id, pinfo) =>
+
+       //val pos = ctx.getRootPos(id)(cachedPositions)
+
+       /*val last = Await.result(ctx.get(id).map {
+         b => b.last
+       }, Duration.Inf)*/
+
+       val isLeft = ord.lteq(pinfo.key.get, rootBlock.middle)
+
+       if(!isLeft){
+         println()
+       }
+
+       if(isLeft){
+         logger.debug(s"${id} is on the left!")
+         leftParents.put(id, pinfo)
+       } else {
+         logger.debug(s"${id} is on the right!")
+         rightParents.put(id, pinfo)
+       }
+     }
+
+     val rightBlock = leftBlock.split()
+
+     if(leftBlock.isInstanceOf[Meta[K, V]]){
+       leftBlock.asInstanceOf[Meta[K, V]].pointers.foreach { case (_, p) =>
+         leftParents.put(p.unique_id, ctx.parents(p.unique_id))
+       }
+     }
+
+     if(rightBlock.isInstanceOf[Meta[K, V]]){
+       rightBlock.asInstanceOf[Meta[K, V]].pointers.foreach { case (_, p) =>
+         rightParents.put(p.unique_id, ctx.parents(p.unique_id))
+       }
+     }
+
+     ctx.parents.clear()
+
+     val leftN = leftBlock.nSubtree
+     val rightN = rightBlock.nSubtree
+
+     logger.debug(s"number of elements: ${ctx.num_elements} leftN: ${leftN} rightN: ${rightN}...")
+     assert(ctx.num_elements == leftN + rightN)
+
+     ctx.num_elements = leftN
+     ctx.lastChangeVersion = UUID.randomUUID.toString
+     ctx.root = Some(leftBlock.unique_id)
+
+     val rdescriptor = IndexContext()
+       .withId(builder.idGenerator.generateIndexId())
+       .withRoot(RootRef(rightBlock.unique_id._1, rightBlock.unique_id._2))
+       .withLastChangeVersion(UUID.randomUUID.toString)
+       .withMaxNItems(builder.MAX_N_ITEMS)
+       .withNumElements(rightN)
+       .withLevels(rightBlock.level)
+       .withNumLeafItems(builder.MAX_LEAF_ITEMS)
+       .withNumMetaItems(builder.MAX_META_ITEMS)
+
+     val right = new QueryableIndex[K, V](rdescriptor)(builder)
+
+     ctx.newBlocksReferences = leftRefs
+     ctx.parents.addAll(leftParents)
+
+     right.ctx.num_elements = rightN
+     right.ctx.root = Some(rightBlock.unique_id)
+     right.ctx.newBlocksReferences = rightRefs
+     right.ctx.parents.addAll(rightParents)
+
+     ctx.parents += leftBlock.unique_id -> ParentInfo(None, leftBlock.lastOption, 0)
+     right.ctx.parents += rightBlock.unique_id -> ParentInfo(None, rightBlock.lastOption, 0)
+
+     //ctx.parents.foreach(e => right.ctx.parents += e)
+
+     right
+   }
+  }
 }

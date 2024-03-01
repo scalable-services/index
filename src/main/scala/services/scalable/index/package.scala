@@ -1,12 +1,11 @@
 package services.scalable
 
-import com.datastax.oss.driver.api.core.config.{DefaultDriverOption, DriverConfigLoader}
 import com.google.common.base.Charsets
 import com.google.common.primitives.UnsignedBytes
 import com.google.protobuf.ByteString
 import com.google.protobuf.any.Any
 import services.scalable.index.grpc.{DecimalValue, IndexContext, TemporalContext}
-import services.scalable.index.impl.GrpcByteSerializer
+import services.scalable.index.impl.{GrpcByteSerializer, GrpcCommandSerializer}
 
 import java.math.MathContext
 import java.nio.ByteBuffer
@@ -36,22 +35,8 @@ package object index {
         } yield previousResults :+ next
     }
 
-  val loader =
-    DriverConfigLoader.programmaticBuilder()
-      .withDuration(DefaultDriverOption.REQUEST_TIMEOUT, java.time.Duration.ofSeconds(30))
-      .withInt(DefaultDriverOption.CONNECTION_MAX_REQUESTS, 31768)
-      .withInt(DefaultDriverOption.SESSION_LEAK_THRESHOLD, 1000)
-      .withString(DefaultDriverOption.PROTOCOL_VERSION, "V4")
-      .withString(DefaultDriverOption.RECONNECTION_POLICY_CLASS, "ExponentialReconnectionPolicy")
-      .withDuration(DefaultDriverOption.RECONNECTION_BASE_DELAY, java.time.Duration.ofSeconds(1))
-      .withDuration(DefaultDriverOption.RECONNECTION_MAX_DELAY, java.time.Duration.ofSeconds(10))
-      /*.startProfile("slow")
-      .withDuration(DefaultDriverOption.REQUEST_TIMEOUT, Duration.ofSeconds(30))
-      .endProfile()*/
-      .build()
-
   object DefaultComparators {
-    implicit val ord = new Ordering[Bytes] {
+    implicit val bytesOrd = new Ordering[Bytes] {
       val comp = UnsignedBytes.lexicographicalComparator()
       override def compare(x: Bytes, y: Bytes): Int = comp.compare(x, y)
     }
@@ -95,18 +80,23 @@ package object index {
 
   object DefaultIdGenerators {
     implicit val idGenerator = new IdGenerator {
-      override def generateId[K,V](ctx: Context[K,V]): String = UUID.randomUUID().toString
-      override def generatePartition[K,V](ctx: Context[K,V]): String = UUID.randomUUID().toString
+      override def generateIndexId(): String = UUID.randomUUID.toString
+      override def generateBlockId[K,V](ctx: Context[K,V]): String = UUID.randomUUID().toString
+      override def generateBlockPartition[K,V](ctx: Context[K,V]): String = UUID.randomUUID().toString
     }
   }
 
   object DefaultPrinters {
     implicit def byteArrayToStringPrinter(k: Array[Byte]): String = new String(k, Charsets.UTF_8)
     implicit def longToStringPrinter(k: Long): String = k.toString
+
+    implicit def intToStringPrinter(k: Int): String = k.toString
+
     implicit def indexContextStringPrinter(k: IndexContext): String = k.id
   }
 
   object DefaultSerializers {
+
     implicit val bytesSerializer = new Serializer[Bytes] {
       override def serialize(t: Bytes): Array[Byte] = t
       override def deserialize(b: Array[Byte]): Bytes = b
@@ -216,8 +206,11 @@ package object index {
     }
 
     implicit val grpcLongIndexContextSerializer = new GrpcByteSerializer[Long, IndexContext]()
+
     implicit val grpcLongTemporalContextSerializer = new GrpcByteSerializer[Long, TemporalContext]()
     implicit val grpcBytesIndexContextSerializer = new GrpcByteSerializer[Bytes, IndexContext]()
+
     implicit val grpcBytesBytesSerializer = new GrpcByteSerializer[Bytes, Bytes]()
+    implicit val grpcBytesBytesCommandSerializer = new GrpcCommandSerializer[Bytes, Bytes]()
   }
 }

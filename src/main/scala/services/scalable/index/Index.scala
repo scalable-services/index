@@ -2,9 +2,9 @@ package services.scalable.index
 
 import org.slf4j.LoggerFactory
 import services.scalable.index.Commands._
-import services.scalable.index.Errors.IndexError
+import services.scalable.index.Errors.{IndexError, KEY_NOT_FOUND}
 import services.scalable.index.grpc.IndexContext
-import services.scalable.index.impl.RichAsyncIterator
+import services.scalable.index.impl.RichAsyncIndexIterator
 
 import java.util.concurrent.atomic.AtomicInteger
 import scala.collection.concurrent.TrieMap
@@ -24,22 +24,28 @@ import scala.util.{Failure, Success}
  * the context. Once you done, the resulting context can be saved and passed to future instances of the class representing another set of
  * operations.
  */
-class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContext,
-                                                val storage: Storage,
-                                                val serializer: Serializer[Block[K, V]],
-                                                val cache: Cache,
-                                                val ord: Ordering[K],
-                                                val idGenerator: IdGenerator,
-                                                val ks: K => String,
-                                                val vs: V => String){
+class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuilt[K, V]){
 
+  import builder._
+
+  assert(builder.MAX_LEAF_ITEMS == descriptor.numLeafItems,
+    s"Builder and index maxLeafItems are not equal! Corrupted IndexContext or wrong configured builder!")
+  assert(builder.MAX_META_ITEMS == descriptor.numMetaItems,
+    s"Builder and index maxMetaItems are not equal! Corrupted IndexContext or wrong configured builder!")
+  assert(builder.MAX_N_ITEMS == descriptor.maxNItems,
+    s"Builder and index maxNItems are not equal! Corrupted IndexContext or wrong configured builder!")
   assert(descriptor.numLeafItems >= 4 && descriptor.numMetaItems >= 4,
-    "Number of leaf and meta elements must be greater or equal to 4!")
+    s"Number of leaf and meta elements must be greater or equal to 4!")
 
   val logger = LoggerFactory.getLogger(this.getClass)
 
-  implicit var ctx = Context.fromIndexContext(descriptor)
+  implicit var ctx = Context.fromIndexContext(descriptor)(builder)
+
   val $this = this
+
+  def currentSnapshot(): IndexContext = {
+    ctx.currentSnapshot()
+  }
 
   /**
    * Creates a snapshot of the tree that could be saved and accessed later
@@ -49,16 +55,13 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     ctx.snapshot()
   }
 
-  def save(clear: Boolean = true): Future[IndexContext] = {
-    val snapshot = ctx.snapshot()
-
-    storage.save(snapshot, ctx.getBlocks().map{case (id, block) => id -> serializer.serialize(block)}.toMap).map { r =>
-      if(clear) ctx.clear()
-      snapshot
-    }
+  def save(): Future[IndexContext] = {
+    ctx.save()
   }
 
-  def findPath(k: K, start: Block[K,V], limit: Option[Block[K,V]])(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
+  def findPath(k: K, start: Block[K,V], limit: Option[Block[K,V]],
+               findPathFn: (K, Meta[K, V], Ordering[K]) => (String, String))
+              (implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
 
     if(limit.isDefined && limit.get.unique_id.equals(start.unique_id)){
       logger.debug(s"reached limit!")
@@ -71,15 +74,18 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
 
         meta.setPointers()
 
-        val bid = meta.findPath(k)
+        val bid = findPathFn(k, meta, ord)
 
         ctx.get(bid).flatMap { block =>
-          findPath(k, block, limit)
+          findPath(k, block, limit, findPathFn)
         }
     }
   }
 
-  def findPath(k: K, limit: Option[Block[K,V]] = None)(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
+  def findPath(k: K, limit: Option[Block[K,V]] = None,
+               findPathFn: (K, Meta[K, V], Ordering[K]) => (String, String) =
+               (k, m, ord) => m.findPath(k)(ord))
+              (implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
     if(ctx.root.isEmpty) {
       return Future.successful(None)
     }
@@ -87,8 +93,8 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     val bid = ctx.root.get
 
     ctx.get(ctx.root.get).flatMap { start =>
-      ctx.setParent(bid, 0, None)
-      findPath(k, start, limit)
+      ctx.setParent(bid, start.lastOption, 0, None)
+      findPath(k, start, limit, findPathFn)
     }
   }
 
@@ -98,7 +104,7 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
 
         if(p.length == 1){
           val c = p.pointers(0)._2
-          ctx.root = Some(c.unique_id)
+          //ctx.root = Some(c.unique_id)
 
           ctx.levels -= 1
 
@@ -108,20 +114,21 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
             val copy = block.copy()
             ctx.put(copy)
 
-            ctx.setParent(copy.unique_id, 0, None)
+            ctx.root = Some(copy.unique_id)
+            ctx.setParent(copy.unique_id, copy.lastOption, 0, None)
 
             true
           }
         } else {
           ctx.root = Some(p.unique_id)
-          ctx.setParent(p.unique_id, 0, None)
+          ctx.setParent(p.unique_id, p.lastOption, 0, None)
 
           Future.successful(true)
         }
 
       case p: Leaf[K,V] =>
         ctx.root = Some(p.unique_id)
-        ctx.setParent(p.unique_id, 0, None)
+        ctx.setParent(p.unique_id, p.lastOption, 0, None)
 
         Future.successful(true)
     }
@@ -135,15 +142,15 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
       return setPath(block).flatMap(_ => recursiveCopy(block))
     }
 
-    val (p, pos) = opt.get
+    val pinfo = opt.get
 
-    p match {
+    pinfo.parent match {
       case None => fixRoot(block)
       case Some(pid) => ctx.getMeta(pid).flatMap { p =>
         val parent = p.copy()
 
-        parent.pointers(pos) = block.last -> Pointer(block.partition, block.id, block.nSubtree, block.level)
-        ctx.setParent(block.unique_id, pos, Some(parent.unique_id))
+        parent.pointers(pinfo.pos) = block.last -> Pointer(block.partition, block.id, block.nSubtree, block.level)
+        ctx.setParent(block.unique_id, block.lastOption, pinfo.pos, Some(parent.unique_id))
 
         parent.setPointers()
 
@@ -152,10 +159,10 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     }
   }
 
-  protected def insertEmpty(data: Seq[Tuple3[K, V, Boolean]])(implicit ord: Ordering[K]): Future[Int] = {
+  protected def insertEmpty(data: Seq[Tuple3[K, V, Boolean]], insertVersion: String): Future[Int] = {
     val leaf = ctx.createLeaf()
 
-    leaf.insert(data) match {
+    leaf.insert(data, insertVersion) match {
       case Success(n) =>
 
         ctx.levels += 1
@@ -165,7 +172,7 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     }
   }
 
-  protected def insertParent(left: Meta[K, V], prev: Block[K, V])(implicit ord: Ordering[K]): Future[Boolean] = {
+  protected def insertParent(left: Meta[K, V], prev: Block[K, V]): Future[Boolean] = {
     if(left.isFull()){
       val right = left.split()
 
@@ -184,7 +191,7 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     }
   }
 
-  protected def handleParent(left: Block[K,V], right: Block[K,V])(implicit ord: Ordering[K]): Future[Boolean] = {
+  protected def handleParent(left: Block[K,V], right: Block[K,V]): Future[Boolean] = {
 
     val opt = ctx.getParent(left.unique_id)
 
@@ -192,9 +199,9 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
       return setPath(left).flatMap(_ => handleParent(left, right))
     }
 
-    val (p, pos) = opt.get
+    val pinfo = opt.get
 
-    p match {
+    pinfo.parent match {
       case None =>
 
         logger.debug(s"${Console.BLUE_B}NEW LEVEL!${Console.RESET}")
@@ -216,15 +223,15 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
       case Some(pid) => ctx.getMeta(pid).flatMap { p =>
         val parent = p.copy()
 
-        parent.pointers(pos) = left.last -> Pointer(left.partition, left.id, left.nSubtree, left.level)
-        ctx.setParent(left.unique_id, pos, Some(parent.unique_id))
+        parent.pointers(pinfo.pos) = left.last -> Pointer(left.partition, left.id, left.nSubtree, left.level)
+        ctx.setParent(left.unique_id, left.lastOption, pinfo.pos, Some(parent.unique_id))
 
         insertParent(parent, right)
       }
     }
   }
 
-  protected def splitLeaf(left: Leaf[K, V], data: Seq[Tuple3[K, V, Boolean]])(implicit ord: Ordering[K]): Future[Int] = {
+  protected def splitLeaf(left: Leaf[K, V], data: Seq[Tuple3[K, V, Boolean]], insertVersion: String): Future[Int] = {
     val right = left.split()
 
     val (k, _, _) = data(0)
@@ -240,28 +247,27 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
         list = list.takeWhile{case (k, _, _) => ord.lt(k, rightLast)}
       }
 
-      val rn = right.insert(list)
+      val rn = right.insert(list, insertVersion)
 
       return handleParent(left, right).map(_ => rn.get)
     }
 
-    val ln = left.insert(list.takeWhile{case (k, _, _) => ord.lt(k, leftLast)})
+    val ln = left.insert(list.takeWhile{case (k, _, _) => ord.lt(k, leftLast)}, insertVersion)
 
     handleParent(left, right).map{_ => ln.get}
   }
 
-  protected def insertLeaf(left: Leaf[K, V], data: Seq[Tuple3[K, V, Boolean]])(implicit ord: Ordering[K]): Future[Int] = {
+  protected def insertLeaf(left: Leaf[K, V], data: Seq[Tuple3[K, V, Boolean]], insertVersion: String): Future[Int] = {
     if(left.isFull()){
-
       logger.debug(s"${Console.RED_B}LEAF FULL...${Console.RESET}")
 
       /*val right = left.split()
       return handleParent(left, right).map{_ => 0}*/
 
-      return splitLeaf(left, data)
+      return splitLeaf(left, data, insertVersion)
     }
 
-    left.insert(data) match {
+    left.insert(data, insertVersion) match {
       case Success(n) => recursiveCopy(left).map{_ => n}
       case Failure(ex) => Future.failed(ex)
     }
@@ -272,12 +278,13 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
    * @param ord
    * @return
    */
-  def insert(data: Seq[Tuple3[K, V, Boolean]])(implicit ord: Ordering[K]): Future[InsertionResult] = {
+  def insert(data: Seq[Tuple3[K, V, Boolean]], insertVersion: String): Future[InsertionResult] = {
 
     val sorted = data.sortBy(_._1)
 
     if(sorted.exists{case (k, _, _) => sorted.count{case (k1, _, _) => ord.equiv(k, k1)} > 1}){
-      return Future.successful(InsertionResult(false, 0, Some(Errors.DUPLICATED_KEYS(data.map(_._1), ctx.ks))))
+      return Future.successful(InsertionResult(false, 0,
+        Some(Errors.DUPLICATED_KEYS(data.map(_._1), ctx.builder.ks))))
     }
 
     val len = sorted.length
@@ -290,13 +297,13 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
       val (k, _, _) = list(0)
 
       findPath(k).flatMap {
-        case None => insertEmpty(list)
+        case None => insertEmpty(list, insertVersion)
         case Some(leaf) =>
 
           val idx = list.indexWhere{case (k, _, _) => ord.gt(k, leaf.last)}
           if(idx > 0) list = list.slice(0, idx)
 
-          insertLeaf(leaf.copy(), list)
+          insertLeaf(leaf.copy(), list, insertVersion)
       }.flatMap { n =>
         pos += n
         ctx.num_elements += n
@@ -312,8 +319,7 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     }
   }
 
-  protected def merge(left: Block[K, V], lpos: Int, right: Block[K, V], rpos: Int, parent: Meta[K,V])
-                                 (implicit ord: Ordering[K]): Future[Boolean] = {
+  protected def merge(left: Block[K, V], lpos: Int, right: Block[K, V], rpos: Int, parent: Meta[K,V]): Future[Boolean] = {
 
     //ctx.levels -= 1
 
@@ -334,19 +340,18 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
       return setPath(parent).flatMap(_ => merge(left, lpos, right, rpos, parent))
     }
 
-    val (g, gpos) = opt.get
+    val ginfo = opt.get
 
-    if(g.isEmpty){
+    if(ginfo.parent.isEmpty){
       return recursiveCopy(left)
     }
 
-    ctx.getMeta(g.get).flatMap { gp =>
-      borrow(parent, gp.copy(), gpos)
+    ctx.getMeta(ginfo.parent.get).flatMap { gp =>
+      borrow(parent, gp.copy(), ginfo.pos)
     }
   }
 
-  protected def borrowRight(target: Block[K, V], left: Option[Block[K, V]], right: Option[(String, String)], parent: Meta[K,V], pos: Int)
-                                       (implicit ord: Ordering[K]): Future[Boolean] = {
+  protected def borrowRight(target: Block[K, V], left: Option[Block[K, V]], right: Option[(String, String)], parent: Meta[K,V], pos: Int): Future[Boolean] = {
     right match {
       case Some(id) => ctx.get(id).flatMap { r =>
         val right = r.copy()
@@ -371,8 +376,7 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     }
   }
 
-  protected def borrowLeft(target: Block[K, V], left: Option[(String, String)], right: Option[(String, String)], parent: Meta[K,V], pos: Int)
-                                      (implicit ord: Ordering[K]): Future[Boolean] = {
+  protected def borrowLeft(target: Block[K, V], left: Option[(String, String)], right: Option[(String, String)], parent: Meta[K,V], pos: Int): Future[Boolean] = {
     left match {
       case Some(id) => ctx.get(id).flatMap { l =>
         val left = l.copy()
@@ -397,7 +401,7 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     }
   }
 
-  protected def borrow(target: Block[K, V], parent: Meta[K,V], pos: Int)(implicit ord: Ordering[K]): Future[Boolean] = {
+  protected def borrow(target: Block[K, V], parent: Meta[K,V], pos: Int): Future[Boolean] = {
 
     val left = parent.left(pos)
     val right = parent.right(pos)
@@ -414,7 +418,7 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     borrowLeft(target, left, right, parent, pos)
   }
 
-  protected def removeFromLeaf(target: Leaf[K, V], keys: Seq[Tuple2[K, Option[String]]])(implicit ord: Ordering[K]): Future[Int] = {
+  protected def removeFromLeaf(target: Leaf[K, V], keys: Seq[Tuple2[K, Option[String]]]): Future[Int] = {
     val result = target.remove(keys)
 
     if(result.isFailure) return Future.failed(result.failed.get)
@@ -430,9 +434,9 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
       return setPath(target).flatMap(_ => removeFromLeaf(target, keys))
     }
 
-    val (p, pos) = opt.get
+    val pinfo = opt.get
 
-    if(p.isEmpty){
+    if(pinfo.parent.isEmpty){
 
       if(target.isEmpty()){
 
@@ -447,8 +451,8 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
       return recursiveCopy(target).map(_ => result.get)
     }
 
-    ctx.getMeta(p.get).flatMap { p =>
-      borrow(target, p.copy(), pos).map(_ => result.get)
+    ctx.getMeta(pinfo.parent.get).flatMap { p =>
+      borrow(target, p.copy(), pinfo.pos).map(_ => result.get)
     }
   }
 
@@ -457,7 +461,7 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
    * @param ord
    * @return
    */
-  def remove(keys: Seq[Tuple2[K, Option[String]]])(implicit ord: Ordering[K]): Future[RemovalResult] = {
+  def remove(keys: Seq[Tuple2[K, Option[String]]]): Future[RemovalResult] = {
     val sorted = keys.distinct.sortBy(_._1)
 
     val len = sorted.length
@@ -473,7 +477,7 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
       val (k, _) = list(0)
 
       findPath(k).flatMap {
-        case None => Future.failed(Errors.KEY_NOT_FOUND[K](k, ctx.ks))
+        case None => Future.failed(Errors.KEY_NOT_FOUND[K](k, ctx.builder.ks))
         case Some(leaf) =>
 
           val idx = list.indexWhere { case (k, _) => ord.gt(k, leaf.last)}
@@ -494,8 +498,8 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     }
   }
 
-  protected def updateLeaf(left: Leaf[K, V], data: Seq[Tuple3[K, V, Option[String]]])(implicit ord: Ordering[K]): Future[Int] = {
-    val result = left.update(data)
+  protected def updateLeaf(left: Leaf[K, V], data: Seq[Tuple3[K, V, Option[String]]], updateVersion: String): Future[Int] = {
+    val result = left.update(data, updateVersion)
 
     if (result.isFailure) return Future.failed(result.failed.get)
 
@@ -508,12 +512,12 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
    * @param ord
    * @return
    */
-  def update(data: Seq[Tuple3[K, V, Option[String]]])(implicit ord: Ordering[K]): Future[UpdateResult] = {
+  def update(data: Seq[Tuple3[K, V, Option[String]]], updateVersion: String): Future[UpdateResult] = {
 
     val sorted = data.sortBy(_._1)
 
     if(sorted.exists{case (k, _, _) => sorted.count{case (k1, _, _) => ord.equiv(k, k1)} > 1}){
-      return Future.successful(UpdateResult(false, 0, Some(Errors.DUPLICATED_KEYS(sorted.map(_._1), ctx.ks))))
+      return Future.successful(UpdateResult(false, 0, Some(Errors.DUPLICATED_KEYS(sorted.map(_._1), ctx.builder.ks))))
     }
 
     val len = sorted.length
@@ -526,13 +530,13 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
       val (k, _, _) = list(0)
 
       findPath(k).flatMap {
-        case None => Future.failed(Errors.KEY_NOT_FOUND(k, ctx.ks))
+        case None => Future.failed(Errors.KEY_NOT_FOUND(k, ctx.builder.ks))
         case Some(leaf) =>
 
           val idx = list.indexWhere{case (k, _, _) => ord.gt(k, leaf.last)}
           if(idx > 0) list = list.slice(0, idx)
 
-          updateLeaf(leaf.copy(), list)
+          updateLeaf(leaf.copy(), list, updateVersion)
       }.flatMap { n =>
         pos += n
         update()
@@ -547,7 +551,7 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     }
   }
 
-  def inOrder(f: Tuple[K, V] => Boolean = _ => true)(implicit ord: Ordering[K]): AsyncIterator[Seq[Tuple[K, V]]] = new RichAsyncIterator[K, V](f) {
+  def inOrder(f: Tuple[K, V] => Boolean = _ => true)(implicit ord: Ordering[K]): AsyncIndexIterator[Seq[Tuple[K, V]]] = new RichAsyncIndexIterator[K, V](f) {
 
     override def hasNext(): Future[Boolean] = {
       if(!firstTime) return Future.successful(ctx.root.isDefined)
@@ -581,7 +585,18 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     }
   }
 
-  def reverse(f: Tuple[K, V] => Boolean = _ => true)(implicit ord: Ordering[K]): AsyncIterator[Seq[Tuple[K, V]]] = new RichAsyncIterator[K, V](f) {
+  def all(it: AsyncIndexIterator[Seq[Tuple[K, V]]] = inOrder())(implicit ec: ExecutionContext): Future[Seq[Tuple[K, V]]] = {
+    it.hasNext().flatMap {
+      case true => it.next().flatMap { list =>
+        all(it).map {
+          list ++ _
+        }
+      }
+      case false => Future.successful(Seq.empty[Tuple[K, V]])
+    }
+  }
+
+  def reverse(f: Tuple[K, V] => Boolean = _ => true)(implicit ord: Ordering[K]): AsyncIndexIterator[Seq[Tuple[K, V]]] = new RichAsyncIndexIterator[K, V](f) {
 
     override def hasNext(): Future[Boolean] = {
       if(!firstTime) return Future.successful(ctx.root.isDefined)
@@ -646,11 +661,10 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     }
   }
 
-  def first()(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
+  def first(): Future[Option[Leaf[K,V]]] = {
     if(ctx.root.isEmpty) return Future.successful(None)
 
     val root = ctx.root.get
-    ctx.setParent(root, 0, None)
 
     /*if(ctx.isParentDefined(root)){
       return ctx.get(root).flatMap(opt => getLeftMost(opt))
@@ -658,7 +672,10 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
 
     ctx.get(root).flatMap{opt => setPath(opt.get).flatMap{ _ => getLeftMost(opt)}}*/
 
-    ctx.get(root).flatMap(b => getLeftMost(Some(b)))
+    ctx.get(root).flatMap{ b =>
+      ctx.setParent(b.unique_id, b.lastOption, 0, None)
+      getLeftMost(Some(b))
+    }
   }
 
   def getRightMost(start: Option[Block[K,V]]): Future[Option[Leaf[K,V]]] = {
@@ -675,11 +692,10 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     }
   }
 
-  def last()(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
+  def last(): Future[Option[Leaf[K,V]]] = {
     if(ctx.root.isEmpty) return Future.successful(None)
 
     val root = ctx.root.get
-    ctx.setParent(root, 0, None)
 
     /*if(ctx.isParentDefined(root)){
       return ctx.get(root).flatMap(opt => getRightMost(opt))
@@ -687,7 +703,10 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
 
     ctx.get(root).flatMap{opt => setPath(opt.get).flatMap{ _ => getRightMost(opt)}}*/
 
-    ctx.get(root).flatMap(b => getRightMost(Some(b)))
+    ctx.get(root).flatMap{ b =>
+      ctx.setParent(b.unique_id, b.lastOption, 0, None)
+      getRightMost(Some(b))
+    }
   }
 
   def next(current: Option[(String, String)])(implicit ord: Ordering[K]): Future[Option[Leaf[K,V]]] = {
@@ -700,9 +719,9 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
         return setPath(b).flatMap(_ => next(current))
       }
 
-      val (p, pos) = opt.get
+      val pinfo = opt.get
 
-      p match {
+      pinfo.parent match {
         case None => Future.successful(None)
         case Some(pid) => ctx.getMeta(pid).flatMap { parent =>
 
@@ -711,10 +730,10 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
 
           parent.setPointers()
 
-          if (pos == len - 1) {
+          if (pinfo.pos == len - 1) {
             nxt(parent)
           } else {
-            ctx.get(pointers(pos + 1)._2.unique_id).flatMap(b => getLeftMost(Some(b)))
+            ctx.get(pointers(pinfo.pos + 1)._2.unique_id).flatMap(b => getLeftMost(Some(b)))
           }
         }
       }
@@ -736,17 +755,17 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
         return setPath(b).flatMap(_ => prev(current))
       }
 
-      val (p, pos) = opt.get
+      val pinfo = opt.get
 
-      p match {
+      pinfo.parent match {
         case None => Future.successful(None)
         case Some(pid) => ctx.getMeta(pid).flatMap { parent =>
           parent.setPointers()
 
-          if (pos == 0) {
+          if (pinfo.pos == 0) {
             prev(Some(parent.unique_id))
           } else {
-            ctx.get(parent.pointers(pos - 1)._2.unique_id).flatMap(b => getRightMost(Some(b)))
+            ctx.get(parent.pointers(pinfo.pos - 1)._2.unique_id).flatMap(b => getRightMost(Some(b)))
           }
         }
       }
@@ -758,21 +777,86 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     }
   }
 
-  def get(k: K)(implicit ord: Ordering[K]): Future[Option[Tuple[K,V]]] = {
-    findPath(k).flatMap {
+  def get(k: K)(implicit ord: Ordering[K] = builder.ord): Future[Option[Tuple[K,V]]] = {
+    findPath(k)(ord).flatMap {
       case None => Future.successful(None)
-      case Some(leaf) => Future.successful(leaf.find(k))
+      case Some(leaf) => Future.successful(leaf.find(k)(ord))
     }
   }
 
-  def min()(implicit ord: Ordering[K]): Future[Option[Tuple[K,V]]] = {
+  def getAll(keys: Seq[K], mustFindAll: Boolean = false)(implicit ord: Ordering[K] = builder.ord): Future[GetResult[K, V]] = {
+
+    val sorted = keys.sorted(ord)
+
+    val len = sorted.length
+    var pos = 0
+
+    var results = Seq.empty[Tuple[K, V]]
+
+    def get(): Future[Int] = {
+      if(pos == len) return Future.successful(sorted.length)
+
+      var list = sorted.slice(pos, len)
+      val k = list(0)
+
+      findPath(k)(ord).map {
+        case None => if(mustFindAll){
+          throw new KEY_NOT_FOUND[K](k, ks)
+        } else {
+          1
+        }
+
+        case Some(leaf) =>
+
+          val idx = list.indexWhere{k => ord.gt(k, leaf.last)}
+          if(idx > 0) list = list.slice(0, idx)
+
+          val (data, keyNotFound) = getKeysFromLeaf(leaf, list, mustFindAll)(ord)
+
+          if(keyNotFound.isDefined) {
+            throw new KEY_NOT_FOUND[K](k, ks)
+          }
+
+          results :++= data
+          list.length
+      }.flatMap { n =>
+        pos += n
+        get()
+      }
+    }
+
+    get().map { _ =>
+      GetResult[K, V](true, results, None)
+    }.recover {
+      case t: IndexError => GetResult[K, V](false, results, Some(t))
+      case t: Throwable => throw t
+    }
+  }
+
+  protected def getKeysFromLeaf(leaf: Leaf[K, V], list: Seq[K], mustFindAll: Boolean)(ord: Ordering[K]): (Seq[Tuple[K, V]], Option[K]) = {
+    var results = Seq.empty[Tuple[K, V]]
+
+    for(k <- list){
+      val v = leaf.find(k)(ord)
+
+      if(mustFindAll && v.isEmpty){
+        return results -> Some(k)
+      }
+
+      if(v.isDefined) results :+= v.get
+    }
+
+    results -> None
+  }
+
+  def min(): Future[Option[Tuple[K,V]]] = {
     first().flatMap {
       case None => Future.successful(None)
       case Some(leaf) => Future.successful(leaf.min())
     }
   }
 
-  def max()(implicit ord: Ordering[K]): Future[Option[Tuple[K,V]]] = {
+  def max(): Future[Option[Tuple[K,V]]] = {
     last().flatMap {
       case None => Future.successful(None)
       case Some(leaf) => Future.successful(leaf.max())
@@ -883,22 +967,26 @@ class Index[K, V](val descriptor: IndexContext)(implicit val ec: ExecutionContex
     }
   }
 
-  def execute(cmds: Seq[Command[K, V]]): Future[BatchResult] = {
-    def process(pos: Int, error: Option[Throwable]): Future[BatchResult] = {
+  def execute(cmds: Seq[Command[K, V]], version: String = ctx.id): Future[BatchResult] = {
 
-      if(error.isDefined) return Future.successful(BatchResult(false, error))
-      if(pos == cmds.length) return Future.successful(BatchResult(true))
+    def process(pos: Int, error: Option[Throwable]): Future[BatchResult] = {
+      if(error.isDefined) {
+        return Future.successful(BatchResult(false, error))
+      }
+
+      if(pos == cmds.length) {
+        return Future.successful(BatchResult(true))
+      }
 
       val cmd = cmds(pos)
 
       (cmd match {
-        case cmd: Insert[K, V] => insert(cmd.list)
+        case cmd: Insert[K, V] => insert(cmd.list, version)
         case cmd: Remove[K, V] => remove(cmd.keys)
-        case cmd: Update[K, V] => update(cmd.list)
+        case cmd: Update[K, V] => update(cmd.list, version)
       }).flatMap(prev => process(pos + 1, prev.error))
     }
 
     process(0, None)
   }
-
 }

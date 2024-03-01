@@ -1,6 +1,7 @@
 package services.scalable.index.impl
 
 import com.datastax.oss.driver.api.core.CqlSession
+import com.datastax.oss.driver.api.core.cql.Row
 import com.google.protobuf.any.Any
 import org.slf4j.LoggerFactory
 import services.scalable.index._
@@ -65,6 +66,13 @@ class CassandraStorage(val session: CqlSession,
     }
   }
 
+  override def loadoOrCreateTemporalIndex(ctx: TemporalContext): Future[TemporalContext] = {
+    loadTemporalIndex(ctx.id).flatMap {
+      case None => createTemporalIndex(ctx).map(_ => ctx)
+      case Some(c) => Future.successful(c)
+    }
+  }
+
   override def loadIndex(id: String): Future[Option[IndexContext]] = {
     session.executeAsync(SELECT_INDEX.bind().setString(0, id)).flatMap { rs =>
       val one = rs.one()
@@ -80,16 +88,22 @@ class CassandraStorage(val session: CqlSession,
     }
   }
 
+  override def loadOrCreate(ctx: IndexContext): Future[IndexContext] = {
+    loadIndex(ctx.id).flatMap {
+      case None => createIndex(ctx).map(_ => ctx)
+      case Some(c) => Future.successful(c)
+    }
+  }
+
   override def get(id: (String, String)): Future[Array[Byte]] = {
     session.executeAsync(SELECT.bind().setString(0, id._1).setString(1, id._2)).map { rs =>
       val one = rs.one()
 
       if(one == null){
-        println(id)
+        logger.error(s"block ${id} not found!")
       }
 
-      val buf = one.getByteBuffer("bin")
-      buf.array()
+      one.getByteBuffer("bin").array()
     }
   }
 
@@ -155,6 +169,6 @@ class CassandraStorage(val session: CqlSession,
   }
 
   override def close(): Future[Unit] = {
-    session.closeAsync().map{_ => {}}
+    Future.successful {}
   }
 }

@@ -16,21 +16,31 @@ class Meta[K, V](override val id: String,
   override def last: K = pointers.last._1
   override def first: K = pointers.head._1
 
+  override def middle: K  = pointers(pointers.length/2)._1
+
+  override def lastOption: Option[K] = pointers.lastOption.map(_._1)
+  override def firstOption: Option[K] = pointers.headOption.map(_._1)
+
+  override def middleOption: Option[K] = pointers.length match {
+    case 0 => None
+    case _ => Some(pointers(pointers.length/2)._1)
+  }
+
   override def nSubtree: Long = pointers.map(_._2.nElements).sum
 
   def setPointer(block: Block[K, V], pos: Int)(implicit ctx: Context[K, V]): Unit = {
     pointers(pos) = block.last -> Pointer(block.partition, block.id, block.nSubtree, block.level)
-    ctx.setParent(block.unique_id, pos, Some(unique_id))
+    ctx.setParent(block.unique_id, block.lastOption, pos, Some(unique_id))
   }
 
   def setPointers()(implicit ctx: Context[K,V]): Unit = {
     for(i<-0 until pointers.length){
       val (k, c) = pointers(i)
-      ctx.setParent(c.unique_id, i, Some(unique_id))
+      ctx.setParent(c.unique_id, Some(k), i, Some(unique_id))
     }
   }
 
-  def binSearch(k: K, start: Int = 0, end: Int = pointers.length - 1)(implicit ord: Ordering[K]): (Boolean, Int) = {
+  override def binSearch(k: K, start: Int = 0, end: Int = pointers.length - 1)(implicit ord: Ordering[K]): (Boolean, Int) = {
     if(start > end) return false -> start
 
     val pos = start + (end - start)/2
@@ -42,48 +52,26 @@ class Meta[K, V](override val id: String,
     binSearch(k, pos + 1, end)
   }
 
-  def binSearchGt(k: K, start: Int = 0, end: Int = pointers.length - 1, inclusive: Boolean)(implicit ord: Ordering[K]): (Boolean, Int) = {
-    if(start > end) return false -> start
-
-    val pos = start + (end - start)/2
-    val c = ord.compare(k, pointers(pos)._1)
-
-    if(c < 0) return binSearch(k, start, pos - 1)
-
-    if(c == 0) {
-      if(inclusive) return true -> pos
-      return false -> pos
-    }
-
-    true -> (pos + 1)
-  }
-
-  def binSearchLt(k: K, start: Int = 0, end: Int = pointers.length - 1, inclusive: Boolean)(implicit ord: Ordering[K]): (Boolean, Int) = {
-    if(start > end) return false -> start
-
-    val pos = start + (end - start)/2
-    val c = ord.compare(k, pointers(pos)._1)
-
-    if(c == 0){
-      if(inclusive) return true -> pos
-      return false -> pos
-    }
-
-    if(c < 0) return true -> (pos - 1)
-
-    binSearch(k, pos + 1, end)
-  }
-
   def findPath(k: K)(implicit ord: Ordering[K]): (String, String) = {
     val (_, pos) = binSearch(k)
-    pointers(if(pos < pointers.length) pos else pos - 1)._2.unique_id
+    val idx = if(pos < pointers.length) pos else pos - 1
+    val e = pointers(idx)._2.unique_id
+
+    logger.debug(s"[meta search level ${level - 1} in ${id} at pos ${idx}] => ${e}")
+
+    e
+  }
+
+  override def findPosition(k: K)(implicit ord: Ordering[K]): Int = {
+    val (_, pos) = binSearch(k)
+    if (pos < pointers.length) pos else pos - 1
   }
 
   def insert(data: Seq[(K, Pointer)])(implicit ctx: Context[K,V], ord: Ordering[K]): Try[Int] = {
     if(isFull()) return Failure(Errors.META_BLOCK_FULL)
 
     if(data.exists{case (k, _) => pointers.exists{case (k1, _) => ord.equiv(k, k1)}}){
-      return Failure(Errors.META_DUPLICATE_KEY(data.map(_._1), ctx.ks))
+      return Failure(Errors.META_DUPLICATE_KEY(data.map(_._1), ctx.builder.ks))
     }
 
     pointers = (pointers ++ data).sortBy(_._1)
@@ -170,13 +158,14 @@ class Meta[K, V](override val id: String,
   override def hasMinimum(): Boolean = pointers.length >= MIN
 
   override def copy()(implicit ctx: Context[K,V]): Meta[K,V] = {
-    //if(ctx.isNew(unique_id)) return this
     if(isNew) return this
 
-    val (p, pos) = ctx.getParent(unique_id).get
+    logger.debug(s"Creating leaf copy ${unique_id}...")
+
+    val pinfo = ctx.getParent(unique_id).get
 
     val copy = ctx.createMeta()
-    ctx.setParent(copy.unique_id, pos, p)
+    ctx.setParent(copy.unique_id, pinfo.key, pinfo.pos, pinfo.parent)
 
     //copy.pointers = pointers.clone()
 
@@ -193,7 +182,7 @@ class Meta[K, V](override val id: String,
     copy
   }
 
-  override def split()(implicit ctx: Context[K,V]): Meta[K,V] = {
+  override def split()(implicit ctx: Context[K,V]): Meta[K, V] = {
     val right = ctx.createMeta()
 
     val len = pointers.length
@@ -213,7 +202,7 @@ class Meta[K, V](override val id: String,
   override def print()(implicit ctx: Context[K, V]): String = {
     if(pointers.isEmpty) return "[]"
 
-    val sb = new StringBuilder(s"${id}:")
+    val sb = new StringBuilder(s"id=[${id}, len=${length}]:")
     sb ++= Console.RED_B
     sb ++= "["
     sb ++= Console.RESET
@@ -221,14 +210,14 @@ class Meta[K, V](override val id: String,
     for(i<-0 until pointers.length - 1){
       val (k, _) = pointers(i)
 
-      sb ++= ctx.ks(k)
+      sb ++= s"""[${i}]${ctx.builder.ks(k)}"""
       sb ++= ","
     }
 
     sb ++= Console.RED_B
 
     val (k, _) = pointers(pointers.length - 1)
-    sb ++= ctx.ks(k)
+    sb ++= s"""[${pointers.length-1}]${ctx.builder.ks(k)}"""
 
     sb ++= Console.RESET
 

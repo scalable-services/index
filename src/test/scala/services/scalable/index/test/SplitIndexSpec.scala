@@ -1,121 +1,165 @@
 package services.scalable.index.test
 
+import ch.qos.logback.classic.{Level, Logger}
+import com.google.common.base.Charsets
+import io.netty.util.internal.ThreadLocalRandom
 import org.apache.commons.lang3.RandomStringUtils
-import services.scalable.index.DefaultComparators.ord
-import services.scalable.index.DefaultSerializers._
-import services.scalable.index.grpc.IndexContext
+import org.scalatest.matchers.should.Matchers
+import org.slf4j.LoggerFactory
+import services.scalable.index.grpc._
 import services.scalable.index.impl._
-import services.scalable.index.{Block, Bytes, Commands, Context, IdGenerator, QueryableIndex}
+import services.scalable.index.{Bytes, Cache, Commands, DefaultComparators, DefaultPrinters, DefaultSerializers, IndexBuilder, QueryableIndex}
 
 import java.util.UUID
-import java.util.concurrent.ThreadLocalRandom
 import scala.concurrent.Await
-import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration.Duration
-import services.scalable.index.DefaultPrinters._
+import scala.jdk.FutureConverters.CompletionStageOps
 
-class SplitIndexSpec extends Repeatable {
+class SplitIndexSpec extends Repeatable with Matchers {
 
-  override val times: Int = 1
+  LoggerFactory.getLogger("services.scalable.index.Context").asInstanceOf[Logger].setLevel(Level.INFO)
+  LoggerFactory.getLogger("services.scalable.index.impl.GrpcByteSerializer").asInstanceOf[Logger].setLevel(Level.INFO)
+
+  override val times: Int = 1000
 
   "operations" should " run successfully" in {
 
+    val logger = LoggerFactory.getLogger(this.getClass)
+
     val rand = ThreadLocalRandom.current()
+    import scala.concurrent.ExecutionContext.Implicits.global
 
     type K = Bytes
     type V = Bytes
 
-    val NUM_LEAF_ENTRIES = 8
-    val NUM_META_ENTRIES = 8
+    import services.scalable.index.DefaultComparators._
 
-    implicit val idGenerator = new IdGenerator {
-      override def generateId[K, V](ctx: Context[K, V]): String = UUID.randomUUID.toString
+    val NUM_LEAF_ENTRIES = rand.nextInt(4, 32)
+    val NUM_META_ENTRIES = rand.nextInt(4, 32)
 
-      override def generatePartition[K, V](ctx: Context[K, V]): String = "p0"
-    }
+    val indexId = UUID.randomUUID().toString
 
-    implicit val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
-    //implicit val storage = new MemoryStorage()
-    implicit val storage = new CassandraStorage(TestConfig.session, false)
+    //val session = TestHelper.createCassandraSession()
+    val storage = new MemoryStorage()
+    val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
 
-    val txId = UUID.randomUUID().toString
+    val MAX_ITEMS = rand.nextInt(100, 1000)
+    
+    val indexContext = Await.result(TestHelper.loadOrCreateIndex(IndexContext(
+      indexId,
+      NUM_LEAF_ENTRIES,
+      NUM_META_ENTRIES,
+      maxNItems = MAX_ITEMS
+    ))(storage, global), Duration.Inf).get
 
-    val MAX_ITEMS = 250
+    val builder = IndexBuilder.create[K, V](global, DefaultComparators.bytesOrd,
+       indexContext.numLeafItems, indexContext.numMetaItems, indexContext.maxNItems,
+        DefaultSerializers.bytesSerializer, DefaultSerializers.bytesSerializer)
+      .storage(storage)
+      .cache(cache)
+      .serializer(DefaultSerializers.grpcBytesBytesSerializer)
+      .keyToStringConverter(DefaultPrinters.byteArrayToStringPrinter)
+      .valueToStringConverter(DefaultPrinters.byteArrayToStringPrinter)
+      .build()
 
-    val ctx = Await.result(TestHelper.loadOrCreateIndex(IndexContext("test-index", NUM_LEAF_ENTRIES, NUM_META_ENTRIES)),
-      Duration.Inf).get
-      .withMaxNItems(MAX_ITEMS)
-      .withNumLeafItems(NUM_LEAF_ENTRIES)
-      .withNumMetaItems(NUM_META_ENTRIES)
+    val version = UUID.randomUUID.toString
 
-    val index = new QueryableIndex[K, V](ctx)
+    var data = Seq.empty[(K, V, String)]
+    val index = new QueryableIndex[K, V](indexContext)(builder)
 
-    var data = Seq.empty[(Bytes, Bytes)]
+    def insert(): Seq[Commands.Command[K, V]] = {
+      val n = rand.nextInt(1, 1000)
+      var list = Seq.empty[Tuple3[K, V, Boolean]]
 
-    def insert(): Commands.Command[K, V] = {
-      val n = 3000//rand.nextInt(1000, 2000) //rand.nextInt(1, 1000)
+      for(i<-0 until n){
+        val k = RandomStringUtils.randomAlphanumeric(5, 10).getBytes(Charsets.UTF_8)
+        val v = RandomStringUtils.randomAlphanumeric(5).getBytes(Charsets.UTF_8)
 
-      var list = Seq.empty[(Bytes, Bytes, Boolean)]
-
-      for (i <- 0 until n) {
-        val k = RandomStringUtils.randomAlphanumeric(7).getBytes("UTF-8")
-
-        if (!data.exists(x => ord.equiv(k, x._1)) && !list.exists { case (k1, v, _) => ord.equiv(k, k1) }) {
-          data = data :+ k -> k
-          list = list :+ (k, k, false)
+        if (!data.exists { case (k1, _, _) => bytesOrd.equiv(k, k1) } &&
+          !list.exists { case (k1, _, _) => bytesOrd.equiv(k, k1) }) {
+          list = list :+ (k, v, false)
         }
       }
 
-      Commands.Insert("main", list)
+      data ++= list.map{case (k, v, _) => (k, v, version)}
+
+      Seq(Commands.Insert(indexId, list))
     }
 
-    val cmds = Seq[Commands.Command[K, V]](insert())
+    def update(): Seq[Commands.Command[K, V]] = {
+      val n = if(data.length >= 2) rand.nextInt(1, data.length) else 1
+      val list = scala.util.Random.shuffle(data).slice(0, n).map { case (k, _, vs) =>
+        (k, RandomStringUtils.randomAlphanumeric(10).getBytes(Charsets.UTF_8), Some(vs))
+      }
 
-    val n = Await.result(index.execute(cmds), Duration.Inf)
+      data = data.filterNot{case (k, _, _) => list.exists{case (k1, _, _) => builder.ord.equiv(k, k1)}}
+      data ++= list.map{case (k, v, _) => (k, v, version)}
 
-    //val savedMetaContext = Await.result(index.save(), Duration.Inf)
+      Seq(Commands.Update(indexId, list))
+    }
 
-    println(s"inserted: ${n}")
+    def remove(): Seq[Commands.Command[K, V]] = {
+      val n = if(data.length >= 2) rand.nextInt(1, data.length) else 1
+      val list: Seq[Tuple2[K, Option[String]]] = scala.util.Random.shuffle(data).slice(0, n)
+        .map { case (k, _, vs) => k -> Some(vs)}
 
-    //Await.result(index.save(), Duration.Inf)
+      data = data.filterNot{case (k, _, _) => list.exists{case (k1, _) => builder.ord.equiv(k, k1)}}
 
-    val dlist = data.sortBy(_._1).map { case (k, v) => new String(k) }.toList
-    val fullList = Await.result(TestHelper.all(index.inOrder()), Duration.Inf)
-      .map { case (k, v, _) => new String(k) }.toList
+      Seq(Commands.Remove[K, V](indexId, list))
+    }
 
-    println(s"dlist: ${Console.GREEN_B}${dlist}${Console.RESET}")
-    println()
-    println(s"ilist: ${Console.MAGENTA_B}${fullList}${Console.RESET}")
+    val n = 10
+    var cmds = Seq.empty[Commands.Command[K, V]]
 
-    println(s"is index full: ${index.isFull()}")
+    for(i<-0 until n){
+      cmds ++= (rand.nextInt(1, 4) match {
+        /*case 1 => insert()
+        case 2 if !data.isEmpty => update()
+        case 3 if !data.isEmpty => remove()*/
+        case _ => insert()
+      })
+    }
 
-    assert(dlist == fullList)
+    val result = Await.result(index.execute(cmds, version), Duration.Inf)
 
-    //Await.result(index.save(false), Duration.Inf)
+    assert(result.success, result.error)
 
-    println("index saving", Await.result(storage.save(index.ctx.snapshot()), Duration.Inf))
+     //index.copy()
 
-    val l = index.copy()
-    val r = Await.result(l.split(), Duration.Inf)
+    val dlist = data.sortBy(_._1).map{case (k, v, _) => k -> v}
+    val ilist = Await.result(index.all(), Duration.Inf).map{case (k, v, _) => k -> v}
 
-    println("left id", l.ctx.indexId, "right id", r.ctx.indexId)
+    logger.debug(s"${Console.GREEN_B}tdata [${dlist.length}]: ${dlist.map{case (k, v) => builder.ks(k) -> builder.vs(v)}}${Console.RESET}\n")
+    logger.debug(s"${Console.MAGENTA_B}idata [${ilist.length}]: ${ilist.map{case (k, v) => builder.ks(k) -> builder.vs(v)}}${Console.RESET}\n")
 
-    Await.result(TestHelper.loadOrCreateIndex(IndexContext(l.ctx.indexId, NUM_LEAF_ENTRIES,
-      NUM_META_ENTRIES)), Duration.Inf).get
+    assert(TestHelper.isColEqual(dlist, ilist))
 
-    Await.result(TestHelper.loadOrCreateIndex(IndexContext(r.ctx.indexId, NUM_LEAF_ENTRIES,
-      NUM_META_ENTRIES)), Duration.Inf).get
+    val savedCtx = Await.result(index.save(), Duration.Inf)
 
-    /*println("left saving", Await.result(l.save(true), Duration.Inf))
-    println("right saving", Await.result(r.save(true), Duration.Inf))*/
+    logger.info(savedCtx.toString)
 
-    println("left saving", Await.result(storage.save(l.ctx.snapshot()), Duration.Inf))
-    println("right saving", Await.result(storage.save(r.ctx.snapshot()), Duration.Inf))
+    val copy = new QueryableIndex[K, V](savedCtx)(builder)
 
-    Await.result(storage.save(cache.newBlocks.map{case (id, block) => id -> grpcBytesBytesSerializer.serialize(block.asInstanceOf[Block[K, V]])}.toMap),
-      Duration.Inf)
+    if(copy.isFull()){
+      logger.info(s"splitting index...")
 
-    Await.result(storage.close(), Duration.Inf)
+      val right = Await.result(copy.split(), Duration.Inf)
+
+      val leftList = Await.result(copy.all(), Duration.Inf).map { case (k, v, _) => k -> v }
+      val rightList = Await.result(right.all(), Duration.Inf).map { case (k, v, _) => k -> v }
+
+      val mergeSplits = leftList ++ rightList
+
+      assert(TestHelper.isColEqual(mergeSplits, ilist))
+    }
+
+    index.ctx.clear()
+    storage.close()
+    cache.invalidateAll()
+
+    System.gc()
+
+    //Await.result(session.closeAsync().asScala, Duration.Inf)
 
   }
 

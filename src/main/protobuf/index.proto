@@ -18,6 +18,13 @@ message KVPair {
   string version = 3;
 }
 
+message KVPairInsertion {
+  bytes key = 1;
+  bytes value = 2;
+  bool upsert = 3;
+  string version = 4;
+}
+
 message KVersionPair {
   bytes key = 1;
   string version = 2;
@@ -66,7 +73,8 @@ message IndexContext {
   int32 levels = 5;
   int64 num_elements = 6;
 
-  int32 maxNItems = 7;
+  int64 maxNItems = 7;
+  string lastChangeVersion = 8;
 }
 
 message TemporalContext {
@@ -79,4 +87,28 @@ message DecimalValue {
   uint32 scale = 1;
   uint32 precision = 2;
   bytes value = 3;
+}
+
+message InsertCommand {
+  option (scalapb.message).extends = "services.scalable.index.grpc.IndexCommand";
+
+  string indexId = 1;
+  repeated services.scalable.index.grpc.KVPairInsertion list = 2;
+  optional string version = 3;
+}
+
+message UpdateCommand {
+  option (scalapb.message).extends = "services.scalable.index.grpc.IndexCommand";
+
+  string indexId = 1;
+  repeated services.scalable.index.grpc.KVPair list = 2;
+  optional string version = 3;
+}
+
+message RemoveCommand {
+  option (scalapb.message).extends = "services.scalable.index.grpc.IndexCommand";
+
+  string indexId = 1;
+  repeated services.scalable.index.grpc.KVPair list = 2;
+  optional string version = 3;
 }

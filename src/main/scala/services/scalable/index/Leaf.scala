@@ -16,10 +16,20 @@ class Leaf[K, V](override val id: String,
   override def last: K = tuples.last._1
   override def first: K = tuples.head._1
 
+  override def middle: K  = tuples(tuples.length/2)._1
+
+  override def lastOption: Option[K] = tuples.lastOption.map(_._1)
+  override def firstOption: Option[K] = tuples.headOption.map(_._1)
+
+  override def middleOption: Option[K] = tuples.length match {
+    case 0 => None
+    case _ => Some(tuples(tuples.length/2)._1)
+  }
+
   override def nSubtree: Long = tuples.length.toLong
 
-  def insert(data: Seq[Tuple3[K, V, Boolean]])(implicit ctx: Context[K,V]): Try[Int] = {
-    import ctx.ord
+  def insert(data: Seq[Tuple3[K, V, Boolean]], insertVersion: String)(implicit ctx: Context[K,V]): Try[Int] = {
+    import ctx.builder.ord
 
     if(isFull()) return Failure(Errors.LEAF_BLOCK_FULL)
 
@@ -29,7 +39,7 @@ class Leaf[K, V](override val id: String,
     val len = slice.length
 
     if (slice.exists { case (k, _, upsert) => tuples.exists { case (k1, _, _) => !upsert && ord.equiv(k1, k) } }) {
-      return Failure(Errors.LEAF_DUPLICATE_KEY(slice.map(_._1), ctx.ks))
+      return Failure(Errors.LEAF_DUPLICATE_KEY(slice.map(_._1), ctx.builder.ks))
     }
 
     // Filter out upsert keys...
@@ -37,23 +47,28 @@ class Leaf[K, V](override val id: String,
     tuples = tuples.filterNot{case (k, v, _) => upserts.exists{case (k1, _, _) => ord.equiv(k, k1)}}
 
     // Add back the upsert keys and the new ones...
-    tuples = (tuples ++ slice.map{case (k, v, _) => Tuple3(k, v, ctx.id)}).sortBy(_._1)
+    tuples = (tuples ++ slice.map{case (k, v, _) => Tuple3(k, v, insertVersion)}).sortBy(_._1)
 
     Success(len)
   }
 
   def remove(keys: Seq[Tuple2[K, Option[String]]])(implicit ctx: Context[K, V]): Try[Int] = {
-    import ctx.ord
+    import ctx.builder.ord
 
     if(keys.exists{ case (k, _) => !tuples.exists{ case (k1, _, _) => ord.equiv(k1, k) }}){
-      return Failure(Errors.LEAF_KEY_NOT_FOUND[K](keys.map(_._1), ctx.ks))
+      return Failure(Errors.LEAF_KEY_NOT_FOUND[K](keys.map(_._1), ctx.builder.ks))
     }
 
     val versionsChanged = keys.filter(_._2.isDefined)
       .filter { case (k0, vs0) => tuples.exists { case (k1, _, vs1) => ord.equiv(k0, k1) && !vs0.get.equals(vs1) } }
+      .map { case (k1, vs1) =>
+        val (k, _, vs0) = tuples.find { case (k0, _, _) => ord.equiv(k0, k1) }.get
+
+        (k, Some(vs0), vs1)
+      }
 
     if (!versionsChanged.isEmpty) {
-      return Failure(Errors.VERSION_CHANGED(versionsChanged, ctx.ks))
+      return Failure(Errors.VERSION_CHANGED(versionsChanged, ctx.builder.ks))
     }
 
     tuples = tuples.filterNot{case (k, _, _) => keys.exists{ case (k1, _) => ord.equiv(k, k1)}}
@@ -61,23 +76,28 @@ class Leaf[K, V](override val id: String,
     Success(keys.length)
   }
 
-  def update(data: Seq[Tuple3[K, V, Option[String]]])(implicit ctx: Context[K, V]): Try[Int] = {
-    import ctx.ord
+  def update(data: Seq[Tuple3[K, V, Option[String]]], updateVersion: String)(implicit ctx: Context[K, V]): Try[Int] = {
+    import ctx.builder.ord
 
     if(data.exists{ case (k, _, _) => !tuples.exists{case (k1, _, _) => ord.equiv(k1, k) }}){
-      return Failure(Errors.LEAF_KEY_NOT_FOUND(data.map(_._1), ctx.ks))
+      return Failure(Errors.LEAF_KEY_NOT_FOUND(data.map(_._1), ctx.builder.ks))
     }
 
     val versionsChanged = data.filter(_._3.isDefined)
       .filter{case (k0, _, vs0) => tuples.exists{case (k1, _, vs1) => ord.equiv(k0, k1) && !vs0.get.equals(vs1)}}
+      .map { case (k1, _, vs1) =>
+        val (k, _, vs0) = tuples.find { case (k0, _, _) => ord.equiv(k0, k1) }.get
+
+        (k, Some(vs0), vs1)
+      }
 
     if (!versionsChanged.isEmpty) {
-      return Failure(Errors.VERSION_CHANGED(versionsChanged.map{case (k, _, vs) => k -> vs}, ctx.ks))
+      return Failure(Errors.VERSION_CHANGED(versionsChanged, ctx.builder.ks))
     }
 
     val notin = tuples.filterNot{case (k1, _, _) => data.exists{ case (k, _, _) => ord.equiv(k, k1)}}
 
-    tuples = (notin ++ data.map{case (k, v, _) => Tuple3(k, v, ctx.id)}).sortBy(_._1)
+    tuples = (notin ++ data.map{case (k, v, _) => Tuple3(k, v, updateVersion)}).sortBy(_._1)
 
     Success(data.length)
   }
@@ -120,14 +140,15 @@ class Leaf[K, V](override val id: String,
 
   override def hasMinimum(): Boolean = tuples.length >= MIN
 
-  override def copy()(implicit ctx: Context[K, V]): Leaf[K,V] = {
-    //if(ctx.isNew(unique_id)) return this
+  override def copy()(implicit ctx: Context[K, V]): Leaf[K, V] = {
     if(isNew) return this
 
-    val (p, pos) = ctx.getParent(unique_id).get
+    logger.debug(s"Creating leaf copy ${unique_id}...")
+
+    val pinfo = ctx.getParent(unique_id).get
 
     val copy = ctx.createLeaf()
-    ctx.setParent(copy.unique_id, pos, p)
+    ctx.setParent(copy.unique_id, pinfo.key, pinfo.pos, pinfo.parent)
 
     val len = tuples.length
 
@@ -155,7 +176,7 @@ class Leaf[K, V](override val id: String,
     right
   }
 
-  def binSearch(k: K, start: Int = 0, end: Int = tuples.length - 1)(implicit ord: Ordering[K]): (Boolean, Int) = {
+  override def binSearch(k: K, start: Int = 0, end: Int = tuples.length - 1)(implicit ord: Ordering[K]): (Boolean, Int) = {
     if(start > end) return false -> start
 
     val pos = start + (end - start)/2
@@ -167,12 +188,21 @@ class Leaf[K, V](override val id: String,
     binSearch(k, pos + 1, end)
   }
 
+  override def findPosition(k: K)(implicit ord: Ordering[K]): Int = {
+    val (_, pos) = binSearch(k)
+    if (pos < tuples.length) pos else pos - 1
+  }
+
   def find(k: K)(implicit ord: Ordering[K]): Option[Tuple[K,V]] = {
     val (found, pos) = binSearch(k)
 
     if(!found) return None
 
-    Some(tuples(pos))
+    val e = tuples(pos)
+
+    logger.debug(s"[leaf search in ${id} at pos ${pos}] => ${e._1}")
+
+    Some(e)
   }
 
   def findPath(k: K)(implicit ord: Ordering[K]): (Boolean, Tuple[K, V]) = {
@@ -215,29 +245,29 @@ class Leaf[K, V](override val id: String,
   override def print()(implicit ctx: Context[K, V]): String = {
     if(tuples.isEmpty) return "[]"
 
-    val sb = new StringBuilder(s"${id}:")
+    val sb = new StringBuilder(s"id=[${id}, len=${length}]:")
     sb ++= Console.GREEN_B
     sb ++= "["
     sb ++= Console.RESET
 
     for(i<-0 until tuples.length - 1){
       val (k, v, _) = tuples(i)
-      sb ++= ctx.ks(k)
+      sb ++= s"""[${i}]${ctx.builder.ks(k)}"""
 
       sb ++= "->"
 
-      sb ++= ctx.vs(v)
+      sb ++= ctx.builder.vs(v)
       sb ++= ","
     }
 
     sb ++= Console.RED_B
     val (k, v, _) = tuples(tuples.length - 1)
-    sb ++= ctx.ks(k)
+    sb ++= s"""[${tuples.length-1}]${ctx.builder.ks(k)}"""
     sb ++= Console.RESET
 
     sb ++= "->"
 
-    sb ++= ctx.vs(v)
+    sb ++= ctx.builder.vs(v)
 
     sb ++= Console.GREEN_B
     sb ++= "]"
