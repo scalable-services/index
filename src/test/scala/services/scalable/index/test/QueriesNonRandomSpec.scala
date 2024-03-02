@@ -33,8 +33,8 @@ class QueriesNonRandomSpec extends Repeatable with Matchers {
     import services.scalable.index.DefaultComparators._
     import services.scalable.index.DefaultSerializers._
 
-    val NUM_LEAF_ENTRIES = rand.nextInt(4, 16)
-    val NUM_META_ENTRIES = rand.nextInt(4, 16)
+    val NUM_LEAF_ENTRIES = rand.nextInt(4, 32)
+    val NUM_META_ENTRIES = rand.nextInt(4, 32)
 
     val indexId = UUID.randomUUID().toString
 

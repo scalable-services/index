@@ -24,6 +24,8 @@ class SplitIndexSpec extends Repeatable with Matchers {
 
   "operations" should " run successfully" in {
 
+    val beforeUsedMem = Runtime.getRuntime().totalMemory()-Runtime.getRuntime().freeMemory()
+
     val logger = LoggerFactory.getLogger(this.getClass)
 
     val rand = ThreadLocalRandom.current()
@@ -151,6 +153,16 @@ class SplitIndexSpec extends Repeatable with Matchers {
       val mergeSplits = leftList ++ rightList
 
       assert(TestHelper.isColEqual(mergeSplits, ilist))
+    }
+
+    val afterUsedMem = Runtime.getRuntime().totalMemory()-Runtime.getRuntime().freeMemory()
+
+    val bytesUsedTotal = afterUsedMem - beforeUsedMem
+    val kbUsedTotal = bytesUsedTotal/1024
+    val mbUsedTotal = kbUsedTotal/1024
+
+    if(mbUsedTotal > 0){
+      logger.info(s"Used memory: ${kbUsedTotal} KB or ${mbUsedTotal} MB!")
     }
 
     index.ctx.clear()

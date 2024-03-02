@@ -570,21 +570,9 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
      val rightParents = TrieMap.empty[(String, String), ParentInfo[K]]
 
      val allRefs = ctx.parents.iterator.toSeq
-     val cachedPositions = TrieMap.empty[(String, String), Int]
 
      allRefs.filterNot{case (id, _) => id == rootBlock.unique_id}.foreach { case (id, pinfo) =>
-
-       //val pos = ctx.getRootPos(id)(cachedPositions)
-
-       /*val last = Await.result(ctx.get(id).map {
-         b => b.last
-       }, Duration.Inf)*/
-
        val isLeft = ord.lteq(pinfo.key.get, rootBlock.middle)
-
-       if(!isLeft){
-         println()
-       }
 
        if(isLeft){
          logger.debug(s"${id} is on the left!")
@@ -643,8 +631,6 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
 
      ctx.parents += leftBlock.unique_id -> ParentInfo(None, leftBlock.lastOption, 0)
      right.ctx.parents += rightBlock.unique_id -> ParentInfo(None, rightBlock.lastOption, 0)
-
-     //ctx.parents.foreach(e => right.ctx.parents += e)
 
      right
    }
