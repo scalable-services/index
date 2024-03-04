@@ -39,7 +39,7 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
 
   val logger = LoggerFactory.getLogger(this.getClass)
 
-  implicit var ctx = Context.fromIndexContext(descriptor)(builder)
+  implicit var ctx: Context[K, V] = Context.fromIndexContext(descriptor)(builder)
 
   val $this = this
 

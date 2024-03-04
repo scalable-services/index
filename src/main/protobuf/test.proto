@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package services.scalable.index.grpc.test;
+
+import "scalapb/scalapb.proto";
+import "google/protobuf/wrappers.proto";
+
+option (scalapb.options) = {
+  single_file: true
+  flat_package: true
+  preserve_unknown_fields: false
+};
+
+message EAVT {
+  optional string e = 1;
+  optional string a = 2;
+  optional bytes v = 3;
+  optional int64 t = 4;
+
+  int32 valueTpe = 5;
+  int32 indexTpe = 6;
+}
