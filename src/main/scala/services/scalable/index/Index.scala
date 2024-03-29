@@ -856,7 +856,7 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
     }
   }
 
-  def max(): Future[Option[Tuple[K,V]]] = {
+  def max(): Future[Option[Tuple[K, V]]] = {
     last().flatMap {
       case None => Future.successful(None)
       case Some(leaf) => Future.successful(leaf.max())

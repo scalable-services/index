@@ -49,5 +49,7 @@ trait Block[K, V] {
   def isEmpty(): Boolean
   def hasMinimum(): Boolean
 
+  def hasEnough(): Boolean
+
   def print()(implicit ctx: Context[K, V]): String
 }

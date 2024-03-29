@@ -27,6 +27,7 @@ class CassandraStorage(val session: CqlSession,
   if(truncate){
     logger.debug(s"TRUNCATED BLOCKS: ${session.execute("TRUNCATE table temporal_indexes;").wasApplied()}\n")
     logger.debug(s"TRUNCATED META: ${session.execute("TRUNCATE table blocks;").wasApplied()}\n")
+    logger.debug(s"TRUNCATED INDEXES: ${session.execute("TRUNCATE table indexes;").wasApplied()}\n")
   }
 
   override def createTemporalIndex(tctx: TemporalContext): Future[Boolean] = {

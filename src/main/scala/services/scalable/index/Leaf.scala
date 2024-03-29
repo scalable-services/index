@@ -1,6 +1,8 @@
 package services.scalable.index
 
 import org.slf4j.LoggerFactory
+
+import java.util.UUID
 import scala.util.{Failure, Success, Try}
 
 class Leaf[K, V](override val id: String,
@@ -126,10 +128,12 @@ class Leaf[K, V](override val id: String,
     target
   }
 
-  override def merge(r: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V] = {
-    val right = r.asInstanceOf[Leaf[K,V]]
+  override def merge(r: Block[K, V])(implicit ctx: Context[K,V]): Block[K,V] = {
+    val right = r.asInstanceOf[Leaf[K, V]]
 
-    tuples = tuples ++ right.tuples
+    //tuples = tuples ++ right.tuples
+    insert(right.tuples.map{case (k, v, _) => (k, v, false)}, ctx.id)
+
     this
   }
 
@@ -139,6 +143,8 @@ class Leaf[K, V](override val id: String,
   def inOrder(): Seq[Tuple[K,V]] = tuples
 
   override def hasMinimum(): Boolean = tuples.length >= MIN
+
+  override def hasEnough(): Boolean = tuples.length > MIN
 
   override def copy()(implicit ctx: Context[K, V]): Leaf[K, V] = {
     if(isNew) return this
@@ -240,6 +246,36 @@ class Leaf[K, V](override val id: String,
   def max()(implicit ord: Ordering[K]): Option[Tuple[K,V]] = {
     if(tuples.isEmpty) return None
     Some(tuples.maxBy(_._1))
+  }
+
+  def previousKey(k: K)(implicit ord: Ordering[K], ctx: Context[K, V]): Option[Tuple[K, V]] = {
+    /*val idx = findPosition(k)(ord)
+    val e = tuples(idx)._1
+
+    logger.debug(s"pos: ${idx} e: ${ctx.builder.ks(e)} all keys: ${tuples.map(x => ctx.builder.ks(x._1))}")
+
+    val isOk = ord.lt(e, k)
+
+    if(isOk) Some(tuples(idx)) else Some(tuples(idx - 1))*/
+
+    val reversed = tuples.reverse
+    val idx = reversed.indexWhere{case (k1, _, _) => ord.lt(k1, k)}
+
+    if(idx < 0) None else Some(reversed(idx))
+  }
+
+  def nextKey(k: K)(implicit ord: Ordering[K], ctx: Context[K, V]): Option[Tuple[K, V]] = {
+    /*val idx = findPosition(k)(ord)
+    val e = tuples(idx)._1
+
+    logger.debug(s"pos: ${idx} e: ${ctx.builder.ks(e)} all keys: ${tuples.map(x => ctx.builder.ks(x._1))}")
+
+    val isOk = ord.gt(e, k)
+
+    if(isOk) Some(tuples(idx)) else Some(tuples(idx + 1))*/
+
+    val idx = tuples.indexWhere{case (k1, _, _) => ord.gt(k1, k)}
+    if(idx < 0) None else Some(tuples(idx))
   }
 
   override def print()(implicit ctx: Context[K, V]): String = {

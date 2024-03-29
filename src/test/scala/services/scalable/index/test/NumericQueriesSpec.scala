@@ -2,7 +2,6 @@ package services.scalable.index.test
 
 import ch.qos.logback.classic.{Level, Logger}
 import io.netty.util.internal.ThreadLocalRandom
-import org.apache.commons.lang3.RandomStringUtils
 import org.scalatest.matchers.should.Matchers
 import org.slf4j.LoggerFactory
 import services.scalable.index.grpc._
@@ -72,7 +71,7 @@ class NumericQueriesSpec extends Repeatable with Matchers {
       var list = Seq.empty[Tuple3[K, V, Boolean]]
 
       for (i <- 0 until n) {
-        val k = rand.nextLong(0, Long.MaxValue)
+        val k = rand.nextLong(0, 10000)
         val v = rand.nextLong(0, 1000)
 
         if (!data.exists { case (k1, _, _) => ordering.equiv(k, k1) } &&
@@ -204,6 +203,40 @@ class NumericQueriesSpec extends Repeatable with Matchers {
         assert(cr)
       }
 
+      def testPreviousKey(k: K)(termComp: Ordering[K]): Unit = {
+        val ordered = data.sortBy(_._1).reverse
+        val idx = ordered.indexWhere{case (k1, _, _) => termComp.lt(k1, k)}
+
+        val prevKey = if(idx < 0) None else Some(ordered(idx)._1)
+
+        val indexPrevKey = Await.result(index.previousKey(k)(termComp).map(_.map(_._1)), Duration.Inf)
+
+        val c = indexPrevKey == prevKey
+
+        if(!c){
+          println()
+        }
+
+        assert(c)
+      }
+
+      def testNextKey(k: K)(termComp: Ordering[K]): Unit = {
+        val ordered = data.sortBy(_._1)
+        val idx = ordered.indexWhere{case (k1, _, _) => termComp.gt(k1, k)}
+
+        val nextKey = if(idx < 0) None else Some(ordered(idx)._1)
+
+        val indexNextKey = Await.result(index.nextKey(k)(termComp).map(_.map(_._1)), Duration.Inf)
+
+        val c = indexNextKey == nextKey
+
+        if(!c){
+          println()
+        }
+
+        assert(c)
+      }
+
       val idx = rand.nextInt(0, data.length)
 
       val from = data(idx)._1
@@ -222,6 +255,12 @@ class NumericQueriesSpec extends Repeatable with Matchers {
       if (data.length > 1){
         testRange(FROM, TO, rand.nextBoolean(), rand.nextBoolean(), rand.nextBoolean())(ordering)
       }
+
+      val addDelta = if(rand.nextBoolean()) rand.nextLong(1, 10) else 0L
+      val subDelta = if(rand.nextBoolean()) rand.nextLong(1, 10) else 0L
+
+      testPreviousKey(data(rand.nextInt(0, data.length))._1 + addDelta)(ordering)
+      testNextKey(data(rand.nextInt(0, data.length))._1 - subDelta)(ordering)
 
       logger.info(Await.result(index.save(), Duration.Inf).toString)
 

@@ -145,7 +145,8 @@ class Meta[K, V](override val id: String,
   override def merge(r: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V] = {
     val right = r.asInstanceOf[Meta[K,V]]
 
-    pointers = pointers ++ right.pointers
+    //pointers = pointers ++ right.pointers
+    insert(right.pointers)(ctx, ctx.builder.ord)
 
     setPointers()
 
@@ -156,6 +157,8 @@ class Meta[K, V](override val id: String,
   override def isEmpty(): Boolean = pointers.isEmpty
 
   override def hasMinimum(): Boolean = pointers.length >= MIN
+
+  override def hasEnough(): Boolean = pointers.length > MIN
 
   override def copy()(implicit ctx: Context[K,V]): Meta[K,V] = {
     if(isNew) return this
