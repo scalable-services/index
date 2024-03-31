@@ -558,7 +558,7 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
     copy
   }
 
-  def merge(right: QueryableIndex[K, V]): Future[QueryableIndex[K, V]] = {
+  def merge(right: QueryableIndex[K, V], version: String = ctx.id): Future[QueryableIndex[K, V]] = {
 
     // This is allowed because at the moment of a splitting the number of elements could not be exactly half for both indexes.
     assert(ctx.num_elements + right.ctx.num_elements <= MAX_N_ITEMS,
@@ -571,7 +571,7 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
       leftBlock <- ctx.get(ctx.root.get).map(_.copy())
       rightBlock <- right.ctx.get(right.ctx.root.get)
     } yield {
-      leftBlock.merge(rightBlock)
+      leftBlock.merge(rightBlock, version)
       ctx.root = Some(leftBlock.unique_id)
 
       ctx.num_elements = ctx.num_elements + right.ctx.num_elements

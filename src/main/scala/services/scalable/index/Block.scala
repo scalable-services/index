@@ -37,7 +37,7 @@ trait Block[K, V] {
 
   def borrowLeftTo(t: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V]
   def borrowRightTo(t: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V]
-  def merge(r: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V]
+  def merge(r: Block[K,V], version: String)(implicit ctx: Context[K,V]): Block[K,V]
 
   def minNeeded(): Int = MIN - length
   def canBorrowTo(target: Block[K,V]): Boolean = length - target.minNeeded() >= MIN

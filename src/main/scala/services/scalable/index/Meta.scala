@@ -142,7 +142,7 @@ class Meta[K, V](override val id: String,
     target
   }
 
-  override def merge(r: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V] = {
+  override def merge(r: Block[K,V], version: String)(implicit ctx: Context[K,V]): Block[K,V] = {
     val right = r.asInstanceOf[Meta[K,V]]
 
     //pointers = pointers ++ right.pointers

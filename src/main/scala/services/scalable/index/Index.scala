@@ -323,7 +323,7 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
 
     //ctx.levels -= 1
 
-    left.merge(right)
+    left.merge(right, ctx.id)
 
     parent.setPointer(left, lpos)
     parent.removeAt(rpos)

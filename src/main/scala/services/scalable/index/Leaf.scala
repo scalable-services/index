@@ -128,11 +128,11 @@ class Leaf[K, V](override val id: String,
     target
   }
 
-  override def merge(r: Block[K, V])(implicit ctx: Context[K,V]): Block[K,V] = {
+  override def merge(r: Block[K, V], version: String)(implicit ctx: Context[K,V]): Block[K, V] = {
     val right = r.asInstanceOf[Leaf[K, V]]
 
     //tuples = tuples ++ right.tuples
-    insert(right.tuples.map{case (k, v, _) => (k, v, false)}, ctx.id)
+    insert(right.tuples.map{case (k, v, _) => (k, v, false)}, version)
 
     this
   }
