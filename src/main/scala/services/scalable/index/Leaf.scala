@@ -130,7 +130,7 @@ class Leaf[K, V](override val id: String,
     val thisHead = tuples.head._1
 
     // borrows left
-    if(ctx.builder.ord.gteq(targetHead, thisHead)){
+    if(ctx.builder.ord.gteq(thisHead, targetHead)){
       return borrowLeftTo(target)
     }
 
