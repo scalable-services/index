@@ -596,6 +596,10 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
     }
   }
 
+  def allSync(): Seq[Tuple[K, V]] = {
+    Await.result(all(), Duration.Inf)
+  }
+
   def reverse(f: Tuple[K, V] => Boolean = _ => true)(implicit ord: Ordering[K]): AsyncIndexIterator[Seq[Tuple[K, V]]] = new RichAsyncIndexIterator[K, V](f) {
 
     override def hasNext(): Future[Boolean] = {
