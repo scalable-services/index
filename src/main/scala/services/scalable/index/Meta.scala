@@ -118,12 +118,13 @@ class Meta[K, V](override val id: String,
     val target = t.asInstanceOf[Meta[K,V]]
     val targetHead = target.pointers.head._1
     val thisHead = pointers.head._1
+    val minKeys = target.minNeeded()
 
     // borrows left
     if(ctx.builder.ord.gteq(thisHead, targetHead)){
 
-      target.pointers = target.pointers ++ pointers.slice(0, minNeeded)
-      pointers = pointers.slice(minNeeded, pointers.length)
+      target.pointers = target.pointers ++ pointers.slice(0, minKeys)
+      pointers = pointers.slice(minKeys, pointers.length)
 
       setPointers()
       target.setPointers()
@@ -131,8 +132,10 @@ class Meta[K, V](override val id: String,
       return this
     }
 
-    target.pointers = pointers.slice(target.length - minNeeded, target.length) ++ target.pointers
-    pointers = pointers.slice(0, target.length - minNeeded)
+    val start = pointers.length - minKeys
+
+    target.pointers = pointers.slice(start, pointers.length) ++ target.pointers
+    pointers = pointers.slice(0, start)
 
     setPointers()
     target.setPointers()

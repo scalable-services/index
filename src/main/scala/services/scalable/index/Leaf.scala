@@ -110,19 +110,21 @@ class Leaf[K, V](override val id: String,
     val target = t.asInstanceOf[Leaf[K,V]]
     val targetHead = target.tuples.head._1
     val thisHead = tuples.head._1
-    val minNeeded = target.minNeeded()
+    val minKeys = target.minNeeded()
 
     // borrows left
     if(ctx.builder.ord.gteq(thisHead, targetHead)){
 
-      target.tuples = target.tuples ++ tuples.slice(0, minNeeded)
-      tuples = tuples.slice(minNeeded, tuples.length)
+      target.tuples = target.tuples ++ tuples.slice(0, minKeys)
+      tuples = tuples.slice(minKeys, tuples.length)
 
       return this
     }
 
-    target.tuples = tuples.slice(target.length - minNeeded, target.length) ++ target.tuples
-    tuples = tuples.slice(0, target.length - minNeeded)
+    val start = tuples.length - minKeys
+
+    target.tuples = tuples.slice(start, tuples.length) ++ target.tuples
+    tuples = tuples.slice(0, start)
 
     this
   }
