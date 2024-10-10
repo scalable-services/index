@@ -358,7 +358,7 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
 
         if(right.canBorrowTo(target)){
 
-          right.borrowRightTo(target)
+          right.borrow(target)
 
           parent.setPointer(target, pos)
           parent.setPointer(right, pos + 1)
@@ -383,7 +383,7 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
 
         if(left.canBorrowTo(target)){
 
-          left.borrowLeftTo(target)
+          left.borrow(target)
 
           parent.setPointer(left, pos - 1)
           parent.setPointer(target, pos)
