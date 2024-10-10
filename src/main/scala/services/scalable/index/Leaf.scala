@@ -1,8 +1,6 @@
 package services.scalable.index
 
 import org.slf4j.LoggerFactory
-
-import java.util.UUID
 import scala.util.{Failure, Success, Try}
 
 class Leaf[K, V](override val id: String,
