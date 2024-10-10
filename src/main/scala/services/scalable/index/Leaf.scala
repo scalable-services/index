@@ -106,6 +106,28 @@ class Leaf[K, V](override val id: String,
 
   override def length: Int = tuples.length
 
+  /*def borrowLeftTo(t: Block[K,V])(implicit ctx: Context[K,V]): Leaf[K,V] = {
+    val target = t.asInstanceOf[Leaf[K,V]]
+
+    val len = tuples.length
+    val start = len - target.minNeeded()
+
+    target.tuples = tuples.slice(start, len) ++ target.tuples
+    tuples = tuples.slice(0, start)
+
+    target
+  }
+
+  def borrowRightTo(t: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V] = {
+    val target = t.asInstanceOf[Leaf[K,V]]
+
+    val n = target.minNeeded()
+    target.tuples = target.tuples ++ tuples.slice(0, n)
+    tuples = tuples.slice(n, tuples.length)
+
+    target
+  }*/
+
   override def borrow(t: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V] = {
     val target = t.asInstanceOf[Leaf[K,V]]
     val targetHead = target.tuples.head._1

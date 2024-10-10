@@ -178,13 +178,13 @@ class QueriesRandomSpec extends Repeatable with Matchers {
     val n = rand.nextInt(1, 10)
 
     for(i<-0 until n){
-      insert()
-      /*rand.nextInt(1, 4) match {
+     // insert()
+      rand.nextInt(1, 4) match {
         case 1 => insert()
         case 2 if !data.isEmpty => update()
         case 3 if !data.isEmpty => remove()
         case _ => insert()
-      }*/
+      }
     }
 
     data = data.sortBy(_._1)

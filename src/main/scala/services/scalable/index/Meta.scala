@@ -114,6 +114,34 @@ class Meta[K, V](override val id: String,
 
   override def length: Int = pointers.length
 
+  /*def borrowLeftTo(t: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V] = {
+    val target = t.asInstanceOf[Meta[K,V]]
+
+    val len = pointers.length
+    val start = len - target.minNeeded()
+
+    target.pointers = pointers.slice(start, len) ++ target.pointers
+    pointers = pointers.slice(0, start)
+
+    target.setPointers()
+    setPointers()
+
+    target
+  }
+
+  def borrowRightTo(t: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V] = {
+    val target = t.asInstanceOf[Meta[K,V]]
+
+    val n = target.minNeeded()
+    target.pointers = target.pointers ++ pointers.slice(0, n)
+    pointers = pointers.slice(n, pointers.length)
+
+    target.setPointers()
+    setPointers()
+
+    target
+  }*/
+
   override def borrow(t: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V] = {
     val target = t.asInstanceOf[Meta[K,V]]
     val targetHead = target.pointers.head._1
