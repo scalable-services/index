@@ -106,9 +106,7 @@ class Leaf[K, V](override val id: String,
 
   override def length: Int = tuples.length
 
-  override def borrowLeftTo(t: Block[K,V])(implicit ctx: Context[K,V]): Leaf[K,V] = {
-    val target = t.asInstanceOf[Leaf[K,V]]
-
+  protected def borrowLeftTo(target: Leaf[K,V])(implicit ctx: Context[K,V]): Leaf[K,V] = {
     val len = tuples.length
     val start = len - target.minNeeded()
 
@@ -118,14 +116,25 @@ class Leaf[K, V](override val id: String,
     target
   }
 
-  override def borrowRightTo(t: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V] = {
-    val target = t.asInstanceOf[Leaf[K,V]]
-
+  protected def borrowRightTo(target: Leaf[K,V])(implicit ctx: Context[K,V]): Block[K,V] = {
     val n = target.minNeeded()
     target.tuples = target.tuples ++ tuples.slice(0, n)
     tuples = tuples.slice(n, tuples.length)
 
     target
+  }
+
+  override def borrow(t: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V] = {
+    val target = t.asInstanceOf[Leaf[K,V]]
+    val targetHead = target.tuples.head._1
+    val thisHead = tuples.head._1
+
+    // borrows left
+    if(ctx.builder.ord.gteq(targetHead, thisHead)){
+      return borrowLeftTo(target)
+    }
+
+    borrowRightTo(target)
   }
 
   override def merge(r: Block[K, V], version: String)(implicit ctx: Context[K,V]): Block[K, V] = {
