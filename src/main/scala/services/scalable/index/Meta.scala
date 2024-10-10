@@ -114,45 +114,30 @@ class Meta[K, V](override val id: String,
 
   override def length: Int = pointers.length
 
-  protected def borrowLeftTo(t: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V] = {
-    val target = t.asInstanceOf[Meta[K,V]]
-
-    val len = pointers.length
-    val start = len - target.minNeeded()
-
-    target.pointers = pointers.slice(start, len) ++ target.pointers
-    pointers = pointers.slice(0, start)
-
-    target.setPointers()
-    setPointers()
-
-    target
-  }
-
-  protected def borrowRightTo(t: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V] = {
-    val target = t.asInstanceOf[Meta[K,V]]
-
-    val n = target.minNeeded()
-    target.pointers = target.pointers ++ pointers.slice(0, n)
-    pointers = pointers.slice(n, pointers.length)
-
-    target.setPointers()
-    setPointers()
-
-    target
-  }
-
   override def borrow(t: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V] = {
     val target = t.asInstanceOf[Meta[K,V]]
     val targetHead = target.pointers.head._1
     val thisHead = pointers.head._1
 
     // borrows left
-    if(ctx.builder.ord.gteq(targetHead, thisHead)){
-      return borrowLeftTo(target)
+    if(ctx.builder.ord.gteq(thisHead, targetHead)){
+
+      target.pointers = target.pointers ++ pointers.slice(0, minNeeded)
+      pointers = pointers.slice(minNeeded, pointers.length)
+
+      setPointers()
+      target.setPointers()
+
+      return this
     }
 
-    borrowRightTo(target)
+    target.pointers = pointers.slice(target.length - minNeeded, target.length) ++ target.pointers
+    pointers = pointers.slice(0, target.length - minNeeded)
+
+    setPointers()
+    target.setPointers()
+
+    this
   }
 
   override def merge(r: Block[K,V], version: String)(implicit ctx: Context[K,V]): Block[K,V] = {
