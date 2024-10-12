@@ -24,7 +24,7 @@ package object index {
     def unique_id: (String, String) = (partition, id)
   }
 
-  implicit def toScalaFuture[T](cs: CompletionStage[T]) = cs.asScala
+  implicit def toScalaFuture[T](cs: CompletionStage[T]): Future[T] = cs.asScala
 
   def serialiseFutures[A, B](l: Iterable[A])(fn: A ⇒ Future[B])(implicit ec: ExecutionContext): Future[List[B]] =
     l.foldLeft(Future(List.empty[B])) {
@@ -36,53 +36,55 @@ package object index {
     }
 
   object DefaultComparators {
-    implicit val bytesOrd = new Ordering[Bytes] {
+    implicit val bytesOrd: Ordering[Bytes] = new Ordering[Bytes] {
       val comp = UnsignedBytes.lexicographicalComparator()
       override def compare(x: Bytes, y: Bytes): Int = comp.compare(x, y)
     }
 
-    implicit val ordInt = new Ordering[Int] {
+    implicit val ordInt: Ordering[Int]= new Ordering[Int] {
       override def compare(x: Int, y: Int): Int = x.compare(y)
     }
 
-    implicit val ordLong = new Ordering[Long] {
+    implicit val ordLong: Ordering[Long] = new Ordering[Long] {
       override def compare(x: Long, y: Long): Int = x.compare(y)
     }
 
-    implicit val ordBigInt = new Ordering[BigInt] {
+    implicit val ordBigInt: Ordering[BigInt] = new Ordering[BigInt] {
       override def compare(x: BigInt, y: BigInt): Int = x.compare(y)
     }
 
-    implicit val ordBigDecimal = new Ordering[BigDecimal] {
+    implicit val ordBigDecimal: Ordering[BigDecimal] = new Ordering[BigDecimal] {
       override def compare(x: BigDecimal, y: BigDecimal): Int = x.compare(y)
     }
 
-    implicit val ordShort = new Ordering[Short] {
+    implicit val ordShort: Ordering[Short] = new Ordering[Short] {
       override def compare(x: Short, y: Short): Int = x.compare(y)
     }
 
-    implicit val ordByte = new Ordering[Byte] {
+    implicit val ordByte: Ordering[Byte] = new Ordering[Byte] {
       override def compare(x: Byte, y: Byte): Int = x.compare(y)
     }
 
-    implicit val ordChar = new Ordering[Char] {
+    implicit val ordChar: Ordering[Char] = new Ordering[Char] {
       override def compare(x: Char, y: Char): Int = x.compare(y)
     }
 
-    implicit val ordBoolean = new Ordering[Boolean] {
+    implicit val ordBoolean: Ordering[Boolean] = new Ordering[Boolean] {
       override def compare(x: Boolean, y: Boolean): Int = x.compare(y)
     }
 
-    implicit val ordString = new Ordering[String] {
+    implicit val ordString: Ordering[String] = new Ordering[String] {
       override def compare(x: String, y: String): Int = x.compare(y)
     }
   }
 
   object DefaultIdGenerators {
-    implicit val idGenerator = new IdGenerator {
+    implicit val idGenerator: IdGenerator = new IdGenerator {
       override def generateIndexId(): String = UUID.randomUUID.toString
-      override def generateBlockId[K,V](ctx: Context[K,V]): String = UUID.randomUUID().toString
-      override def generateBlockPartition[K,V](ctx: Context[K,V]): String = UUID.randomUUID().toString
+
+      override def generateBlockId[K, V](ctx: Context[K, V]): String = UUID.randomUUID().toString
+
+      override def generateBlockPartition[K, V](ctx: Context[K, V]): String = UUID.randomUUID().toString
     }
   }
 
@@ -97,17 +99,17 @@ package object index {
 
   object DefaultSerializers {
 
-    implicit val bytesSerializer = new Serializer[Bytes] {
+    implicit val bytesSerializer: Serializer[Bytes] = new Serializer[Bytes] {
       override def serialize(t: Bytes): Array[Byte] = t
       override def deserialize(b: Array[Byte]): Bytes = b
     }
 
-    implicit val stringSerializer = new Serializer[String] {
+    implicit val stringSerializer: Serializer[String] = new Serializer[String] {
       override def serialize(t: String): Bytes = t.getBytes("UTF-8")
       override def deserialize(b: Bytes): String = new String(b, "UTF-8")
     }
 
-    implicit val intSerializer = new Serializer[Int] {
+    implicit val intSerializer: Serializer[Int] = new Serializer[Int] {
       override def serialize(t: Int): Bytes = {
         ByteBuffer.allocate(4).putInt(t).array()
       }
@@ -117,7 +119,7 @@ package object index {
       }
     }
 
-    implicit val longSerializer = new Serializer[Long] {
+    implicit val longSerializer: Serializer[Long] = new Serializer[Long] {
       override def serialize(t: Long): Bytes = {
         ByteBuffer.allocate(8).putLong(t).array()
       }
@@ -127,7 +129,7 @@ package object index {
       }
     }
 
-    implicit val shortSerializer = new Serializer[Short] {
+    implicit val shortSerializer: Serializer[Short] = new Serializer[Short] {
       override def serialize(t: Short): Bytes = {
         ByteBuffer.allocate(2).putShort(t).array()
       }
@@ -137,7 +139,7 @@ package object index {
       }
     }
 
-    implicit val byteSerializer = new Serializer[Byte] {
+    implicit val byteSerializer: Serializer[Byte] = new Serializer[Byte] {
       override def serialize(t: Byte): Bytes = {
         Array(t)
       }
@@ -147,7 +149,7 @@ package object index {
       }
     }
 
-    implicit val charSerializer = new Serializer[Char] {
+    implicit val charSerializer: Serializer[Char] = new Serializer[Char] {
       override def serialize(t: Char): Bytes = {
         Array(t.toByte)
       }
@@ -157,7 +159,7 @@ package object index {
       }
     }
 
-    implicit val bigintSerializer = new Serializer[BigInt] {
+    implicit val bigintSerializer: Serializer[BigInt] = new Serializer[BigInt] {
       override def serialize(t: BigInt): Bytes = {
         t.toByteArray
       }
@@ -167,7 +169,7 @@ package object index {
       }
     }
 
-    implicit val bigDecimalSerializer = new Serializer[BigDecimal] {
+    implicit val bigDecimalSerializer: Serializer[BigDecimal] = new Serializer[BigDecimal] {
       override def serialize(t: BigDecimal): Bytes = {
         DecimalValue.toByteArray(DecimalValue()
           .withScale(t.scale)
@@ -182,7 +184,7 @@ package object index {
       }
     }
 
-    implicit val booleanSerializer = new Serializer[Boolean] {
+    implicit val booleanSerializer: Serializer[Boolean] = new Serializer[Boolean] {
       override def serialize(t: Boolean): Bytes = {
         Array(if(t) 1.toByte else 0.toByte)
       }
@@ -195,22 +197,26 @@ package object index {
       }
     }
 
-    implicit val dbContextSerializer = new Serializer[TemporalContext] {
+    implicit val dbContextSerializer: Serializer[TemporalContext] = new Serializer[TemporalContext] {
       override def serialize(t: TemporalContext): Array[Byte] = Any.pack(t).toByteArray
       override def deserialize(b: Array[Byte]): TemporalContext = Any.parseFrom(b).unpack(TemporalContext)
     }
 
-    implicit val indexContextSerializer = new Serializer[IndexContext] {
+    implicit val indexContextSerializer: Serializer[IndexContext] = new Serializer[IndexContext] {
       override def serialize(t: IndexContext): Array[Byte] = Any.pack(t).toByteArray
       override def deserialize(b: Array[Byte]): IndexContext = Any.parseFrom(b).unpack(IndexContext)
     }
 
-    implicit val grpcLongIndexContextSerializer = new GrpcByteSerializer[Long, IndexContext]()
+    implicit val grpcLongIndexContextSerializer: GrpcByteSerializer[Long, IndexContext] =
+      new GrpcByteSerializer[Long, IndexContext]()
 
-    implicit val grpcLongTemporalContextSerializer = new GrpcByteSerializer[Long, TemporalContext]()
-    implicit val grpcBytesIndexContextSerializer = new GrpcByteSerializer[Bytes, IndexContext]()
+    implicit val grpcLongTemporalContextSerializer: GrpcByteSerializer[Long, TemporalContext] =
+      new GrpcByteSerializer[Long, TemporalContext]()
+    implicit val grpcBytesIndexContextSerializer: GrpcByteSerializer[Bytes, IndexContext] =
+      new GrpcByteSerializer[Bytes, IndexContext]()
 
-    implicit val grpcBytesBytesSerializer = new GrpcByteSerializer[Bytes, Bytes]()
-    implicit val grpcBytesBytesCommandSerializer = new GrpcCommandSerializer[Bytes, Bytes]()
+    implicit val grpcBytesBytesSerializer: GrpcByteSerializer[Bytes, Bytes] = new GrpcByteSerializer[Bytes, Bytes]()
+    implicit val grpcBytesBytesCommandSerializer: GrpcCommandSerializer[Bytes, Bytes] =
+      new GrpcCommandSerializer[Bytes, Bytes]()
   }
 }

@@ -30,6 +30,13 @@ sealed class Context[K, V](val indexId: String,
   var newBlocksReferences = TrieMap.empty[(String, String), Block[K, V]]
   val parents = TrieMap.empty[(String, String), ParentInfo[K]]
 
+  def getRoot(): Future[Option[Block[K, V]]] = {
+    root match {
+      case None => Future.successful(None)
+      case Some(uid) => get(uid).map(Some(_))
+    }
+  }
+
   /**
    *
    * To work the blocks being manipulated must be in memory before saving...
@@ -163,14 +170,7 @@ sealed class Context[K, V](val indexId: String,
 
     val snap = snapshot()
 
-    val blocks = newBlocksReferences.map { case (id, _) => id -> cache.get(id)}
-      .filter(_._2.isDefined).map{case (id, opt) => id -> opt.get.asInstanceOf[Block[K, V]]}.toMap
-
-    if(newBlocksReferences.size != blocks.size){
-      return Future.failed(new RuntimeException("Some blocks were evicted from cache before saving to disk!"))
-    }
-
-    storage.save(snap, blocks.map{case (id, block) => id -> builder.serializer.serialize(block)}).map { r =>
+    storage.save(snap, newBlocksReferences.map{case (id, block) => id -> builder.serializer.serialize(block)}.toMap).map { r =>
       clear()
       snap
     }

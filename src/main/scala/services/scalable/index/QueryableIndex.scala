@@ -1,14 +1,11 @@
 package services.scalable.index
 
-import services.scalable.index.ParentInfo
 import services.scalable.index.grpc.{IndexContext, RootRef}
 import services.scalable.index.impl.RichAsyncIndexIterator
 
 import java.util.UUID
 import scala.collection.concurrent.TrieMap
-import scala.collection.mutable
-import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, Future}
+import scala.concurrent.Future
 
 /**
  * Any iterator can be constructed using a searching function and a filter function
@@ -31,7 +28,7 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
    * @param termComp
    * @return
    */
-  def previousKey(k: K, orEqual: Boolean, findPathFn: (K, Meta[K, V], Ordering[K]) => (String, String) = (k, m, ord) => m.findPath(k)(ord))(termComp: Ordering[K]): Future[Option[Leaf[K, V]]] = {
+  def previousKeyBlock(k: K, orEqual: Boolean, findPathFn: (K, Meta[K, V], Ordering[K]) => (String, String) = (k, m, ord) => m.findPath(k)(ord))(termComp: Ordering[K]): Future[Option[Leaf[K, V]]] = {
     findPath(k, None, findPathFn)(termComp).flatMap {
       case None => Future.successful(None)
       case Some(leaf) =>
@@ -55,7 +52,7 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
    * @param termComp
    * @return
    */
-  def nextKey(k: K, orEqual: Boolean, findPathFn: (K, Meta[K, V], Ordering[K]) => (String, String) = (k, m, ord) => m.findPath(k)(ord))(termComp: Ordering[K]): Future[Option[Leaf[K, V]]] = {
+  def nextKeyBlock(k: K, orEqual: Boolean, findPathFn: (K, Meta[K, V], Ordering[K]) => (String, String) = (k, m, ord) => m.findPath(k)(ord))(termComp: Ordering[K]): Future[Option[Leaf[K, V]]] = {
     findPath(k, None, findPathFn)(termComp).flatMap {
       case None => Future.successful(None)
       case Some(leaf) =>
@@ -68,6 +65,20 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
         } else {
           next(Some(leaf.unique_id))
         }
+    }
+  }
+
+  def previousKey(k: K, findPathFn: (K, Meta[K, V], Ordering[K]) => (String, String) = (k, m, ord) => m.findPath(k)(ord))(termComp: Ordering[K]): Future[Option[Tuple[K, V]]] = {
+    previousKeyBlock(k, false, findPathFn)(termComp).map {
+      case None => None
+      case Some(leaf) => leaf.previousKey(k)(termComp, ctx)
+    }
+  }
+
+  def nextKey(k: K, findPathFn: (K, Meta[K, V], Ordering[K]) => (String, String) = (k, m, ord) => m.findPath(k)(ord))(termComp: Ordering[K]): Future[Option[Tuple[K, V]]] = {
+    nextKeyBlock(k, false, findPathFn)(termComp).map {
+      case None => None
+      case Some(leaf) => leaf.nextKey(k)(termComp, ctx)
     }
   }
 
@@ -162,7 +173,7 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
       override def hasNext(): Future[Boolean] = {
         if (stop) return Future.successful(false)
 
-        if (first) return nextKey(term, termInclusive, findPathFn)(termComp).map { block =>
+        if (first) return nextKeyBlock(term, termInclusive, findPathFn)(termComp).map { block =>
           root = block.map(_.unique_id)
           first = false
 
@@ -205,7 +216,7 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
       override def hasNext(): Future[Boolean] = {
         if (stop) return Future.successful(false)
 
-        if (first) return previousKey(term, termInclusive, findPathFn)(termComp).map { block =>
+        if (first) return previousKeyBlock(term, termInclusive, findPathFn)(termComp).map { block =>
           root = block.map(_.unique_id)
           first = false
 
@@ -517,7 +528,13 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
   }
 
   def hasMinimum(): Boolean = {
+    if(builder.MAX_N_ITEMS < 0) return true
     ctx.num_elements >= builder.MAX_N_ITEMS / 2
+  }
+
+  def hasEnough(): Boolean = {
+    if(builder.MAX_N_ITEMS < 0) return true
+    ctx.num_elements > builder.MAX_N_ITEMS / 2
   }
 
   def copy(sameId: Boolean = false): QueryableIndex[K, V] = {
@@ -539,6 +556,31 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
     }
 
     copy
+  }
+
+  def merge(right: QueryableIndex[K, V], version: String = ctx.id): Future[QueryableIndex[K, V]] = {
+
+    // This is allowed because at the moment of a splitting the number of elements could not be exactly half for both indexes.
+    assert(ctx.num_elements + right.ctx.num_elements <= MAX_N_ITEMS,
+      s"""The sum of number of elements from left and
+         |right indexes must be less or equal to MAX_N_ITEMS, which is ${MAX_N_ITEMS}""".stripMargin)
+    //assert(!right.hasMinimum(), s"The right index must be less than half of elements to be merged!")
+    //assert(!hasMinimum(), s"The left index must be less than half of elements to be merged!")
+
+    for {
+      leftBlock <- ctx.get(ctx.root.get).map(_.copy())
+      rightBlock <- right.ctx.get(right.ctx.root.get)
+    } yield {
+      leftBlock.merge(rightBlock, version)
+      ctx.root = Some(leftBlock.unique_id)
+
+      ctx.num_elements = ctx.num_elements + right.ctx.num_elements
+      ctx.parents ++= right.ctx.parents
+      ctx.newBlocksReferences ++= right.ctx.newBlocksReferences
+      ctx.lastChangeVersion = UUID.randomUUID().toString
+
+      this
+    }
   }
 
   def split(): Future[QueryableIndex[K, V]] = {

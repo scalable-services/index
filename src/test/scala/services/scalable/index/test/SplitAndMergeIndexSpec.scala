@@ -15,7 +15,7 @@ import scala.concurrent.Await
 import scala.concurrent.duration.Duration
 import scala.jdk.FutureConverters.CompletionStageOps
 
-class SplitIndexSpec extends Repeatable with Matchers {
+class SplitAndMergeIndexSpec extends Repeatable with Matchers {
 
   LoggerFactory.getLogger("services.scalable.index.Context").asInstanceOf[Logger].setLevel(Level.INFO)
   LoggerFactory.getLogger("services.scalable.index.impl.GrpcByteSerializer").asInstanceOf[Logger].setLevel(Level.INFO)
@@ -45,8 +45,8 @@ class SplitIndexSpec extends Repeatable with Matchers {
     val storage = new MemoryStorage()
     val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
 
-    val MAX_ITEMS = rand.nextInt(100, 1000)
-    
+    val MAX_ITEMS = 4096//rand.nextInt(100, 1000)
+
     val indexContext = Await.result(TestHelper.loadOrCreateIndex(IndexContext(
       indexId,
       NUM_LEAF_ENTRIES,
@@ -70,6 +70,8 @@ class SplitIndexSpec extends Repeatable with Matchers {
     val index = new QueryableIndex[K, V](indexContext)(builder)
 
     def insert(): Seq[Commands.Command[K, V]] = {
+      if(data.length == MAX_ITEMS) return Seq.empty[Commands.Command[K, V]]
+
       val n = rand.nextInt(1, 1000)
       var list = Seq.empty[Tuple3[K, V, Boolean]]
 
@@ -81,6 +83,10 @@ class SplitIndexSpec extends Repeatable with Matchers {
           !list.exists { case (k1, _, _) => bytesOrd.equiv(k, k1) }) {
           list = list :+ (k, v, false)
         }
+      }
+
+      if(data.length + list.length > MAX_ITEMS){
+        list = list.slice(0, MAX_ITEMS - data.length)
       }
 
       data ++= list.map{case (k, v, _) => (k, v, version)}
@@ -153,9 +159,26 @@ class SplitIndexSpec extends Repeatable with Matchers {
       val mergeSplits = leftList ++ rightList
 
       assert(TestHelper.isColEqual(mergeSplits, ilist))
+      assert(copy.ctx.num_elements + right.ctx.num_elements == mergeSplits.length)
+
+      // After splitting the original index should keep been intact...
+      val afterSplittingIndexList = Await.result(index.all(), Duration.Inf).map { case (k, v, _) => k -> v }
+
+      assert(TestHelper.isColEqual(afterSplittingIndexList, ilist))
+
+      // Merging it again...
+      val merged = Await.result(copy.merge(right), Duration.Inf)
+      val mergedList = Await.result(merged.all(merged.inOrder()), Duration.Inf).map { case (k, v, _) => k -> v }
+
+      assert(TestHelper.isColEqual(mergeSplits, mergedList))
+
+      // After merging the original right index must be the same...
+      val rightListAfter = Await.result(right.all(), Duration.Inf).map { case (k, v, _) => k -> v }
+
+      assert(TestHelper.isColEqual(rightListAfter, rightList))
     }
 
-    val afterUsedMem = Runtime.getRuntime().totalMemory()-Runtime.getRuntime().freeMemory()
+    val afterUsedMem = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()
 
     val bytesUsedTotal = afterUsedMem - beforeUsedMem
     val kbUsedTotal = bytesUsedTotal/1024

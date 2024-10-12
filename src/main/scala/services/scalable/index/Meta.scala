@@ -114,7 +114,7 @@ class Meta[K, V](override val id: String,
 
   override def length: Int = pointers.length
 
-  override def borrowLeftTo(t: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V] = {
+  /*def borrowLeftTo(t: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V] = {
     val target = t.asInstanceOf[Meta[K,V]]
 
     val len = pointers.length
@@ -129,7 +129,7 @@ class Meta[K, V](override val id: String,
     target
   }
 
-  override def borrowRightTo(t: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V] = {
+  def borrowRightTo(t: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V] = {
     val target = t.asInstanceOf[Meta[K,V]]
 
     val n = target.minNeeded()
@@ -140,12 +140,42 @@ class Meta[K, V](override val id: String,
     setPointers()
 
     target
+  }*/
+
+  override def borrow(t: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V] = {
+    val target = t.asInstanceOf[Meta[K,V]]
+    val targetHead = target.pointers.head._1
+    val thisHead = pointers.head._1
+    val minKeys = target.minNeeded()
+
+    // borrows left
+    if(ctx.builder.ord.gteq(thisHead, targetHead)){
+
+      target.pointers = target.pointers ++ pointers.slice(0, minKeys)
+      pointers = pointers.slice(minKeys, pointers.length)
+
+      setPointers()
+      target.setPointers()
+
+      return this
+    }
+
+    val start = pointers.length - minKeys
+
+    target.pointers = pointers.slice(start, pointers.length) ++ target.pointers
+    pointers = pointers.slice(0, start)
+
+    setPointers()
+    target.setPointers()
+
+    this
   }
 
-  override def merge(r: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V] = {
+  override def merge(r: Block[K,V], version: String)(implicit ctx: Context[K,V]): Block[K,V] = {
     val right = r.asInstanceOf[Meta[K,V]]
 
-    pointers = pointers ++ right.pointers
+    //pointers = pointers ++ right.pointers
+    insert(right.pointers)(ctx, ctx.builder.ord)
 
     setPointers()
 
@@ -156,6 +186,8 @@ class Meta[K, V](override val id: String,
   override def isEmpty(): Boolean = pointers.isEmpty
 
   override def hasMinimum(): Boolean = pointers.length >= MIN
+
+  override def hasEnough(): Boolean = pointers.length > MIN
 
   override def copy()(implicit ctx: Context[K,V]): Meta[K,V] = {
     if(isNew) return this
