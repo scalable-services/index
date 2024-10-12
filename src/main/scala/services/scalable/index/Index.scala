@@ -351,7 +351,8 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
     }
   }
 
-  protected def borrowRight(target: Block[K, V], left: Option[Block[K, V]], right: Option[(String, String)], parent: Meta[K,V], pos: Int): Future[Boolean] = {
+  protected def borrowRight(target: Block[K, V], left: Option[Block[K, V]], right: Option[(String, String)],
+                            parent: Meta[K,V], pos: Int): Future[Boolean] = {
     right match {
       case Some(id) => ctx.get(id).flatMap { r =>
         val right = r.copy()
@@ -418,6 +419,30 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
     borrowLeft(target, left, right, parent, pos)
   }
 
+  protected def removeEmptyLeafFromParent(parent: Meta[K, V], targetPos: Int): Future[Boolean] = {
+    parent.removeAt(targetPos)
+
+    if(parent.hasMinimum()){
+      return recursiveCopy(parent)
+    }
+
+    val opt = ctx.getParent(parent.unique_id)
+
+    if(opt.isEmpty){
+      return setPath(parent).flatMap(_ => removeEmptyLeafFromParent(parent, targetPos))
+    }
+
+    val pinfo = opt.get
+
+    if(pinfo.parent.isEmpty){
+      return recursiveCopy(parent)
+    }
+
+    ctx.getMeta(pinfo.parent.get).map(_.copy()).flatMap { p =>
+      borrow(parent, p, pinfo.pos)
+    }
+  }
+
   protected def removeFromLeaf(target: Leaf[K, V], keys: Seq[Tuple2[K, Option[String]]]): Future[Int] = {
     val result = target.remove(keys)
 
@@ -437,9 +462,7 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
     val pinfo = opt.get
 
     if(pinfo.parent.isEmpty){
-
       if(target.isEmpty()){
-
         ctx.levels -= 1
 
         logger.debug(s"${Console.RED_B}[remove] TREE IS EMPTY${Console.RESET}")
@@ -451,8 +474,14 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
       return recursiveCopy(target).map(_ => result.get)
     }
 
-    ctx.getMeta(pinfo.parent.get).flatMap { p =>
-      borrow(target, p.copy(), pinfo.pos).map(_ => result.get)
+    if(target.isEmpty()){
+      return ctx.getMeta(pinfo.parent.get).map(_.copy()).flatMap { p =>
+        removeEmptyLeafFromParent(p, pinfo.pos).map(_ => keys.length)
+      }
+    }
+
+    ctx.getMeta(pinfo.parent.get).map(_.copy()).flatMap { p =>
+      borrow(target, p, pinfo.pos).map(_ => result.get)
     }
   }
 
@@ -649,7 +678,7 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
   }
 
   /**
-   * To be able to get next or prev we have to set parents from root to the node (partial path)
+   * If the parent is not set , do it.
    */
   def setPath(b: Block[K,V])(implicit ord: Ordering[K]): Future[Boolean] = {
 

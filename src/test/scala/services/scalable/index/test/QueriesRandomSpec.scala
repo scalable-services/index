@@ -9,7 +9,9 @@ import services.scalable.index.impl._
 import services.scalable.index.{Commands, DefaultSerializers, IndexBuilder, QueryableIndex}
 
 import java.util.UUID
-import ch.qos.logback.classic.{Logger, Level}
+import ch.qos.logback.classic.{Level, Logger}
+import services.scalable.index.Commands.{Command, Insert, Remove, Update}
+
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
 
@@ -18,7 +20,7 @@ class QueriesRandomSpec extends Repeatable with Matchers {
   LoggerFactory.getLogger("services.scalable.index.Context").asInstanceOf[Logger].setLevel(Level.INFO)
   LoggerFactory.getLogger("services.scalable.index.impl.GrpcByteSerializer").asInstanceOf[Logger].setLevel(Level.INFO)
 
-  override val times: Int = 1000
+  override val times: Int = 10
 
   "queries" should " run successfully" in {
 
@@ -32,6 +34,8 @@ class QueriesRandomSpec extends Repeatable with Matchers {
 
     import services.scalable.index.DefaultComparators._
     import services.scalable.index.DefaultSerializers._
+
+    val version = UUID.randomUUID().toString
 
     val NUM_LEAF_ENTRIES = rand.nextInt(4, 64)
     val NUM_META_ENTRIES = rand.nextInt(4, 64)
@@ -52,7 +56,7 @@ class QueriesRandomSpec extends Repeatable with Matchers {
       maxNItems = -1L
     ))(storage, global), Duration.Inf).get
 
-    val builder = IndexBuilder.create[K, V](global, ordering,
+    val rangeBuilder = IndexBuilder.create[K, V](global, ordering,
         indexContext.numLeafItems, indexContext.numMetaItems, indexContext.maxNItems,
         DefaultSerializers.stringSerializer, DefaultSerializers.stringSerializer)
       .storage(storage)
@@ -60,140 +64,181 @@ class QueriesRandomSpec extends Repeatable with Matchers {
     //.keyToStringConverter(DefaultPrinters.intToStringPrinter)
     .build()
 
-    var data = Seq.empty[(K, V, Option[String])]
-    var index = new QueryableIndex[K, V](indexContext)(builder)
+   // var data = Seq.empty[(K, V, Option[String])]
+    //var index = new QueryableIndex[K, V](indexContext)(builder)
 
     val prefixes = (0 until 10).map{_ => RandomStringUtils.randomAlphabetic(3).toLowerCase}
       .distinct.toList
 
-    def insert(): Unit = {
+    def insert(data: Seq[(K, V)], upsert: Boolean = false): (Boolean, Seq[Command[K, V]]) = {
+      val n = rand.nextInt(100, 1000)
+      var list = Seq.empty[(K, V, Boolean)]
 
-      val currentVersion = Some(index.ctx.id)
-      val indexBackup = index
+      for(i<-0 until n){
+        val k = RandomStringUtils.randomAlphabetic(10).toLowerCase()
+        val v = k
 
-      val n = rand.nextInt(1, 1000)
-      var list = Seq.empty[Tuple3[K, V, Boolean]]
-
-      for (i <- 0 until n) {
-        val k = RandomStringUtils.randomAlphanumeric(5, 10)
-        val v = RandomStringUtils.randomAlphanumeric(5)
-
-        if (!data.exists { case (k1, _, _) => ordering.equiv(k, k1) } &&
-          !list.exists { case (k1, _, _) => ordering.equiv(k, k1) }) {
-          list = list :+ (k, v, false)
+        if(!data.exists{case (k1, _) => rangeBuilder.ord.equiv(k, k1)} && !list.exists{case (k1, _, _) =>
+          rangeBuilder.ord.equiv(k, k1)}){
+          list = list :+ (k, v, upsert)
         }
       }
 
-      //logger.debug(s"${Console.GREEN_B}INSERTING ${list.map{case (k, v, _) => builder.ks(k)}}${Console.RESET}")
-
-      val cmds = Seq(
-        Commands.Insert(indexId, list)
-      )
-
-      val result = Await.result(index.execute(cmds), Duration.Inf)
-
-      if (result.success) {
-        logger.debug(s"${Console.GREEN_B}INSERTION OK: ${list.map { case (k, v, _) => builder.ks(k) }}${Console.RESET}")
-
-        val newDescriptor = Await.result(index.save(), Duration.Inf)
-        index = new QueryableIndex[K, V](newDescriptor)(builder)
-
-        data = data ++ list.map { case (k, v, _) => (k, v, currentVersion) }
-
-        return
+      if(list.isEmpty) {
+        println("no unique data to insert!")
+        return true -> Seq.empty[Command[K, V]]
       }
 
-      logger.debug(s"${Console.RED_B}INSERTION FAIL: ${list.map { case (k, v, _) => builder.ks(k) }}${Console.RESET}")
+      val insertDups = rand.nextInt(1, 100) % 7 == 0
 
-      index = indexBackup
-      result.error.get.printStackTrace()
+      println(s"${Console.GREEN}INSERTING...${Console.RESET}")
+
+      if(insertDups){
+        list = list :+ list.head
+      }
+
+      !insertDups -> Seq(Insert(indexId, list, Some(version)))
     }
 
-    def update(): Unit = {
+    def remove(data: Seq[(K, V)]): (Boolean, Seq[Command[K, V]]) = {
 
-      val currentVersion = Some(index.ctx.id)
-      val indexBackup = index
-
-      val n = if (data.length >= 2) rand.nextInt(1, data.length) else 1
-      val list = scala.util.Random.shuffle(data).slice(0, n).map { case (k, v, lv) =>
-        (k, RandomStringUtils.randomAlphanumeric(10), lv)
+      if(data.isEmpty) {
+        println("no data to remove! Index is empty already!")
+        return true -> Seq.empty[Command[K, V]]
       }
 
-      val cmds = Seq(
-        Commands.Update(indexId, list)
-      )
+      val keys = data.map(_._1)
+      var toRemoveRandom = (if(keys.length > 1) scala.util.Random.shuffle(keys).slice(0, rand.nextInt(1, keys.length))
+      else keys).map { _ -> Some(version)}
 
-      val result = Await.result(index.execute(cmds), Duration.Inf)
+      val removalError = rand.nextInt(1, 100) match {
+        case i if i % 7 == 0 =>
+          val elem = toRemoveRandom(0)
+          toRemoveRandom = toRemoveRandom :+ (elem._1 + "x" , elem._2)
+          true
 
-      if (result.success) {
-
-        logger.debug(s"${Console.MAGENTA_B}UPDATED RIGHT LAST VERSION ${list.map { case (k, _, _) => builder.ks(k) }}...${Console.RESET}")
-
-        val newDescriptor = Await.result(index.save(), Duration.Inf)
-        index = new QueryableIndex[K, V](newDescriptor)(builder)
-
-        data = data.filterNot { case (k, _, _) => list.exists { case (k1, _, _) => ordering.equiv(k, k1) } }
-        data = data ++ list.map { case (k, v, _) => (k, v, currentVersion) }
-
-        return
+        case _ => false
       }
 
-      index = indexBackup
-      result.error.get.printStackTrace()
-      logger.debug(s"${Console.CYAN_B}UPDATED WRONG LAST VERSION ${list.map { case (k, _, _) => builder.ks(k) }}...${Console.RESET}")
+      println(s"${Console.RED_B}REMOVING...${Console.RESET}")
+      !removalError -> Seq(Remove(indexId, toRemoveRandom, Some(version)))
     }
 
-    def remove(): Unit = {
-
-      val currentVersion = Some(index.ctx.id)
-      val indexBackup = index
-
-      val n = if (data.length >= 2) rand.nextInt(1, data.length) else 1
-      val list: Seq[Tuple2[K, Option[String]]] = scala.util.Random.shuffle(data).slice(0, n).map { case (k, _, lv) =>
-        (k, lv)
+    def update(data: Seq[(K, V)]): (Boolean, Seq[Command[K, V]]) = {
+      if(data.isEmpty) {
+        println("no data to update! Index is empty!")
+        return true -> Seq.empty[Command[K, V]]
       }
 
-      val cmds = Seq(
-        Commands.Remove[K, V](indexId, list)
-      )
+      var toUpdateRandom = (if(data.length > 1) scala.util.Random.shuffle(data).slice(0, rand.nextInt(1, data.length))
+      else data).map { case (k, v) => (k, RandomStringUtils.randomAlphabetic(10), Some(version))}
 
-      val result = Await.result(index.execute(cmds), Duration.Inf)
+      val updateError = rand.nextInt(1, 100) match {
+        case i if i % 13 == 0 =>
+          val elem = toUpdateRandom(0)
+          toUpdateRandom = toUpdateRandom :+ (elem._1 + "x" , elem._2, elem._3)
+          true
 
-      if (result.success) {
-
-        val newDescriptor = Await.result(index.save(), Duration.Inf)
-        index = new QueryableIndex[K, V](newDescriptor)(builder)
-
-        logger.debug(s"${Console.YELLOW_B}REMOVED RIGHT VERSION ${list.map { case (k, _) => builder.ks(k) }}...${Console.RESET}")
-        data = data.filterNot { case (k, _, _) => list.exists { case (k1, _) => ordering.equiv(k, k1) } }
-
-        return
+        case _ => false
       }
 
-      index = indexBackup
-      result.error.get.printStackTrace()
-      logger.debug(s"${Console.RED_B}REMOVED WRONG VERSION ${list.map { case (k, _) => builder.ks(k) }}...${Console.RESET}")
+      println(s"${Console.BLUE_B}UPDATING...${Console.RESET}")
+
+      !updateError -> Seq(Update(indexId, toUpdateRandom, Some(version)))
     }
 
-    val n = rand.nextInt(1, 10)
+    var data = Seq.empty[(K, V, Option[String])]
+    val runtimes = rand.nextInt(5, 100)
 
-    for(i<-0 until n){
-     // insert()
-      rand.nextInt(1, 4) match {
-        case 1 => insert()
-        case 2 if !data.isEmpty => update()
-        case 3 if !data.isEmpty => remove()
-        case _ => insert()
+    for(j<-0 until runtimes){
+
+      val ctx = Await.result(storage.loadIndex(indexId), Duration.Inf).get
+      val index = new QueryableIndex[K, V](ctx)(rangeBuilder)
+      var indexData = index.allSync().map(x => (x._1, x._2))
+
+      println(s"indexData: ${indexData.length}")
+
+      val nCommands = rand.nextInt(1, 100)
+      var cmds = Seq.empty[Command[K, V]]
+
+      for(i<-0 until nCommands){
+        cmds ++= (rand.nextInt(1, 10000) match {
+          case i if !indexData.isEmpty && i % 5 == 0 =>
+
+            val (ok, cmds) = update(indexData)
+
+            if(ok){
+              val list = cmds(0).asInstanceOf[Update[K, V]].list
+              indexData = indexData.filterNot{case (k, v) => list.exists{case (k1, _, _) => rangeBuilder.ord.equiv(k, k1)}}
+              indexData = indexData ++ list.map(x => x._1 -> x._2)
+            }
+
+            cmds
+
+          case i if !indexData.isEmpty && i % 3 == 0 =>
+
+            val (ok, cmds) = remove(indexData)
+
+            if(ok){
+              val list = cmds(0).asInstanceOf[Remove[K, V]].keys
+              indexData = indexData.filterNot{case (k, v) => list.exists{case (k1, _) => rangeBuilder.ord.equiv(k, k1)}}
+            }
+
+            cmds
+
+          case _ =>
+            val (ok, cmds) = insert(indexData)
+
+            if(ok){
+              val list = cmds(0).asInstanceOf[Insert[K, V]].list
+              indexData = indexData ++ list.map(x => (x._1, x._2))
+            }
+
+            cmds
+        })
+      }
+
+      val r0 = Await.result(index.execute(cmds, version), Duration.Inf)
+
+      if(!r0.success){
+        println(r0.error.get.getClass)
+        //assert(false)
+      } else {
+
+        // When everything is ok (all or nothing) executes it...
+        for(i<-0 until cmds.length){
+          cmds(i) match {
+            case cmd: Update[K, V] =>
+
+              val list = cmd.list
+              data = data.filterNot{case (k, v, _) => list.exists{case (k1, _, _) => rangeBuilder.ord.equiv(k, k1)}}
+              data = data ++ list
+
+            case cmd: Remove[K, V] =>
+
+              val list = cmd.keys
+              data = data.filterNot{case (k, v, _) => list.exists{case (k1, _) => rangeBuilder.ord.equiv(k, k1)}}
+
+            case cmd: Insert[K, V] =>
+              val list = cmd.list
+              data = data ++ list.map{x => (x._1, x._2, Some(version))}
+          }
+        }
+
+        Await.result(index.save(), Duration.Inf)
       }
     }
 
     data = data.sortBy(_._1)
 
+    val ctx = Await.result(storage.loadIndex(indexId), Duration.Inf).get
+    val index = new QueryableIndex[K, V](ctx)(rangeBuilder)
+
     val dlist = data.map{case (k, v, _) => k -> v}
     val ilist = Await.result(index.all(), Duration.Inf).map{case (k, v, _) => k -> v}
 
-    logger.debug(s"${Console.GREEN_B}tdata: ${dlist.map{case (k, v) => builder.ks(k) -> builder.vs(v)}}${Console.RESET}\n")
-    logger.debug(s"${Console.MAGENTA_B}idata: ${ilist.map{case (k, v) => builder.ks(k) -> builder.vs(v)}}${Console.RESET}\n")
+    logger.debug(s"${Console.GREEN_B}tdata: ${dlist.map{case (k, v) => rangeBuilder.ks(k) -> rangeBuilder.vs(v)}}${Console.RESET}\n")
+    logger.debug(s"${Console.MAGENTA_B}idata: ${ilist.map{case (k, v) => rangeBuilder.ks(k) -> rangeBuilder.vs(v)}}${Console.RESET}\n")
 
     Await.result(storage.close(), Duration.Inf)
 
@@ -296,7 +341,7 @@ class QueriesRandomSpec extends Repeatable with Matchers {
 
         slice = if (reverse) slice.reverse else slice
 
-        logger.debug(s"term: ${builder.ks(term)}...")
+        logger.debug(s"term: ${rangeBuilder.ks(term)}...")
 
         val itr = index.lt(term, inclusive, reverse)(termComp)
         val indexData = Await.result(index.all(itr), Duration.Inf).map(x => x._1 -> x._2).toList

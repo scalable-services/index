@@ -128,6 +128,7 @@ class Leaf[K, V](override val id: String,
 
   override def borrow(t: Block[K,V])(implicit ctx: Context[K,V]): Block[K,V] = {
     val target = t.asInstanceOf[Leaf[K,V]]
+
     val targetHead = target.tuples.head._1
     val thisHead = tuples.head._1
     val minKeys = target.minNeeded()
