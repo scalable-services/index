@@ -9,6 +9,7 @@ import services.scalable.index.grpc.{IndexContext, TemporalContext}
 
 import java.nio.ByteBuffer
 import scala.concurrent.{ExecutionContext, Future}
+import scala.jdk.FutureConverters.CompletionStageOps
 
 class CassandraStorage(val session: CqlSession,
                        val truncate: Boolean = true)(implicit val ec: ExecutionContext) extends Storage {
@@ -170,6 +171,6 @@ class CassandraStorage(val session: CqlSession,
   }
 
   override def close(): Future[Unit] = {
-    Future.successful {}
+    session.closeAsync().asScala.map(_ => {})
   }
 }
