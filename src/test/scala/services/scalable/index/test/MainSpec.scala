@@ -53,12 +53,12 @@ class MainSpec extends Repeatable with Matchers {
       .build()
 
     var data = Seq.empty[(K, V, Option[String])]
-    var index = new QueryableIndex[K, V](indexContext)(builder)
+    var ctx: IndexContext = indexContext
 
     def insert(): Unit = {
 
-      val currentVersion = Some(index.ctx.id)
-      val indexBackup = index
+      val currentVersion = Some(ctx.id)
+      val index = new QueryableIndex[K, V](ctx)(builder)
 
       val n = rand.nextInt(1, 1000)
       var list = Seq.empty[Tuple3[K, V, Boolean]]
@@ -98,7 +98,8 @@ class MainSpec extends Repeatable with Matchers {
         logger.debug(s"${Console.GREEN_B}INSERTION OK: ${list.map{case (k, v, _) => builder.ks(k)}}${Console.RESET}")
 
         val newDescriptor = Await.result(index.save(), Duration.Inf)
-        index = new QueryableIndex[K, V](newDescriptor)(builder)
+        //index = new QueryableIndex[K, V](newDescriptor)(builder)
+        ctx = newDescriptor
 
         data = data ++ list.map{case (k, v, _) => (k, v, currentVersion)}
 
@@ -107,14 +108,13 @@ class MainSpec extends Repeatable with Matchers {
 
       logger.debug(s"${Console.RED_B}INSERTION FAIL: ${list.map{case (k, v, _) => builder.ks(k)}}${Console.RESET}")
 
-      index = indexBackup
       result.error.get.printStackTrace()
     }
 
     def update(): Unit = {
 
-      val currentVersion = Some(index.ctx.id)
-      val indexBackup = index
+      val currentVersion = Some(ctx.id)
+      val index = new QueryableIndex[K, V](ctx)(builder)
 
       val introduceError = rand.nextBoolean()
       val errorTx = Some(UUID.randomUUID.toString)
@@ -136,7 +136,7 @@ class MainSpec extends Repeatable with Matchers {
         logger.debug(s"${Console.MAGENTA_B}UPDATED RIGHT LAST VERSION ${list.map{case (k, _, _) => builder.ks(k)}}...${Console.RESET}")
 
         val newDescriptor = Await.result(index.save(), Duration.Inf)
-        index = new QueryableIndex[K, V](newDescriptor)(builder)
+        ctx = newDescriptor
 
         data = data.filterNot { case (k, _, _) => list.exists { case (k1, _, _) => bytesOrd.equiv(k, k1) } }
         data = data ++ list.map { case (k, v, _) => (k, v, currentVersion) }
@@ -144,15 +144,14 @@ class MainSpec extends Repeatable with Matchers {
         return
       }
 
-      index = indexBackup
       result.error.get.printStackTrace()
       logger.debug(s"${Console.CYAN_B}UPDATED WRONG LAST VERSION ${list.map { case (k, _, _) => builder.ks(k) }}...${Console.RESET}")
     }
 
     def remove(): Unit = {
 
-      val currentVersion = Some(index.ctx.id)
-      val indexBackup = index
+      val currentVersion = Some(ctx.id)
+      val index = new QueryableIndex[K, V](ctx)(builder)
 
       val introduceError = rand.nextBoolean()
       val errorTx = Some(UUID.randomUUID.toString)
@@ -169,9 +168,8 @@ class MainSpec extends Repeatable with Matchers {
       val result = Await.result(index.execute(cmds), Duration.Inf)
 
       if(result.success){
-
         val newDescriptor = Await.result(index.save(), Duration.Inf)
-        index = new QueryableIndex[K, V](newDescriptor)(builder)
+        ctx = newDescriptor
 
         logger.debug(s"${Console.YELLOW_B}REMOVED RIGHT VERSION ${list.map { case (k, _) => builder.ks(k) }}...${Console.RESET}")
         data = data.filterNot { case (k, _, _) => list.exists { case (k1, _) => bytesOrd.equiv(k, k1) } }
@@ -179,7 +177,6 @@ class MainSpec extends Repeatable with Matchers {
         return
       }
 
-      index = indexBackup
       result.error.get.printStackTrace()
       logger.debug(s"${Console.RED_B}REMOVED WRONG VERSION ${list.map { case (k, _) => builder.ks(k) }}...${Console.RESET}")
     }
@@ -195,9 +192,7 @@ class MainSpec extends Repeatable with Matchers {
       }
     }
 
-    //insert()
-    //update()
-
+    val index = new QueryableIndex[K, V](ctx)(builder)
     logger.info(Await.result(index.save(), Duration.Inf).toString)
 
     val dlist = data.sortBy(_._1).map{case (k, v, _) => k -> v}
