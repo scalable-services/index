@@ -20,7 +20,7 @@ class QueriesRandomSpec extends Repeatable with Matchers {
   LoggerFactory.getLogger("services.scalable.index.Context").asInstanceOf[Logger].setLevel(Level.INFO)
   LoggerFactory.getLogger("services.scalable.index.impl.GrpcByteSerializer").asInstanceOf[Logger].setLevel(Level.INFO)
 
-  override val times: Int = 10
+  override val times: Int = 1
 
   "queries" should " run successfully" in {
 

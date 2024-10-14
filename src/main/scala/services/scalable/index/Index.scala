@@ -138,9 +138,9 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
 
     val opt = ctx.getParent(block.unique_id)
 
-    if(opt.isEmpty){
+    /*if(opt.isEmpty){
       return setPath(block).flatMap(_ => recursiveCopy(block))
-    }
+    }*/
 
     val pinfo = opt.get
 
@@ -195,9 +195,9 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
 
     val opt = ctx.getParent(left.unique_id)
 
-    if(opt.isEmpty) {
+    /*if(opt.isEmpty) {
       return setPath(left).flatMap(_ => handleParent(left, right))
-    }
+    }*/
 
     val pinfo = opt.get
 
@@ -336,9 +336,9 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
 
     val opt = ctx.getParent(parent.unique_id)
 
-    if(opt.isEmpty){
+    /*if(opt.isEmpty){
       return setPath(parent).flatMap(_ => merge(left, lpos, right, rpos, parent))
-    }
+    }*/
 
     val ginfo = opt.get
 
@@ -428,9 +428,9 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
 
     val opt = ctx.getParent(parent.unique_id)
 
-    if(opt.isEmpty){
+    /*if(opt.isEmpty){
       return setPath(parent).flatMap(_ => removeEmptyLeafFromParent(parent, targetPos))
-    }
+    }*/
 
     val pinfo = opt.get
 
@@ -455,9 +455,9 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
 
     val opt = ctx.getParent(target.unique_id)
 
-    if(opt.isEmpty){
+    /*if(opt.isEmpty){
       return setPath(target).flatMap(_ => removeFromLeaf(target, keys))
-    }
+    }*/
 
     val pinfo = opt.get
 
@@ -680,7 +680,7 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
   /**
    * If the parent is not set , do it.
    */
-  def setPath(b: Block[K,V])(implicit ord: Ordering[K]): Future[Boolean] = {
+  /*def setPath(b: Block[K,V])(implicit ord: Ordering[K]): Future[Boolean] = {
 
     //It makes sure leaf node it is part of current root tree...
     if(!ctx.isFromCurrentContext(b)){
@@ -692,7 +692,7 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
     findPath(b.last, Some(b)).map { _ =>
       true
     }
-  }
+  }*/
 
   def first(): Future[Option[Leaf[K,V]]] = {
     if(ctx.root.isEmpty) return Future.successful(None)
@@ -748,9 +748,9 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
 
       val opt = ctx.getParent(b.unique_id)
 
-      if(opt.isEmpty){
+      /*if(opt.isEmpty){
         return setPath(b).flatMap(_ => next(current))
-      }
+      }*/
 
       val pinfo = opt.get
 
@@ -784,9 +784,9 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
 
       val opt = ctx.getParent(b.unique_id)
 
-      if(opt.isEmpty){
+      /*if(opt.isEmpty){
         return setPath(b).flatMap(_ => prev(current))
-      }
+      }*/
 
       val pinfo = opt.get
 
@@ -1000,7 +1000,16 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
     }
   }
 
+  /**
+   * To safely execute a batch , first make sure all commands will not fail (version checking and keys checking -
+   * existing for update and remove and non-existing for inserting - are ok)
+   * @param cmds
+   * @param version
+   * @return
+   */
   def execute(cmds: Seq[Command[K, V]], version: String = ctx.id): Future[BatchResult] = {
+
+    assert(!ctx.used.get(), s"The context for index ${ctx.indexId} was already used! Please instantiate another index instance to perform new set of operations!")
 
     def process(pos: Int, error: Option[Throwable]): Future[BatchResult] = {
       if(error.isDefined) {
@@ -1020,6 +1029,9 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
       }).flatMap(prev => process(pos + 1, prev.error))
     }
 
-    process(0, None)
+    process(0, None).map { r =>
+      ctx.used.set(true)
+      r
+    }
   }
 }

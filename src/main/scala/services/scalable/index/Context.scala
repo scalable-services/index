@@ -4,6 +4,7 @@ import org.slf4j.LoggerFactory
 import services.scalable.index.grpc.{IndexContext, RootRef}
 
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.Future
 
@@ -16,7 +17,6 @@ sealed class Context[K, V](val indexId: String,
 
   import builder._
 
-  private var disposable = false
   val id: String = UUID.randomUUID().toString
 
   val logger = LoggerFactory.getLogger(this.getClass)
@@ -29,6 +29,7 @@ sealed class Context[K, V](val indexId: String,
 
   var newBlocksReferences = TrieMap.empty[(String, String), Block[K, V]]
   val parents = TrieMap.empty[(String, String), ParentInfo[K]]
+  protected[index] val used = new AtomicBoolean(false)
 
   def getRoot(): Future[Option[Block[K, V]]] = {
     root match {
@@ -164,10 +165,6 @@ sealed class Context[K, V](val indexId: String,
   }
 
   def save(): Future[IndexContext] = {
-    assert(!disposable, s"The context for index ${indexId} was already saved! Please instantiate another index instance to perform new operations!")
-
-    disposable = true
-
     val snap = snapshot()
 
     storage.save(snap, newBlocksReferences.map{case (id, block) => id -> builder.serializer.serialize(block)}.toMap).map { r =>
