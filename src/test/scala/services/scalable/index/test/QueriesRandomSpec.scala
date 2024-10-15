@@ -112,9 +112,14 @@ class QueriesRandomSpec extends Repeatable with Matchers {
       else keys).map { _ -> Some(version)}
 
       val removalError = rand.nextInt(1, 100) match {
-        case i if i % 7 == 0 =>
+        case i if i % 3 == 0 =>
           val elem = toRemoveRandom(0)
           toRemoveRandom = toRemoveRandom :+ (elem._1 + "x" , elem._2)
+          true
+
+        case i if i % 5 == 0 =>
+          val elem = toRemoveRandom(0)
+          toRemoveRandom = toRemoveRandom :+ (elem._1 , Some(UUID.randomUUID().toString))
           true
 
         case _ => false
@@ -134,9 +139,14 @@ class QueriesRandomSpec extends Repeatable with Matchers {
       else data).map { case (k, v) => (k, RandomStringUtils.randomAlphabetic(10), Some(version))}
 
       val updateError = rand.nextInt(1, 100) match {
-        case i if i % 13 == 0 =>
+        case i if i % 3 == 0 =>
           val elem = toUpdateRandom(0)
           toUpdateRandom = toUpdateRandom :+ (elem._1 + "x" , elem._2, elem._3)
+          true
+
+        case i if i % 5 == 0 =>
+          val elem = toUpdateRandom(0)
+          toUpdateRandom = toUpdateRandom :+ (elem._1 , elem._2, Some(UUID.randomUUID().toString))
           true
 
         case _ => false
