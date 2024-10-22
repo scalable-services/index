@@ -1009,7 +1009,7 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
    */
   def execute(cmds: Seq[Command[K, V]], version: String = ctx.id): Future[BatchResult] = {
 
-    assert(!ctx.used.get(), s"The context for index ${ctx.indexId} was already used! Please instantiate another index instance to perform new set of operations!")
+    //assert(!ctx.used.get(), s"The context for index ${ctx.indexId} was already used! Please instantiate another index instance to perform new set of operations!")
 
     def process(pos: Int, error: Option[Throwable]): Future[BatchResult] = {
       if(error.isDefined) {

@@ -80,8 +80,14 @@ class MemoryStorage()(implicit val ec: ExecutionContext) extends Storage {
     }
   }
 
-  override def save(blocks: Map[(String, String), Array[Byte]]): Future[Boolean] = {
-    blocks.foreach { case (id, b) =>
+  override def save(list: Map[(String, String), Array[Byte]]): Future[Boolean] = {
+    val existing = list.filter{case (id, _) => blocks.isDefinedAt(id)}
+
+    if(!existing.isEmpty){
+      return Future.failed(new Errors.MUTABLE_OP_NOT_ALLOWED(existing.keys.toSeq))
+    }
+
+    list.foreach { case (id, b) =>
       this.blocks.put(id, b)
     }
 
