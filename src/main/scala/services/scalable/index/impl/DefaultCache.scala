@@ -13,7 +13,7 @@ class DefaultCache(val MAX_BLOCK_CACHE_SIZE: Long = 100L * 1024L * 1024L,
                    val MAX_PARENT_ENTRIES: Int = 1000)
                   (implicit val ec: ExecutionContext) extends Cache {
 
-  val newBlocks = TrieMap.empty[(String, String), Block[_, _]]
+  //val newBlocks = TrieMap.empty[(String, String), Block[_, _]]
   val logger = LoggerFactory.getLogger(this.getClass)
 
   val blocks = Caffeine.newBuilder()
@@ -37,31 +37,34 @@ class DefaultCache(val MAX_BLOCK_CACHE_SIZE: Long = 100L * 1024L * 1024L,
     .build[(String, String), (Option[(String, String)], Int)]()
 
   def put[K, V](block: Block[K, V]): Unit = {
-    if(block.isNew) {
+    /*if(block.isNew) {
       newBlocks.put(block.unique_id, block)
       return
-    }
+    }*/
 
     blocks.put(block.unique_id, block)
   }
 
   def get[K, V](unique_id: (String, String)): Option[Block[K,V]] = {
-    newBlocks.get(unique_id) match {
+    /*newBlocks.get(unique_id) match {
       case None =>
         val block = blocks.getIfPresent(unique_id)
         if (block == null) None else Some(block.asInstanceOf[Block[K, V]])
 
       case Some(block) => Some(block.asInstanceOf[Block[K, V]])
-    }
+    }*/
+
+    val block = blocks.getIfPresent(unique_id)
+    if (block == null) None else Some(block.asInstanceOf[Block[K, V]])
   }
 
   override def invalidate[K, V](id: (String, String)): Unit = {
-    newBlocks.remove(id)
+    //newBlocks.remove(id)
     blocks.invalidate(id)
   }
 
   override def invalidateAll(): Unit = {
-    newBlocks.clear()
+   // newBlocks.clear()
     blocks.cleanUp()
   }
 }

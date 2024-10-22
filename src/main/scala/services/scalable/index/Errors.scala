@@ -4,6 +4,10 @@ object Errors {
 
   sealed trait IndexError
   sealed trait TemporalIndexError extends IndexError
+  sealed trait StorageError
+
+  case class MUTABLE_OP_NOT_ALLOWED(blockIds: Seq[(String, String)])
+    extends RuntimeException(s"Mutable operation not allowed for blocks: ${blockIds}") with StorageError
 
   case object LEAF_BLOCK_FULL extends RuntimeException("Leaf is full!") with IndexError
   case object META_BLOCK_FULL extends RuntimeException("Meta is full!") with IndexError

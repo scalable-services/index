@@ -42,23 +42,28 @@ sealed class Context[K, V](val indexId: String,
    *
    * To work the blocks being manipulated must be in memory before saving...
    */
-  def get(id: (String, String)): Future[Block[K,V]] = cache.get[K, V](id) match {
-    case None => storage.get(id).map { buf =>
-      val block = serializer.deserialize(buf)
+  def get(id: (String, String)): Future[Block[K,V]] = {
+    val opt = newBlocksReferences.get(id)
 
-      if(root.isDefined && root.get == block.unique_id){
-        setParent(block.unique_id, block.lastOption, 0, None)
+    if(opt.isDefined) return Future.successful(opt.get)
+
+    cache.get[K, V](id) match {
+      case None => storage.get(id).map { buf =>
+        val block = serializer.deserialize(buf)
+
+        if(root.isDefined && root.get == block.unique_id){
+          setParent(block.unique_id, block.lastOption, 0, None)
+        }
+
+        cache.put(block)
+        block
       }
 
-      cache.put(block)
-      block
+      case Some(block) => Future.successful(block)
     }
-
-    case Some(block) => Future.successful(block)
   }
 
   def put(block: Block[K, V]): Unit = {
-    cache.put(block)
     newBlocksReferences.put(block.unique_id, block)
   }
 
@@ -99,7 +104,6 @@ sealed class Context[K, V](val indexId: String,
     logger.debug(s"Creating leaf ${leaf.unique_id}...")
 
     newBlocksReferences += leaf.unique_id -> leaf
-    cache.put(leaf)
     setParent(leaf.unique_id, None, 0, None)
 
     leaf
@@ -111,7 +115,6 @@ sealed class Context[K, V](val indexId: String,
     logger.debug(s"Creating meta ${meta.unique_id}...")
 
     newBlocksReferences += meta.unique_id -> meta
-    cache.put(meta)
     setParent(meta.unique_id, None, 0, None)
 
     meta
