@@ -6,7 +6,8 @@ import services.scalable.index.grpc.{IndexContext, RootRef}
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.collection.concurrent.TrieMap
-import scala.concurrent.Future
+import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, Future}
 
 sealed class Context[K, V](val indexId: String,
                     var lastChangeVersion: String,
@@ -17,6 +18,7 @@ sealed class Context[K, V](val indexId: String,
 
   import builder._
 
+  //val ctxCache = TrieMap.empty[(String, String), Block[K, V]]
   val id: String = UUID.randomUUID().toString
 
   val logger = LoggerFactory.getLogger(this.getClass)
@@ -56,6 +58,9 @@ sealed class Context[K, V](val indexId: String,
         }
 
         cache.put(block)
+
+        //ctxCache.put(block.unique_id, block)
+
         block
       }
 
@@ -98,8 +103,11 @@ sealed class Context[K, V](val indexId: String,
     parent._2
   }*/
 
-  def createLeaf(): Leaf[K,V] = {
-    val leaf = new Leaf[K,V](idGenerator.generateBlockId(this), idGenerator.generateBlockPartition(this), LEAF_MIN, LEAF_MAX)
+  def createLeaf(sameId: Option[(String, String)] = None): Leaf[K,V] = {
+    val leaf = new Leaf[K,V](if(sameId.isDefined) sameId.get._1 else
+      idGenerator.generateBlockId(this), if(sameId.isDefined) sameId.get._2 else
+      idGenerator.generateBlockPartition(this),
+      LEAF_MIN, LEAF_MAX)
 
     logger.debug(s"Creating leaf ${leaf.unique_id}...")
 
@@ -109,8 +117,10 @@ sealed class Context[K, V](val indexId: String,
     leaf
   }
 
-  def createMeta(): Meta[K,V] = {
-    val meta = new Meta[K,V](idGenerator.generateBlockId(this), idGenerator.generateBlockPartition(this), META_MIN, META_MAX)
+  def createMeta(sameId: Option[(String, String)] = None): Meta[K,V] = {
+    val meta = new Meta[K,V](if(sameId.isDefined) sameId.get._1 else
+      idGenerator.generateBlockId(this), if(sameId.isDefined) sameId.get._2 else
+      idGenerator.generateBlockPartition(this), META_MIN, META_MAX)
 
     logger.debug(s"Creating meta ${meta.unique_id}...")
 
@@ -159,9 +169,9 @@ sealed class Context[K, V](val indexId: String,
   def clear(): Unit = {
     logger.debug(s"Removing new block references ${newBlocksReferences.map(_._1)}...")
 
-    newBlocksReferences.foreach { case (id, _) =>
+    /*newBlocksReferences.foreach { case (id, _) =>
       cache.invalidate(id)
-    }
+    }*/
 
     newBlocksReferences.clear()
     parents.clear()
@@ -170,7 +180,21 @@ sealed class Context[K, V](val indexId: String,
   def save(): Future[IndexContext] = {
     val snap = snapshot()
 
-    storage.save(snap, newBlocksReferences.map{case (id, block) => id -> builder.serializer.serialize(block)}.toMap).map { r =>
+    newBlocksReferences.values.filter(_.copiedFrom.isDefined).foreach { b =>
+      val p = Await.result(get(b.copiedFrom.get), Duration.Inf)
+
+      b match {
+        case leaf: Leaf[K, V] =>
+          val diff = leaf.tuples.diff(p.asInstanceOf[Leaf[K, V]].tuples)
+          logger.info("leaf diff: {}, equals: {}, total: {}", diff.length,  leaf.tuples.length - diff.length, leaf.tuples.length)
+        case meta: Meta[K, V] =>
+
+          val diff = meta.pointers.diff(p.asInstanceOf[Meta[K, V]].pointers)
+          logger.info("meta diff: {}, equals: {}, total: {}", diff.length,  meta.pointers.length - diff.length, meta.pointers.length)
+      }
+    }
+
+    storage.save(snap, newBlocksReferences.map { case (id, block) => block.unique_id -> builder.serializer.serialize(block) }.toMap).map { r =>
       clear()
       snap
     }

@@ -54,7 +54,7 @@ class SplitAndMergeIndexSpec extends Repeatable with Matchers {
       maxNItems = MAX_ITEMS
     ))(storage, global), Duration.Inf).get
 
-    val builder = IndexBuilder.create[K, V](global, DefaultComparators.bytesOrd,
+    val builder = IndexBuilder.create[K, V](global, DefaultComparators.bytesOrd, DefaultComparators.bytesOrd,
        indexContext.numLeafItems, indexContext.numMetaItems, indexContext.maxNItems,
         DefaultSerializers.bytesSerializer, DefaultSerializers.bytesSerializer)
       .storage(storage)
@@ -100,7 +100,7 @@ class SplitAndMergeIndexSpec extends Repeatable with Matchers {
         (k, RandomStringUtils.randomAlphanumeric(10).getBytes(Charsets.UTF_8), Some(vs))
       }
 
-      data = data.filterNot{case (k, _, _) => list.exists{case (k1, _, _) => builder.ord.equiv(k, k1)}}
+      data = data.filterNot{case (k, _, _) => list.exists{case (k1, _, _) => builder.keyOrdering.equiv(k, k1)}}
       data ++= list.map{case (k, v, _) => (k, v, version)}
 
       Seq(Commands.Update(indexId, list))
@@ -111,7 +111,7 @@ class SplitAndMergeIndexSpec extends Repeatable with Matchers {
       val list: Seq[Tuple2[K, Option[String]]] = scala.util.Random.shuffle(data).slice(0, n)
         .map { case (k, _, vs) => k -> Some(vs)}
 
-      data = data.filterNot{case (k, _, _) => list.exists{case (k1, _) => builder.ord.equiv(k, k1)}}
+      data = data.filterNot{case (k, _, _) => list.exists{case (k1, _) => builder.keyOrdering.equiv(k, k1)}}
 
       Seq(Commands.Remove[K, V](indexId, list))
     }

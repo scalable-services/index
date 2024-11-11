@@ -45,6 +45,7 @@ class CassandraSpec extends Repeatable with Matchers {
     ))(storage, global), Duration.Inf).get
 
     val builder = IndexBuilder.create[K, V](global, DefaultComparators.bytesOrd,
+        DefaultComparators.bytesOrd,
         indexContext.numLeafItems, indexContext.numMetaItems, indexContext.maxNItems,
         DefaultSerializers.bytesSerializer, DefaultSerializers.bytesSerializer)
       .storage(storage)

@@ -66,6 +66,7 @@ class DatomsSpec extends Repeatable with Matchers {
     ))(storage, global), Duration.Inf).get
 
     val builder = IndexBuilder.create[K, V](global, DatomComparators.datomOrdering,
+        DefaultComparators.bytesOrd,
         indexContext.numLeafItems, indexContext.numMetaItems, indexContext.maxNItems,
         DatomSerializers.datomSerializer, DefaultSerializers.bytesSerializer)
       .storage(storage)

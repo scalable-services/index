@@ -1,7 +1,7 @@
 organization := "services.scalable"
 name := "index"
 
-version := "0.35"
+version := "0.36"
 
 scalaVersion := "2.13.12"
 

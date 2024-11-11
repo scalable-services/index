@@ -77,7 +77,7 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
         val bid = findPathFn(k, meta, ord)
 
         ctx.get(bid).flatMap { block =>
-          findPath(k, block, limit, findPathFn)
+          findPath(k, block, limit, findPathFn)(ord)
         }
     }
   }
@@ -94,7 +94,7 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
 
     ctx.get(ctx.root.get).flatMap { start =>
       ctx.setParent(bid, start.lastOption, 0, None)
-      findPath(k, start, limit, findPathFn)
+      findPath(k, start, limit, findPathFn)(ord)
     }
   }
 
@@ -104,7 +104,6 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
 
         if(p.length == 1){
           val c = p.pointers(0)._2
-          //ctx.root = Some(c.unique_id)
 
           ctx.levels -= 1
 
@@ -135,12 +134,7 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
   }
 
   protected def recursiveCopy(block: Block[K,V])(implicit ord: Ordering[K]): Future[Boolean] = {
-
     val opt = ctx.getParent(block.unique_id)
-
-    /*if(opt.isEmpty){
-      return setPath(block).flatMap(_ => recursiveCopy(block))
-    }*/
 
     val pinfo = opt.get
 
@@ -154,7 +148,7 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
 
         parent.setPointers()
 
-        recursiveCopy(parent)
+        recursiveCopy(parent)(ord)
       }
     }
   }
@@ -176,7 +170,7 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
     if(left.isFull()){
       val right = left.split()
 
-      if(ord.gt(prev.last, left.last)){
+      if(keyOrdering.gt(prev.last, left.last)){
         right.insert(Seq(prev.last -> Pointer(prev.partition, prev.id, prev.nSubtree, prev.level)))
       } else {
         left.insert(Seq(prev.last -> Pointer(prev.partition, prev.id, prev.nSubtree, prev.level)))
@@ -241,10 +235,10 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
     var list = data
 
     // Avoids searching for the path again! :)
-    if(ord.gt(k, leftLast)){
+    if(keyOrdering.gt(k, leftLast)){
 
-      if(!ord.gt(k, rightLast)){
-        list = list.takeWhile{case (k, _, _) => ord.lt(k, rightLast)}
+      if(!keyOrdering.gt(k, rightLast)){
+        list = list.takeWhile{case (k, _, _) => keyOrdering.lt(k, rightLast)}
       }
 
       val rn = right.insert(list, insertVersion)
@@ -252,7 +246,7 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
       return handleParent(left, right).map(_ => rn.get)
     }
 
-    val ln = left.insert(list.takeWhile{case (k, _, _) => ord.lt(k, leftLast)}, insertVersion)
+    val ln = left.insert(list.takeWhile{case (k, _, _) => keyOrdering.lt(k, leftLast)}, insertVersion)
 
     handleParent(left, right).map{_ => ln.get}
   }
@@ -282,7 +276,7 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
 
     val sorted = data.sortBy(_._1)
 
-    if(sorted.exists{case (k, _, _) => sorted.count{case (k1, _, _) => ord.equiv(k, k1)} > 1}){
+    if(sorted.exists{case (k, _, _) => sorted.count{case (k1, _, _) => keyOrdering.equiv(k, k1)} > 1}){
       return Future.successful(InsertionResult(false, 0,
         Some(Errors.DUPLICATED_KEYS(data.map(_._1), ctx.builder.ks))))
     }
@@ -300,7 +294,7 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
         case None => insertEmpty(list, insertVersion)
         case Some(leaf) =>
 
-          val idx = list.indexWhere{case (k, _, _) => ord.gt(k, leaf.last)}
+          val idx = list.indexWhere{case (k, _, _) => keyOrdering.gt(k, leaf.last)}
           if(idx > 0) list = list.slice(0, idx)
 
           insertLeaf(leaf.copy(), list, insertVersion)
@@ -509,7 +503,7 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
         case None => Future.failed(Errors.KEY_NOT_FOUND[K](k, ctx.builder.ks))
         case Some(leaf) =>
 
-          val idx = list.indexWhere { case (k, _) => ord.gt(k, leaf.last)}
+          val idx = list.indexWhere { case (k, _) => keyOrdering.gt(k, leaf.last)}
           list = if(idx > 0) list.slice(0, idx) else list
 
           removeFromLeaf(leaf.copy(), list)
@@ -545,7 +539,7 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
 
     val sorted = data.sortBy(_._1)
 
-    if(sorted.exists{case (k, _, _) => sorted.count{case (k1, _, _) => ord.equiv(k, k1)} > 1}){
+    if(sorted.exists{case (k, _, _) => sorted.count{case (k1, _, _) => keyOrdering.equiv(k, k1)} > 1}){
       return Future.successful(UpdateResult(false, 0, Some(Errors.DUPLICATED_KEYS(sorted.map(_._1), ctx.builder.ks))))
     }
 
@@ -562,7 +556,7 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
         case None => Future.failed(Errors.KEY_NOT_FOUND(k, ctx.builder.ks))
         case Some(leaf) =>
 
-          val idx = list.indexWhere{case (k, _, _) => ord.gt(k, leaf.last)}
+          val idx = list.indexWhere{case (k, _, _) => keyOrdering.gt(k, leaf.last)}
           if(idx > 0) list = list.slice(0, idx)
 
           updateLeaf(leaf.copy(), list, updateVersion)
@@ -784,10 +778,6 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
 
       val opt = ctx.getParent(b.unique_id)
 
-      /*if(opt.isEmpty){
-        return setPath(b).flatMap(_ => prev(current))
-      }*/
-
       val pinfo = opt.get
 
       pinfo.parent match {
@@ -796,7 +786,7 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
           parent.setPointers()
 
           if (pinfo.pos == 0) {
-            prev(Some(parent.unique_id))
+            prev(Some(parent.unique_id))(ord)
           } else {
             ctx.get(parent.pointers(pinfo.pos - 1)._2.unique_id).flatMap(b => getRightMost(Some(b)))
           }
@@ -810,14 +800,14 @@ class Index[K, V](protected val descriptor: IndexContext)(val builder: IndexBuil
     }
   }
 
-  def get(k: K)(implicit ord: Ordering[K] = builder.ord): Future[Option[Tuple[K,V]]] = {
+  def get(k: K)(implicit ord: Ordering[K] = builder.keyOrdering): Future[Option[Tuple[K,V]]] = {
     findPath(k)(ord).flatMap {
       case None => Future.successful(None)
       case Some(leaf) => Future.successful(leaf.find(k)(ord))
     }
   }
 
-  def getAll(keys: Seq[K], mustFindAll: Boolean = false)(implicit ord: Ordering[K] = builder.ord): Future[GetResult[K, V]] = {
+  def getAll(keys: Seq[K], mustFindAll: Boolean = false)(implicit ord: Ordering[K] = builder.keyOrdering): Future[GetResult[K, V]] = {
 
     val sorted = keys.sorted(ord)
 

@@ -42,7 +42,8 @@ class QueriesRandomSpec extends Repeatable with Matchers {
 
     val indexId = UUID.randomUUID().toString
 
-    val storage = new MemoryStorage()
+    //val session = TestHelper.createCassandraSession()
+    val storage = /*new CassandraStorage(session, true)*/ new MemoryStorage()
     val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
 
     implicit val grpcStringStringSerializer = new GrpcByteSerializer[String, String]()
@@ -56,7 +57,7 @@ class QueriesRandomSpec extends Repeatable with Matchers {
       maxNItems = -1L
     ))(storage, global), Duration.Inf).get
 
-    val rangeBuilder = IndexBuilder.create[K, V](global, ordering,
+    val rangeBuilder = IndexBuilder.create[K, V](global, ordering, ordering,
         indexContext.numLeafItems, indexContext.numMetaItems, indexContext.maxNItems,
         DefaultSerializers.stringSerializer, DefaultSerializers.stringSerializer)
       .storage(storage)
@@ -78,8 +79,8 @@ class QueriesRandomSpec extends Repeatable with Matchers {
         val k = RandomStringUtils.randomAlphabetic(10).toLowerCase()
         val v = k
 
-        if(!data.exists{case (k1, _) => rangeBuilder.ord.equiv(k, k1)} && !list.exists{case (k1, _, _) =>
-          rangeBuilder.ord.equiv(k, k1)}){
+        if(!data.exists{case (k1, _) => rangeBuilder.keyOrdering.equiv(k, k1)} && !list.exists{case (k1, _, _) =>
+          rangeBuilder.keyOrdering.equiv(k, k1)}){
           list = list :+ (k, v, upsert)
         }
       }
@@ -179,7 +180,7 @@ class QueriesRandomSpec extends Repeatable with Matchers {
 
             if(ok){
               val list = cmds(0).asInstanceOf[Update[K, V]].list
-              indexData = indexData.filterNot{case (k, v) => list.exists{case (k1, _, _) => rangeBuilder.ord.equiv(k, k1)}}
+              indexData = indexData.filterNot{case (k, v) => list.exists{case (k1, _, _) => rangeBuilder.keyOrdering.equiv(k, k1)}}
               indexData = indexData ++ list.map(x => x._1 -> x._2)
             }
 
@@ -191,7 +192,7 @@ class QueriesRandomSpec extends Repeatable with Matchers {
 
             if(ok){
               val list = cmds(0).asInstanceOf[Remove[K, V]].keys
-              indexData = indexData.filterNot{case (k, v) => list.exists{case (k1, _) => rangeBuilder.ord.equiv(k, k1)}}
+              indexData = indexData.filterNot{case (k, v) => list.exists{case (k1, _) => rangeBuilder.keyOrdering.equiv(k, k1)}}
             }
 
             cmds
@@ -221,13 +222,13 @@ class QueriesRandomSpec extends Repeatable with Matchers {
             case cmd: Update[K, V] =>
 
               val list = cmd.list
-              data = data.filterNot{case (k, v, _) => list.exists{case (k1, _, _) => rangeBuilder.ord.equiv(k, k1)}}
+              data = data.filterNot{case (k, v, _) => list.exists{case (k1, _, _) => rangeBuilder.keyOrdering.equiv(k, k1)}}
               data = data ++ list
 
             case cmd: Remove[K, V] =>
 
               val list = cmd.keys
-              data = data.filterNot{case (k, v, _) => list.exists{case (k1, _) => rangeBuilder.ord.equiv(k, k1)}}
+              data = data.filterNot{case (k, v, _) => list.exists{case (k1, _) => rangeBuilder.keyOrdering.equiv(k, k1)}}
 
             case cmd: Insert[K, V] =>
               val list = cmd.list
@@ -250,7 +251,7 @@ class QueriesRandomSpec extends Repeatable with Matchers {
     logger.debug(s"${Console.GREEN_B}tdata: ${dlist.map{case (k, v) => rangeBuilder.ks(k) -> rangeBuilder.vs(v)}}${Console.RESET}\n")
     logger.debug(s"${Console.MAGENTA_B}idata: ${ilist.map{case (k, v) => rangeBuilder.ks(k) -> rangeBuilder.vs(v)}}${Console.RESET}\n")
 
-    Await.result(storage.close(), Duration.Inf)
+    //Await.result(storage.close(), Duration.Inf)
 
     assert(TestHelper.isColEqual(dlist, ilist))
 

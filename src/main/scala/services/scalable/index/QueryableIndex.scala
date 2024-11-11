@@ -98,7 +98,7 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
           block.isDefined
         }
 
-        $this.next(root)(builder.ord).map { block =>
+        $this.next(root)(builder.keyOrdering).map { block =>
           root = block.map(_.unique_id)
           block.isDefined
         }
@@ -139,7 +139,7 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
           block.isDefined
         }
 
-        $this.prev(root)(builder.ord).map { block =>
+        $this.prev(root)(builder.keyOrdering).map { block =>
           root = block.map(_.unique_id)
           block.isDefined
         }
@@ -614,7 +614,7 @@ class QueryableIndex[K, V](override protected val descriptor: IndexContext)(over
      val allRefs = ctx.parents.iterator.toSeq
 
      allRefs.filterNot{case (id, _) => id == rootBlock.unique_id}.foreach { case (id, pinfo) =>
-       val isLeft = ord.lteq(pinfo.key.get, rootBlock.middle)
+       val isLeft = keyOrdering.lteq(pinfo.key.get, rootBlock.middle)
 
        if(isLeft){
          logger.debug(s"${id} is on the left!")

@@ -49,7 +49,7 @@ class TemporalIndexSpec extends Repeatable {
 
     val cache = new DefaultCache(MAX_PARENT_ENTRIES = 80000)
 
-    val indexBuilder = IndexBuilder.create[K, V](global, DefaultComparators.bytesOrd,
+    val indexBuilder = IndexBuilder.create[K, V](global, DefaultComparators.bytesOrd, DefaultComparators.bytesOrd,
         NUM_LEAF_ENTRIES, NUM_META_ENTRIES, -1L,
         DefaultSerializers.bytesSerializer, DefaultSerializers.bytesSerializer)
       .storage(storage)
@@ -59,6 +59,7 @@ class TemporalIndexSpec extends Repeatable {
       .build()
 
     val historyBuilder = IndexBuilder.create[Long, IndexContext](global, DefaultComparators.ordLong,
+        DefaultComparators.indexContextComparator,
         NUM_LEAF_ENTRIES, NUM_META_ENTRIES, -1L,
         DefaultSerializers.longSerializer, DefaultSerializers.indexContextSerializer)
       .storage(storage)

@@ -76,6 +76,20 @@ package object index {
     implicit val ordString: Ordering[String] = new Ordering[String] {
       override def compare(x: String, y: String): Int = x.compare(y)
     }
+
+    implicit val indexContextComparator: Ordering[IndexContext] = new Ordering[IndexContext] {
+      override def compare(x: IndexContext, y: IndexContext): Int = {
+        if(x.root.isEmpty && y.root.isEmpty) return 0
+        if(x.root.isEmpty && y.root.isDefined) return -1
+        if(x.root.isDefined && y.root.isEmpty) return 1
+
+        if((x.root.get.id, x.root.get.partition) == (y.root.get.id, y.root.get.partition)){
+          return 0
+        }
+
+        -1
+      }
+    }
   }
 
   object DefaultIdGenerators {

@@ -29,7 +29,7 @@ class Leaf[K, V](override val id: String,
   override def nSubtree: Long = tuples.length.toLong
 
   def insert(data: Seq[Tuple3[K, V, Boolean]], insertVersion: String)(implicit ctx: Context[K,V]): Try[Int] = {
-    import ctx.builder.ord
+    import ctx.builder.keyOrdering
 
     if(isFull()) return Failure(Errors.LEAF_BLOCK_FULL)
 
@@ -38,13 +38,13 @@ class Leaf[K, V](override val id: String,
 
     val len = slice.length
 
-    if (slice.exists { case (k, _, upsert) => tuples.exists { case (k1, _, _) => !upsert && ord.equiv(k1, k) } }) {
+    if (slice.exists { case (k, _, upsert) => tuples.exists { case (k1, _, _) => !upsert && keyOrdering.equiv(k1, k) } }) {
       return Failure(Errors.LEAF_DUPLICATE_KEY(slice.map(_._1), ctx.builder.ks))
     }
 
     // Filter out upsert keys...
     val upserts = slice.filter(_._3)
-    tuples = tuples.filterNot{case (k, v, _) => upserts.exists{case (k1, _, _) => ord.equiv(k, k1)}}
+    tuples = tuples.filterNot{case (k, v, _) => upserts.exists{case (k1, _, _) => keyOrdering.equiv(k, k1)}}
 
     // Add back the upsert keys and the new ones...
     tuples = (tuples ++ slice.map{case (k, v, _) => Tuple3(k, v, insertVersion)}).sortBy(_._1)
@@ -53,16 +53,16 @@ class Leaf[K, V](override val id: String,
   }
 
   def remove(keys: Seq[Tuple2[K, Option[String]]])(implicit ctx: Context[K, V]): Try[Int] = {
-    import ctx.builder.ord
+    import ctx.builder.keyOrdering
 
-    if(keys.exists{ case (k, _) => !tuples.exists{ case (k1, _, _) => ord.equiv(k1, k) }}){
+    if(keys.exists{ case (k, _) => !tuples.exists{ case (k1, _, _) => keyOrdering.equiv(k1, k) }}){
       return Failure(Errors.LEAF_KEY_NOT_FOUND[K](keys.map(_._1), ctx.builder.ks))
     }
 
     val versionsChanged = keys.filter(_._2.isDefined)
-      .filter { case (k0, vs0) => tuples.exists { case (k1, _, vs1) => ord.equiv(k0, k1) && !vs0.get.equals(vs1) } }
+      .filter { case (k0, vs0) => tuples.exists { case (k1, _, vs1) => keyOrdering.equiv(k0, k1) && !vs0.get.equals(vs1) } }
       .map { case (k1, vs1) =>
-        val (k, _, vs0) = tuples.find { case (k0, _, _) => ord.equiv(k0, k1) }.get
+        val (k, _, vs0) = tuples.find { case (k0, _, _) => keyOrdering.equiv(k0, k1) }.get
 
         (k, Some(vs0), vs1)
       }
@@ -71,22 +71,22 @@ class Leaf[K, V](override val id: String,
       return Failure(Errors.VERSION_CHANGED(versionsChanged, ctx.builder.ks))
     }
 
-    tuples = tuples.filterNot{case (k, _, _) => keys.exists{ case (k1, _) => ord.equiv(k, k1)}}
+    tuples = tuples.filterNot{case (k, _, _) => keys.exists{ case (k1, _) => keyOrdering.equiv(k, k1)}}
 
     Success(keys.length)
   }
 
   def update(data: Seq[Tuple3[K, V, Option[String]]], updateVersion: String)(implicit ctx: Context[K, V]): Try[Int] = {
-    import ctx.builder.ord
+    import ctx.builder.keyOrdering
 
-    if(data.exists{ case (k, _, _) => !tuples.exists{case (k1, _, _) => ord.equiv(k1, k) }}){
+    if(data.exists{ case (k, _, _) => !tuples.exists{case (k1, _, _) => keyOrdering.equiv(k1, k) }}){
       return Failure(Errors.LEAF_KEY_NOT_FOUND(data.map(_._1), ctx.builder.ks))
     }
 
     val versionsChanged = data.filter(_._3.isDefined)
-      .filter{case (k0, _, vs0) => tuples.exists{case (k1, _, vs1) => ord.equiv(k0, k1) && !vs0.get.equals(vs1)}}
+      .filter{case (k0, _, vs0) => tuples.exists{case (k1, _, vs1) => keyOrdering.equiv(k0, k1) && !vs0.get.equals(vs1)}}
       .map { case (k1, _, vs1) =>
-        val (k, _, vs0) = tuples.find { case (k0, _, _) => ord.equiv(k0, k1) }.get
+        val (k, _, vs0) = tuples.find { case (k0, _, _) => keyOrdering.equiv(k0, k1) }.get
 
         (k, Some(vs0), vs1)
       }
@@ -95,7 +95,7 @@ class Leaf[K, V](override val id: String,
       return Failure(Errors.VERSION_CHANGED(versionsChanged, ctx.builder.ks))
     }
 
-    val notin = tuples.filterNot{case (k1, _, _) => data.exists{ case (k, _, _) => ord.equiv(k, k1)}}
+    val notin = tuples.filterNot{case (k1, _, _) => data.exists{ case (k, _, _) => keyOrdering.equiv(k, k1)}}
 
     tuples = (notin ++ data.map{case (k, v, _) => Tuple3(k, v, updateVersion)}).sortBy(_._1)
 
@@ -134,7 +134,7 @@ class Leaf[K, V](override val id: String,
     val minKeys = target.minNeeded()
 
     // borrows left
-    if(ctx.builder.ord.gteq(thisHead, targetHead)){
+    if(ctx.builder.keyOrdering.gteq(thisHead, targetHead)){
 
       target.tuples = target.tuples ++ tuples.slice(0, minKeys)
       tuples = tuples.slice(minKeys, tuples.length)
@@ -175,7 +175,8 @@ class Leaf[K, V](override val id: String,
 
     val pinfo = ctx.getParent(unique_id).get
 
-    val copy = ctx.createLeaf()
+    val copy = ctx.createLeaf(None)
+    copy.copiedFrom = Some(unique_id)
     ctx.setParent(copy.unique_id, pinfo.key, pinfo.pos, pinfo.parent)
 
     val len = tuples.length

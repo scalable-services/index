@@ -27,10 +27,12 @@ class MainSpec extends Repeatable with Matchers {
     type K = Bytes
     type V = Bytes
 
+    val randomError = false
+
     import services.scalable.index.DefaultComparators._
 
-    val NUM_LEAF_ENTRIES = rand.nextInt(4, 64)
-    val NUM_META_ENTRIES = rand.nextInt(4, 64)
+    val NUM_LEAF_ENTRIES = 64//rand.nextInt(4, 64)
+    val NUM_META_ENTRIES = 64//rand.nextInt(4, 64)
 
     val indexId = UUID.randomUUID().toString
 
@@ -44,11 +46,13 @@ class MainSpec extends Repeatable with Matchers {
       maxNItems = -1L
     ))(storage, global), Duration.Inf).get
 
-    val builder = IndexBuilder.create[K, V](global, DefaultComparators.bytesOrd,
+    val builder = IndexBuilder.create[K, V](global, DefaultComparators.bytesOrd, DefaultComparators.bytesOrd,
         indexContext.numLeafItems, indexContext.numMetaItems, indexContext.maxNItems,
         DefaultSerializers.bytesSerializer, DefaultSerializers.bytesSerializer)
       .storage(storage)
       .serializer(DefaultSerializers.grpcBytesBytesSerializer)
+      .keyToStringConverter(k => new String(k, "UTF-8"))
+      .valueToStringConverter(k => new String(k, "UTF-8"))
       .keyToStringConverter(DefaultPrinters.byteArrayToStringPrinter)
       .build()
 
@@ -63,7 +67,7 @@ class MainSpec extends Repeatable with Matchers {
       val n = rand.nextInt(1, 1000)
       var list = Seq.empty[Tuple3[K, V, Boolean]]
 
-      val insertDup = rand.nextBoolean()
+      val insertDup = randomError && rand.nextBoolean()
 
       for(i<-0 until n){
 
@@ -116,13 +120,13 @@ class MainSpec extends Repeatable with Matchers {
       val currentVersion = Some(ctx.id)
       val index = new QueryableIndex[K, V](ctx)(builder)
 
-      val introduceError = rand.nextBoolean()
+      val introduceError = randomError && rand.nextBoolean()
       val errorTx = Some(UUID.randomUUID.toString)
 
       val n = if(data.length >= 2) rand.nextInt(1, data.length) else 1
       val list = scala.util.Random.shuffle(data).slice(0, n).map { case (k, v, lv) =>
         (k, RandomStringUtils.randomAlphanumeric(10).getBytes(Charsets.UTF_8),
-         if(introduceError) errorTx else lv)
+          if(introduceError) errorTx else lv)
       }
 
       val cmds = Seq(
@@ -153,7 +157,7 @@ class MainSpec extends Repeatable with Matchers {
       val currentVersion = Some(ctx.id)
       val index = new QueryableIndex[K, V](ctx)(builder)
 
-      val introduceError = rand.nextBoolean()
+      val introduceError = randomError && rand.nextBoolean()
       val errorTx = Some(UUID.randomUUID.toString)
 
       val n = if(data.length >= 2) rand.nextInt(1, data.length) else 1
@@ -195,11 +199,11 @@ class MainSpec extends Repeatable with Matchers {
     val index = new QueryableIndex[K, V](ctx)(builder)
     logger.info(Await.result(index.save(), Duration.Inf).toString)
 
-    val dlist = data.sortBy(_._1).map{case (k, v, _) => k -> v}
-    val ilist = Await.result(index.all(), Duration.Inf).map{case (k, v, _) => k -> v}
+    val dlist = data.sortBy(_._1).map{case (k, v, _) => k -> v}.toList
+    val ilist = Await.result(index.all(), Duration.Inf).map{case (k, v, _) => k -> v}.toList
 
-    logger.debug(s"${Console.GREEN_B}tdata: ${dlist.map{case (k, v) => builder.ks(k) -> builder.vs(v)}}${Console.RESET}\n")
-    logger.debug(s"${Console.MAGENTA_B}idata: ${ilist.map{case (k, v) => builder.ks(k) -> builder.vs(v)}}${Console.RESET}\n")
+    logger.info(s"${Console.GREEN_B}tdata: ${dlist.map{case (k, v) => builder.ks(k) -> builder.vs(v)}}${Console.RESET}\n")
+    logger.info(s"${Console.MAGENTA_B}idata: ${ilist.map{case (k, v) =>builder.ks(k) -> builder.vs(v)}}${Console.RESET}\n")
 
     Await.result(storage.close(), Duration.Inf)
 

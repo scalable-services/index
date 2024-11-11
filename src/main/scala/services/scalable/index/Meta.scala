@@ -149,7 +149,7 @@ class Meta[K, V](override val id: String,
     val minKeys = target.minNeeded()
 
     // borrows left
-    if(ctx.builder.ord.gteq(thisHead, targetHead)){
+    if(ctx.builder.keyOrdering.gteq(thisHead, targetHead)){
 
       target.pointers = target.pointers ++ pointers.slice(0, minKeys)
       pointers = pointers.slice(minKeys, pointers.length)
@@ -175,7 +175,7 @@ class Meta[K, V](override val id: String,
     val right = r.asInstanceOf[Meta[K,V]]
 
     //pointers = pointers ++ right.pointers
-    insert(right.pointers)(ctx, ctx.builder.ord)
+    insert(right.pointers)(ctx, ctx.builder.keyOrdering)
 
     setPointers()
 
@@ -196,7 +196,8 @@ class Meta[K, V](override val id: String,
 
     val pinfo = ctx.getParent(unique_id).get
 
-    val copy = ctx.createMeta()
+    val copy = ctx.createMeta(None)
+    copy.copiedFrom = Some(unique_id)
     ctx.setParent(copy.unique_id, pinfo.key, pinfo.pos, pinfo.parent)
 
     //copy.pointers = pointers.clone()
